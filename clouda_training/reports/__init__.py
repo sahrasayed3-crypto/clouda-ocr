@@ -1,0 +1,1 @@
+"""Training planning report serializers."""

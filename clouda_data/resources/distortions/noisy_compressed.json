@@ -1,0 +1,15 @@
+{
+  "name": "noisy_compressed",
+  "recommended_use": "Low-bandwidth images with noise and compression artifacts.",
+  "distortions": [
+    {"name": "speckle_noise", "probability": 0.45, "severity": "medium", "parameters": {"density": [0.005, 0.025]}},
+    {"name": "gaussian_noise", "probability": 0.55, "severity": "medium", "parameters": {"sigma": [5, 14]}},
+    {"name": "jpeg_compression", "probability": 0.9, "severity": "heavy", "parameters": {"quality": [25, 55]}}
+  ],
+  "ordering_constraints": ["noise before compression"],
+  "mutually_exclusive": [],
+  "maximum_allowed_crop": 0.01,
+  "minimum_readable_text_threshold": 0.88,
+  "metadata_fields": ["quality_metrics", "operation_order", "parameters", "random_seed"]
+}
+

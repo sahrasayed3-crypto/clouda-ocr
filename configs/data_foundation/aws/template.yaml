@@ -1,0 +1,9 @@
+enabled: false
+region: us-east-2
+spot_family: P
+current_quota_vcpus: 8
+expected_test_instance: p3.2xlarge
+s3_bucket: ""
+iam_policy_template: configs/aws/least_privilege_policy.template.json
+notes: Template only. Do not add credentials.
+

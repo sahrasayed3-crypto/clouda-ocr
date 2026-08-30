@@ -1,0 +1,9 @@
+[Unit]
+Description=Clean Clouda temporary files
+
+[Service]
+Type=oneshot
+User=clouda
+Group=clouda
+WorkingDirectory=/opt/clouda
+ExecStart=/opt/clouda/deploy/linux/cleanup.sh

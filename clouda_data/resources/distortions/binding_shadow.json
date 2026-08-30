@@ -1,0 +1,14 @@
+{
+  "name": "binding_shadow",
+  "recommended_use": "Book scans with gutter or binding-edge shadow.",
+  "distortions": [
+    {"name": "binding_shadow", "probability": 0.8, "severity": "medium", "parameters": {"side": ["left", "right"], "width_ratio": [0.04, 0.12]}},
+    {"name": "page_curvature", "probability": 0.35, "severity": "light", "parameters": {"curve": [0.01, 0.03]}}
+  ],
+  "ordering_constraints": ["curvature before binding shadow"],
+  "mutually_exclusive": [["binding_shadow", "edge_darkening"]],
+  "maximum_allowed_crop": 0.02,
+  "minimum_readable_text_threshold": 0.92,
+  "metadata_fields": ["layout_metadata", "operation_order", "parameters", "random_seed"]
+}
+

@@ -1,0 +1,29 @@
+[server]
+address = "127.0.0.1"
+port = 8501
+headless = true
+runOnSave = false
+fileWatcherType = "none"
+# Streamlit uses MB here. Keep this aligned with Clouda's default upload guard.
+maxUploadSize = 100
+
+[browser]
+gatherUsageStats = false
+
+[client]
+toolbarMode = "minimal"
+
+[logger]
+level = "info"
+
+[theme]
+base = "light"
+primaryColor = "#1f4e79"
+backgroundColor = "#f6f7f9"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#18212b"
+linkColor = "#1f4e79"
+borderColor = "#d9dee5"
+showWidgetBorder = true
+baseRadius = "0.5rem"
+buttonRadius = "0.5rem"

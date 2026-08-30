@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "queues": {
+    "pdf_conversion": {"timeout_seconds": 7200, "retry_count": 2, "worker_role": "runtime"},
+    "dataset_pipeline": {"timeout_seconds": 14400, "retry_count": 1, "worker_role": "dataset"},
+    "training_preparation": {"timeout_seconds": 21600, "retry_count": 0, "worker_role": "training_preparation"},
+    "model_evaluation": {"timeout_seconds": 10800, "retry_count": 1, "worker_role": "model_evaluation"}
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "pipeline_mode": "disabled",
+  "live_dispatch_allowed": false,
+  "provider_families": [
+    {"provider_id": "openrouter", "adapter_family": "openai_compatible", "secret_ref": "env:OPENROUTER_API_KEY_PRIMARY"},
+    {"provider_id": "requesty", "adapter_family": "openai_compatible", "secret_ref": "env:REQUESTY_API_KEY_PRIMARY"},
+    {"provider_id": "nvidia_nim", "adapter_family": "openai_compatible", "secret_ref": "env:NVIDIA_NIM_API_KEY_PRIMARY"},
+    {"provider_id": "sambanova", "adapter_family": "openai_compatible", "secret_ref": "env:SAMBANOVA_API_KEY_PRIMARY"},
+    {"provider_id": "github_models", "adapter_family": "openai_compatible", "secret_ref": "env:GITHUB_MODELS_TOKEN_PRIMARY"},
+    {"provider_id": "siliconflow", "adapter_family": "openai_compatible", "secret_ref": "env:SILICONFLOW_API_KEY_PRIMARY"},
+    {"provider_id": "deepinfra", "adapter_family": "openai_compatible", "secret_ref": "env:DEEPINFRA_API_KEY_PRIMARY"},
+    {"provider_id": "fireworks", "adapter_family": "openai_compatible", "secret_ref": "env:FIREWORKS_API_KEY_PRIMARY"},
+    {"provider_id": "together", "adapter_family": "openai_compatible", "secret_ref": "env:TOGETHER_API_KEY_PRIMARY"},
+    {"provider_id": "nebius", "adapter_family": "openai_compatible", "secret_ref": "env:NEBIUS_API_KEY_PRIMARY"},
+    {"provider_id": "novita", "adapter_family": "openai_compatible", "secret_ref": "env:NOVITA_API_KEY_PRIMARY"},
+    {"provider_id": "alibaba_dashscope", "adapter_family": "configuration_ready", "secret_ref": "env:ALIBABA_DASHSCOPE_API_KEY_PRIMARY"},
+    {"provider_id": "huggingface", "adapter_family": "configuration_ready", "secret_ref": "env:HUGGINGFACE_API_KEY_PRIMARY"},
+    {"provider_id": "cloudflare_workers_ai", "adapter_family": "configuration_ready", "secret_ref": "env:CLOUDFLARE_API_TOKEN_PRIMARY"},
+    {"provider_id": "replicate", "adapter_family": "configuration_ready", "secret_ref": "env:REPLICATE_API_TOKEN_PRIMARY"}
+  ],
+  "defaults": {
+    "enabled": false,
+    "dispatch_mode": "disabled",
+    "allowed_teacher_roles": [],
+    "allowed_task_types": [],
+    "allowed_data_classifications": [],
+    "daily_request_budget": 0,
+    "daily_token_budget": 0,
+    "daily_cost_budget": 0
+  }
+}

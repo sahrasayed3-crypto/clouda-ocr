@@ -1,0 +1,7 @@
+{
+  "normalization": "comparison_arabic",
+  "metrics": ["cer", "wer"],
+  "group_by": ["distortion_profile", "severity"],
+  "reports": ["json", "csv", "markdown"]
+}
+

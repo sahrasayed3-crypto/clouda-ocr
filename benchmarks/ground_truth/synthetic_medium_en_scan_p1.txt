@@ -1,0 +1,3 @@
+Medium scan sample.
+Light noise and mild skew.
+JPEG compression is present.

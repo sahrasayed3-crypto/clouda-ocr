@@ -1,0 +1,16 @@
+profile_id: modern_scan_medium
+schema_version: 1
+description: Typical office scan degradation.
+intended_use: Medium modern Arabic OCR.
+severity: medium
+random_seed_policy: required_deterministic
+transformations: [{name: skew, probability: 0.6, severity: medium}, {name: scanner_noise, probability: 0.7, severity: medium}, {name: uneven_illumination, probability: 0.5, severity: medium}, {name: jpeg_compression, probability: 0.8, severity: medium}]
+parameter_ranges: {}
+probabilities: {noise: 0.7, compression: 0.8}
+exclusions: []
+maximum_chain_length: 8
+maximum_severity_budget: 16
+maximum_output_dimensions: [8000, 8000]
+expected_output_count_per_source_page: 3
+license_restrictions: Approved datasets only for training.
+quality_class_label: medium

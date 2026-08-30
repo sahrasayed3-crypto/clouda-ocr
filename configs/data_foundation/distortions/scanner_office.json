@@ -1,0 +1,15 @@
+{
+  "name": "scanner_office",
+  "recommended_use": "Office flatbed or feeder scanner artifacts.",
+  "distortions": [
+    {"name": "scanner_lines", "probability": 0.35, "severity": "light", "parameters": {"line_count": [1, 8]}},
+    {"name": "edge_darkening", "probability": 0.35, "severity": "light", "parameters": {"width": [8, 32]}},
+    {"name": "border_artifacts", "probability": 0.25, "severity": "medium", "parameters": {"width": [2, 12]}}
+  ],
+  "ordering_constraints": ["border artifacts after geometry"],
+  "mutually_exclusive": [],
+  "maximum_allowed_crop": 0.015,
+  "minimum_readable_text_threshold": 0.95,
+  "metadata_fields": ["operation_order", "parameters", "random_seed"]
+}
+

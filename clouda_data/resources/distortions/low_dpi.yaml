@@ -1,0 +1,16 @@
+profile_id: low_dpi
+schema_version: 1
+description: Low-DPI resampling damage.
+intended_use: Resolution robustness.
+severity: heavy
+random_seed_policy: required_deterministic
+transformations: [{name: dpi_reduction, probability: 1.0, severity: heavy}, {name: thresholding_artifacts, probability: 0.4, severity: medium}]
+parameter_ranges: {dpi: [72, 150]}
+probabilities: {resolution: 1.0}
+exclusions: []
+maximum_chain_length: 8
+maximum_severity_budget: 16
+maximum_output_dimensions: [5000, 5000]
+expected_output_count_per_source_page: 3
+license_restrictions: Approved datasets only for training.
+quality_class_label: difficult

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.example/arabic-ocr/page-record.schema.json",
+  "title": "Arabic OCR Clean Source Page Record",
+  "type": "object",
+  "required": [
+    "document_id",
+    "page_id",
+    "source_path",
+    "source_type",
+    "language",
+    "page_number",
+    "clean_text",
+    "text_checksum",
+    "source_license",
+    "creation_timestamp"
+  ],
+  "properties": {
+    "document_id": {"type": "string", "minLength": 1},
+    "page_id": {"type": "string", "minLength": 1},
+    "source_path": {"type": "string", "minLength": 1},
+    "source_type": {
+      "type": "string",
+      "enum": ["pdf", "docx", "image", "text", "json_layout", "page_xml", "alto_xml", "ground_truth_json"]
+    },
+    "language": {"type": "string"},
+    "page_number": {"type": "integer", "minimum": 1},
+    "clean_text": {"type": "string"},
+    "text_checksum": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "image_checksum": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+    "layout_regions": {"type": "array"},
+    "footnote_regions": {"type": "array", "items": {"type": "string"}},
+    "margin_regions": {"type": "array", "items": {"type": "string"}},
+    "title_regions": {"type": "array", "items": {"type": "string"}},
+    "table_regions": {"type": "array", "items": {"type": "string"}},
+    "reading_order": {"type": "array", "items": {"type": "string"}},
+    "source_license": {"type": "string"},
+    "creation_timestamp": {"type": "string"}
+  }
+}
+

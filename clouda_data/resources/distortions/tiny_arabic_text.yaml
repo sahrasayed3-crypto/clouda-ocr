@@ -1,0 +1,16 @@
+profile_id: tiny_arabic_text
+schema_version: 1
+description: Region-aware degradation for small Arabic text.
+intended_use: Small-font and diacritic robustness.
+severity: heavy
+random_seed_policy: required_deterministic
+transformations: [{name: small_font_degradation, probability: 1.0, severity: heavy}, {name: faint_diacritics, probability: 0.7, severity: heavy}, {name: local_text_fading, probability: 0.5, severity: medium}]
+parameter_ranges: {}
+probabilities: {small_text: 1.0}
+exclusions: [preserve_page_numbers]
+maximum_chain_length: 8
+maximum_severity_budget: 16
+maximum_output_dimensions: [8000, 8000]
+expected_output_count_per_source_page: 3
+license_restrictions: Approved datasets only for training.
+quality_class_label: difficult

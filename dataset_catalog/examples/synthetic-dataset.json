@@ -1,0 +1,23 @@
+{
+  "dataset_id": "synthetic_example",
+  "display_name": "Synthetic example only",
+  "owner": "Clouda test fixtures",
+  "source": "generated-locally",
+  "license_name": "Apache-2.0",
+  "license_url_or_reference": "LICENSE",
+  "permission_basis": "Deterministic synthetic fixture",
+  "commercial_training_allowed": false,
+  "evaluation_allowed": true,
+  "derived_weights_allowed": false,
+  "weight_distribution_allowed": false,
+  "original_data_redistribution_allowed": true,
+  "attribution_required": true,
+  "attribution_text": "Synthetic Clouda fixture",
+  "cloud_processing_allowed": false,
+  "status": "evaluation_only",
+  "review_date": "2026-07-23",
+  "evidence_reference": "tests/data_foundation/fixtures",
+  "data_root_uri": "dataset://synthetic_example/",
+  "schema_version": 1
+}
+

@@ -1,0 +1,674 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root {
+        --motion-instant: 100ms;
+        --motion-micro: 160ms;
+        --motion-component: 220ms;
+        --ease-natural: cubic-bezier(.2, .8, .2, 1);
+        --ease-emphasized: cubic-bezier(.16, 1, .3, 1);
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        direction: rtl;
+        font-family: Cairo, Tajawal, "Segoe UI", Tahoma, Arial, sans-serif;
+        font-size: 15px;
+        line-height: 1.6;
+        color: #15212C;
+        background: transparent;
+      }
+
+      .auth-container {
+        max-width: 400px;
+        padding: 0.5rem;
+      }
+
+      .auth-title {
+        margin: 0 0 0.75rem;
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #18212B;
+      }
+
+      .auth-field {
+        display: block;
+        width: 100%;
+        margin-bottom: 0.6rem;
+        padding: 0.6rem 0.75rem;
+        border: 1px solid #DCE2E8;
+        border-radius: 9px;
+        font-family: inherit;
+        font-size: 0.9rem;
+        color: #15212C;
+        background: #ffffff;
+        direction: ltr;
+        text-align: right;
+        transition: border-color var(--motion-micro) var(--ease-natural),
+          box-shadow var(--motion-component) var(--ease-natural);
+      }
+
+      .auth-label {
+        display: block;
+        margin: 0 0 0.25rem;
+        color: #475467;
+        font-size: 0.82rem;
+        font-weight: 600;
+      }
+
+      .auth-field:focus {
+        outline: none;
+        border-color: #1F4E79;
+        box-shadow: 0 0 0 3px rgba(44, 110, 138, 0.08);
+      }
+
+      .auth-field::placeholder {
+        color: #667085;
+        direction: rtl;
+      }
+
+      .auth-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.5rem;
+        margin-top: 0.75rem;
+      }
+
+      .auth-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.4rem;
+        min-height: 2.75rem;
+        padding: 0.6rem 0.75rem;
+        border: 1px solid #DCE2E8;
+        border-radius: 9px;
+        font-family: inherit;
+        font-size: 0.88rem;
+        font-weight: 600;
+        color: #15212C;
+        background: #ffffff;
+        cursor: pointer;
+        transition: border-color var(--motion-micro) var(--ease-natural),
+          background var(--motion-micro) var(--ease-natural),
+          box-shadow var(--motion-component) var(--ease-natural),
+          transform var(--motion-instant) var(--ease-emphasized);
+      }
+
+      .auth-btn:hover {
+        border-color: #1F4E79;
+        background: #EAF1F7;
+        color: #173B5C;
+        box-shadow: 0 6px 16px rgba(31, 78, 121, 0.08);
+        transform: translateY(-1px);
+      }
+
+      .auth-btn:active {
+        box-shadow: none;
+        transform: translateY(0);
+      }
+
+      .auth-btn:disabled {
+        border-color: #DCE2E8;
+        color: #98A2B3;
+        background: #F2F4F7;
+        box-shadow: none;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .auth-btn:focus-visible {
+        outline: 2px solid #1F4E79;
+        outline-offset: 2px;
+      }
+
+      .auth-btn-primary {
+        grid-column: 1 / -1;
+        border-color: #1F4E79;
+        color: #ffffff;
+        background: #1F4E79;
+      }
+
+      .auth-btn-primary:hover {
+        background: #173B5C;
+        border-color: #173B5C;
+        color: #ffffff;
+      }
+
+      .auth-btn-google {
+        grid-column: 1 / -1;
+        border-color: #DCE2E8;
+        color: #15212C;
+        background: #ffffff;
+      }
+
+      .auth-divider {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin: 0.85rem 0;
+        color: #667085;
+        font-size: 0.8rem;
+      }
+
+      .auth-divider::before,
+      .auth-divider::after {
+        content: "";
+        flex: 1;
+        height: 1px;
+        background: #DCE2E8;
+      }
+
+      .auth-status {
+        min-height: 1.5rem;
+        margin-top: 0.6rem;
+        padding: 0.4rem 0.6rem;
+        border-radius: 6px;
+        font-size: 0.82rem;
+        text-align: center;
+        animation: auth-status-enter var(--motion-component) var(--ease-emphasized) both;
+        transition: opacity var(--motion-component) var(--ease-natural);
+      }
+
+      .auth-status:empty {
+        display: none;
+      }
+
+      .auth-status.status-info {
+        color: #2F608D;
+        background: #EDF5FB;
+        border: 1px solid #bfdbfe;
+      }
+
+      .auth-status.status-success {
+        color: #2F6F52;
+        background: #EDF7F1;
+        border: 1px solid #bbf7d0;
+      }
+
+      .auth-status.status-error {
+        color: #A23D43;
+        background: #FDF0F1;
+        border: 1px solid #fecaca;
+      }
+
+      .auth-secondary-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: 0.6rem;
+        justify-content: center;
+      }
+
+      .auth-link {
+        border: none;
+        background: none;
+        color: #1F4E79;
+        font-family: inherit;
+        font-size: 0.82rem;
+        font-weight: 600;
+        cursor: pointer;
+        padding: 0.25rem 0.4rem;
+        border-radius: 4px;
+        transition: background var(--motion-micro) var(--ease-natural),
+          color var(--motion-micro) var(--ease-natural);
+      }
+
+      .auth-link:hover {
+        background: #EAF1F7;
+        color: #173B5C;
+      }
+
+      .auth-link:focus-visible {
+        outline: 2px solid #1F4E79;
+        outline-offset: 2px;
+      }
+
+      .auth-signed-in {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.75rem;
+        border: 1px solid #DCE2E8;
+        border-radius: 9px;
+        background: #F6F7F9;
+      }
+
+      .auth-signed-in p {
+        margin: 0;
+        font-size: 0.88rem;
+        color: #475467;
+      }
+
+      .auth-signed-in strong {
+        color: #15212C;
+      }
+
+      .auth-view-toggle {
+        display: none;
+      }
+
+      @keyframes auth-status-enter {
+        from { opacity: 0; transform: translateY(3px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation: none !important;
+          transition-duration: 0.001ms !important;
+          transform: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="firebase-auth-root">
+      <div class="auth-container">
+        <div id="view-login">
+          <h2 class="auth-title">تسجيل الدخول</h2>
+          <label class="auth-label" for="email">البريد الإلكتروني</label>
+          <input
+            id="email"
+            class="auth-field"
+            type="email"
+            autocomplete="email"
+            placeholder="البريد الإلكتروني"
+            aria-label="البريد الإلكتروني"
+          />
+          <label class="auth-label" for="password">كلمة المرور</label>
+          <input
+            id="password"
+            class="auth-field"
+            type="password"
+            autocomplete="current-password"
+            placeholder="كلمة المرور"
+            aria-label="كلمة المرور"
+          />
+          <div class="auth-actions">
+            <button id="login" class="auth-btn auth-btn-primary" type="button">
+              تسجيل الدخول
+            </button>
+          </div>
+          <div class="auth-divider">أو</div>
+          <div class="auth-actions">
+            <button id="google" class="auth-btn auth-btn-google" type="button">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  fill="#4285F4"
+                />
+                <path
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  fill="#34A853"
+                />
+                <path
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+                  fill="#FBBC05"
+                />
+                <path
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                  fill="#EA4335"
+                />
+              </svg>
+              تسجيل الدخول بحساب Google
+            </button>
+          </div>
+          <div class="auth-secondary-actions">
+            <button id="show-signup" class="auth-link" type="button">
+              إنشاء حساب جديد
+            </button>
+            <button id="show-reset" class="auth-link" type="button">
+              نسيت كلمة المرور؟
+            </button>
+          </div>
+        </div>
+
+        <div id="view-signup" style="display: none">
+          <h2 class="auth-title">إنشاء حساب جديد</h2>
+          <label class="auth-label" for="signup-email">البريد الإلكتروني</label>
+          <input
+            id="signup-email"
+            class="auth-field"
+            type="email"
+            autocomplete="email"
+            placeholder="البريد الإلكتروني"
+            aria-label="البريد الإلكتروني"
+          />
+          <label class="auth-label" for="signup-password">كلمة المرور</label>
+          <input
+            id="signup-password"
+            class="auth-field"
+            type="password"
+            autocomplete="new-password"
+            placeholder="كلمة المرور"
+            aria-label="كلمة المرور"
+          />
+          <div class="auth-actions">
+            <button id="signup" class="auth-btn auth-btn-primary" type="button">
+              إنشاء الحساب
+            </button>
+          </div>
+          <div class="auth-secondary-actions">
+            <button id="back-to-login" class="auth-link" type="button">
+              العودة لتسجيل الدخول
+            </button>
+          </div>
+        </div>
+
+        <div id="view-reset" style="display: none">
+          <h2 class="auth-title">استعادة كلمة المرور</h2>
+          <label class="auth-label" for="reset-email">البريد الإلكتروني</label>
+          <input
+            id="reset-email"
+            class="auth-field"
+            type="email"
+            autocomplete="email"
+            placeholder="البريد الإلكتروني"
+            aria-label="البريد الإلكتروني"
+          />
+          <div class="auth-actions">
+            <button id="reset" class="auth-btn auth-btn-primary" type="button">
+              إرسال رابط الاستعادة
+            </button>
+          </div>
+          <div class="auth-secondary-actions">
+            <button id="back-to-login-from-reset" class="auth-link" type="button">
+              العودة لتسجيل الدخول
+            </button>
+          </div>
+        </div>
+
+        <div id="view-signed-in" style="display: none">
+          <div class="auth-signed-in">
+            <p>مرحبًا، <strong id="user-display-name"></strong></p>
+            <button id="logout" class="auth-btn" type="button">
+              تسجيل الخروج
+            </button>
+          </div>
+        </div>
+
+        <div id="status" class="auth-status" role="status" aria-live="polite"></div>
+      </div>
+    </div>
+    <script type="module">
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+      import {
+        getAuth,
+        connectAuthEmulator,
+        createUserWithEmailAndPassword,
+        signInWithEmailAndPassword,
+        GoogleAuthProvider,
+        signInWithPopup,
+        sendEmailVerification,
+        sendPasswordResetEmail,
+        signOut,
+        onAuthStateChanged,
+      } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+
+      const Streamlit = {
+        setComponentReady: () =>
+          window.parent.postMessage(
+            {
+              isStreamlitMessage: true,
+              type: "streamlit:componentReady",
+              apiVersion: 1,
+            },
+            "*",
+          ),
+        setFrameHeight: (height) =>
+          window.parent.postMessage(
+            {
+              isStreamlitMessage: true,
+              type: "streamlit:setFrameHeight",
+              height,
+            },
+            "*",
+          ),
+        setComponentValue: (value) =>
+          window.parent.postMessage(
+            {
+              isStreamlitMessage: true,
+              type: "streamlit:setComponentValue",
+              value,
+            },
+            "*",
+          ),
+      };
+
+      const statusEl = document.getElementById("status");
+      const views = {
+        login: document.getElementById("view-login"),
+        signup: document.getElementById("view-signup"),
+        reset: document.getElementById("view-reset"),
+        signedIn: document.getElementById("view-signed-in"),
+      };
+
+      function showView(name) {
+        Object.values(views).forEach((v) => (v.style.display = "none"));
+        if (views[name]) views[name].style.display = "block";
+        updateHeight();
+      }
+
+      function show(message, type = "info") {
+        statusEl.textContent = message;
+        statusEl.className = `auth-status status-${type}`;
+        updateHeight();
+      }
+
+      function clearStatus() {
+        statusEl.textContent = "";
+        statusEl.className = "auth-status";
+      }
+
+      function updateHeight() {
+        requestAnimationFrame(() => {
+          Streamlit.setFrameHeight(document.body.scrollHeight + 10);
+        });
+      }
+
+      const sendEvent = (payload) => Streamlit.setComponentValue(payload);
+
+      let app = null;
+      let auth = null;
+      let apiBase = "";
+      let initializedKey = "";
+
+      function initializeAuth(args) {
+        const firebaseConfig = args.firebase_config || {};
+        apiBase = String(args.api_base_url || "").replace(/\/+$/, "");
+        const nextKey = JSON.stringify({ firebaseConfig, apiBase });
+        if (nextKey === initializedKey && auth) {
+          return;
+        }
+        initializedKey = nextKey;
+        app = initializeApp(firebaseConfig);
+        auth = getAuth(app);
+        if (firebaseConfig.authEmulatorHost) {
+          connectAuthEmulator(auth, firebaseConfig.authEmulatorHost, {
+            disableWarnings: true,
+          });
+        }
+        onAuthStateChanged(auth, (user) => {
+          if (user && user.emailVerified) {
+            showView("signedIn");
+            document.getElementById("user-display-name").textContent =
+              user.displayName || user.email;
+          } else if (!user) {
+            showView("login");
+          }
+          updateHeight();
+        });
+      }
+
+      async function exchangeCurrentUser() {
+        const user = auth.currentUser;
+        if (!user) {
+          show("لا يوجد مستخدم مسجل دخوله.", "error");
+          return;
+        }
+        const token = await user.getIdToken(true);
+        const response = await fetch(`${apiBase}/auth/session`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "X-Clouda-Streamlit-Bridge": "1",
+          },
+          credentials: "include",
+        });
+        if (!response.ok) {
+          show("فشل تبادل الجلسة. تأكد من تفعيل بريدك الإلكتروني.", "error");
+          return;
+        }
+        const payload = await response.json();
+        if (payload.bridge_token) {
+          sendEvent({
+            type: "clouda_auth_bridge",
+            bridge_token: payload.bridge_token,
+          });
+          show("جارٍ تسجيل الدخول…", "success");
+        } else {
+          show("تم تسجيل الدخول بنجاح.", "success");
+        }
+      }
+
+      // View navigation
+      document.getElementById("show-signup").onclick = () => {
+        clearStatus();
+        showView("signup");
+      };
+      document.getElementById("show-reset").onclick = () => {
+        clearStatus();
+        showView("reset");
+      };
+      document.getElementById("back-to-login").onclick = () => {
+        clearStatus();
+        showView("login");
+      };
+      document.getElementById("back-to-login-from-reset").onclick = () => {
+        clearStatus();
+        showView("login");
+      };
+
+      // Auth actions
+      document.getElementById("signup").onclick = async () => {
+        const emailVal = document.getElementById("signup-email").value.trim();
+        const passVal = document.getElementById("signup-password").value;
+        if (!emailVal || !passVal) {
+          show("أدخل البريد وكلمة المرور.", "error");
+          return;
+        }
+        try {
+          const result = await createUserWithEmailAndPassword(auth, emailVal, passVal);
+          await sendEmailVerification(result.user);
+          show("تم إرسال رسالة تفعيل. تحقق من بريدك الإلكتروني لإكمال التسجيل.", "success");
+        } catch (error) {
+          if (error.code === "auth/email-already-in-use") {
+            show("هذا البريد مسجل مسبقًا.", "error");
+          } else if (error.code === "auth/weak-password") {
+            show("كلمة المرور ضعيفة. استخدم 6 أحرف على الأقل.", "error");
+          } else {
+            show("فشل إنشاء الحساب.", "error");
+          }
+        }
+      };
+
+      document.getElementById("login").onclick = async () => {
+        const emailVal = document.getElementById("email").value.trim();
+        const passVal = document.getElementById("password").value;
+        if (!emailVal || !passVal) {
+          show("أدخل البريد وكلمة المرور.", "error");
+          return;
+        }
+        try {
+          await signInWithEmailAndPassword(auth, emailVal, passVal);
+          await exchangeCurrentUser();
+        } catch (error) {
+          if (
+            error.code === "auth/user-not-found" ||
+            error.code === "auth/wrong-password" ||
+            error.code === "auth/invalid-credential"
+          ) {
+            show("بيانات الدخول غير صحيحة.", "error");
+          } else {
+            show("فشل تسجيل الدخول.", "error");
+          }
+        }
+      };
+
+      document.getElementById("google").onclick = async () => {
+        try {
+          await signInWithPopup(auth, new GoogleAuthProvider());
+          await exchangeCurrentUser();
+        } catch (error) {
+          if (error.code !== "auth/popup-closed-by-user") {
+            show("فشل تسجيل الدخول بحساب Google.", "error");
+          }
+        }
+      };
+
+      document.getElementById("reset").onclick = async () => {
+        const emailVal = document.getElementById("reset-email").value.trim();
+        if (!emailVal) {
+          show("أدخل بريدك الإلكتروني.", "error");
+          return;
+        }
+        try {
+          await sendPasswordResetEmail(auth, emailVal);
+        } catch (_error) {
+          // Intentionally ignore to not reveal account existence
+        }
+        show("إذا كان الحساب موجودًا، سيصلك رابط استعادة.", "info");
+      };
+
+      document.getElementById("logout").onclick = async () => {
+        try {
+          sendEvent({ type: "firebase_logout_requested" });
+          await signOut(auth);
+          showView("login");
+          show("تم تسجيل الخروج.", "info");
+        } catch (_error) {
+          show("فشل تسجيل الخروج.", "error");
+        }
+      };
+
+      // Enter key submits login/signup forms
+      document.getElementById("password").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") document.getElementById("login").click();
+      });
+      document
+        .getElementById("signup-password")
+        .addEventListener("keydown", (e) => {
+          if (e.key === "Enter") document.getElementById("signup").click();
+        });
+      document
+        .getElementById("reset-email")
+        .addEventListener("keydown", (e) => {
+          if (e.key === "Enter") document.getElementById("reset").click();
+        });
+
+      window.addEventListener("message", (event) => {
+        if (!event.data || event.data.type !== "streamlit:render") {
+          return;
+        }
+        initializeAuth(event.data.args || {});
+        updateHeight();
+      });
+
+      Streamlit.setComponentReady();
+      updateHeight();
+    </script>
+  </body>
+</html>

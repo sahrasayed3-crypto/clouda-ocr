@@ -1,0 +1,4 @@
+Local benchmark mixed document.
+Arabic phrase: مرحبا بالعالم.
+English phrase: reliable OCR pipeline.
+List: one, two, three.

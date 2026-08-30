@@ -1,0 +1,42 @@
+project_root: .
+paths:
+  raw_documents: data/raw/documents
+  raw_pages: data/raw/pages
+  ground_truth: data/raw/ground_truth
+  layout_annotations: data/raw/layout_annotations
+  outputs: outputs
+  previews: outputs/previews
+  manifests: data/manifests
+  cache: cache
+  temp: temp
+  logs: logs
+runtime:
+  random_seed: 20260722
+  render_dpi: 300
+  workers: 1
+  cpu_limit_percent: 90
+  batch_size: 16
+  resume_enabled: true
+  retry_limit: 3
+  disk_free_min_gb: 5.0
+gpu:
+  enabled: false
+  device: auto
+  memory_limit_gb:
+ground_truth:
+  preserve_original: true
+  normalized_copy: true
+  unicode_normalization: NFC
+  preserve_line_breaks: true
+  preserve_reading_order: true
+evaluation:
+  cer_normalization: comparison_arabic
+  wer_normalization: comparison_arabic
+  ignore_empty_reference: false
+aws:
+  enabled: false
+  region: us-east-2
+  spot_family: P
+  expected_test_instance: p3.2xlarge
+  s3_bucket: ""
+

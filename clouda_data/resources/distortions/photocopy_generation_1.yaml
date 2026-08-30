@@ -1,0 +1,16 @@
+profile_id: photocopy_generation_1
+schema_version: 1
+description: Single photocopy generation.
+intended_use: Photocopy robustness.
+severity: medium
+random_seed_policy: required_deterministic
+transformations: [{name: photocopy_degradation, probability: 1.0, severity: medium}, {name: toner_scatter, probability: 0.6, severity: medium}]
+parameter_ranges: {}
+probabilities: {photocopy: 1.0}
+exclusions: []
+maximum_chain_length: 8
+maximum_severity_budget: 16
+maximum_output_dimensions: [8000, 8000]
+expected_output_count_per_source_page: 3
+license_restrictions: Approved datasets only for training.
+quality_class_label: medium

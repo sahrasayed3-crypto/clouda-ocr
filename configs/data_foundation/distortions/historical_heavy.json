@@ -1,0 +1,15 @@
+{
+  "name": "historical_heavy",
+  "recommended_use": "Heavy historical stress profile for robust evaluation.",
+  "distortions": [
+    {"name": "page_curvature", "probability": 0.35, "severity": "medium", "parameters": {"curve": [0.02, 0.06]}},
+    {"name": "show_through", "probability": 0.4, "severity": "heavy", "parameters": {"opacity": [0.08, 0.2]}},
+    {"name": "torn_edges", "probability": 0.2, "severity": "medium", "parameters": {"edge_loss": [0.005, 0.02]}}
+  ],
+  "ordering_constraints": ["geometry before paper/text effects"],
+  "mutually_exclusive": [["torn_edges", "cropping"]],
+  "maximum_allowed_crop": 0.05,
+  "minimum_readable_text_threshold": 0.86,
+  "metadata_fields": ["layout_metadata", "quality_metrics", "operation_order", "parameters", "random_seed"]
+}
+

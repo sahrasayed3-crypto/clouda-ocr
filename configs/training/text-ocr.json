@@ -1,0 +1,1 @@
+{"schema_version":1,"plan_id":"text-ocr","task":"text_ocr","dataset_ids":["rasam_dataset"],"page_limit":100,"seed":20260723,"split_ratios":[0.8,0.1,0.1],"base_model":"provider/model@revision","training_method":"adapter","augmentation_profiles":[]}

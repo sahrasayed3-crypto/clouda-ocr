@@ -1,0 +1,23 @@
+{
+    "schema_version":  1,
+    "project_b_code_license":  "license-review-required",
+    "datasets":  {
+                     "rasam_dataset":  "approved_with_conditions",
+                     "sard_synthetic_arabic_recognition_dataset":  "approved_with_conditions",
+                     "craneset_arabic_ocr_hf_sample":  "approved_with_conditions",
+                     "humans_in_the_loop_arabic_documents_ocr":  "pending",
+                     "openiti_makhzan":  "research_only",
+                     "muharaf_public":  "research_only",
+                     "hicma_dataset":  "research_only",
+                     "qnl_arabic_ocr_corpus_v2":  "pending",
+                     "pats_a01":  "pending",
+                     "kafd_ldc2016t21":  "pending",
+                     "mssqpi_arabic_ocr_dataset":  "pending",
+                     "loay_arabic_ocr_synthetic_scans_faker_300k":  "blocked",
+                     "noisy_ocr_dataset_nod":  "blocked"
+                 },
+    "legal_reviewed_at":  "2026-07-24",
+    "permission_evidence_index":  "PERMISSION_EVIDENCE_INDEX.md",
+    "training_data_license_manifest":  "DATA_LICENSES.json",
+    "fail_closed_policy":  "Pending, research_only, blocked, expired, unknown, and not-approved datasets are blocked from commercial training and production."
+}

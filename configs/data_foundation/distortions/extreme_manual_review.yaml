@@ -1,0 +1,16 @@
+profile_id: extreme_manual_review
+schema_version: 1
+description: Extreme degradation requiring manual review.
+intended_use: Failure-boundary evaluation only.
+severity: extreme
+random_seed_policy: required_deterministic
+transformations: [{name: perspective, probability: 1.0, severity: extreme}, {name: motion_blur, probability: 1.0, severity: extreme}, {name: stains, probability: 0.8, severity: extreme}, {name: repeated_jpeg_compression, probability: 1.0, severity: extreme}]
+parameter_ranges: {}
+probabilities: {extreme: 1.0}
+exclusions: [commercial_training]
+maximum_chain_length: 8
+maximum_severity_budget: 16
+maximum_output_dimensions: [8000, 8000]
+expected_output_count_per_source_page: 3
+license_restrictions: Evaluation only; manual review required.
+quality_class_label: extreme

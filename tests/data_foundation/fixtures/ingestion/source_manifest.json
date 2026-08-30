@@ -1,0 +1,26 @@
+{
+  "documents": [
+    {
+      "document_id": "fixture_doc_001",
+      "source_path": "source_text.txt",
+      "source_type": "text",
+      "language": "ar",
+      "source_license": "synthetic-test-only",
+      "title": "Tiny ingestion fixture"
+    }
+  ],
+  "pages": [
+    {
+      "document_id": "fixture_doc_001",
+      "page_id": "fixture_doc_001_p001",
+      "page_number": 1,
+      "source_path": "source_text.txt",
+      "source_type": "text",
+      "language": "ar",
+      "ground_truth_path": "ground_truth.txt",
+      "text_checksum": "a4075d9c251fb305f1b2099760fb082d8eb1721358b42bc31edb61b31cee0177",
+      "source_license": "synthetic-test-only",
+      "reading_order": []
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+Column A heading      Column B heading
+First paragraph text  Second paragraph text
+Repeated header       Repeated header
+Page footer marker    42

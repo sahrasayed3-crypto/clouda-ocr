@@ -1,0 +1,16 @@
+profile_id: clean_control
+schema_version: 1
+description: Clean deterministic control with imperceptible normalization.
+intended_use: Control samples for evaluation.
+severity: minimal
+random_seed_policy: required_deterministic
+transformations: [{name: downscale_upscale, probability: 1.0, severity: minimal}]
+parameter_ranges: {}
+probabilities: {downscale_upscale: 1.0}
+exclusions: []
+maximum_chain_length: 8
+maximum_severity_budget: 16
+maximum_output_dimensions: [8000, 8000]
+expected_output_count_per_source_page: 1
+license_restrictions: Catalog license gate applies.
+quality_class_label: control

@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "policy_id": "runtime_v1",
+  "normalization": "runtime_ground_truth_exact",
+  "metrics": ["cer", "wer", "character_accuracy", "word_accuracy"],
+  "error_metric_scale": "percent_0_to_100",
+  "heuristic_quality_scale": "percent_0_to_100",
+  "source_subsystem": "pdfword"
+}

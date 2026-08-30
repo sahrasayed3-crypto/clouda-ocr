@@ -1,0 +1,16 @@
+profile_id: jpeg_damage
+schema_version: 1
+description: Repeated lossy compression damage.
+intended_use: Compression robustness.
+severity: heavy
+random_seed_policy: required_deterministic
+transformations: [{name: repeated_jpeg_compression, probability: 1.0, severity: heavy}, {name: ringing_artifacts, probability: 0.7, severity: medium}]
+parameter_ranges: {quality: [8, 45]}
+probabilities: {compression: 1.0}
+exclusions: []
+maximum_chain_length: 8
+maximum_severity_budget: 16
+maximum_output_dimensions: [8000, 8000]
+expected_output_count_per_source_page: 3
+license_restrictions: Approved datasets only for training.
+quality_class_label: difficult

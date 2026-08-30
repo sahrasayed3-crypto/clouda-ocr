@@ -1,0 +1,14 @@
+{
+  "name": "faded_text",
+  "recommended_use": "Text ink loss without changing ground truth.",
+  "distortions": [
+    {"name": "faded_text", "probability": 0.85, "severity": "medium", "parameters": {"fade": [0.15, 0.45]}},
+    {"name": "broken_characters", "probability": 0.25, "severity": "light", "parameters": {"break_probability": [0.002, 0.01]}}
+  ],
+  "ordering_constraints": ["character effects before compression"],
+  "mutually_exclusive": [],
+  "maximum_allowed_crop": 0.0,
+  "minimum_readable_text_threshold": 0.88,
+  "metadata_fields": ["quality_metrics", "operation_order", "parameters", "random_seed"]
+}
+

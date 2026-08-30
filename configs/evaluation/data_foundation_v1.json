@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "policy_id": "data_foundation_v1",
+  "normalization": "comparison_arabic_fold_digits",
+  "metrics": ["cer", "wer"],
+  "error_metric_scale": "ratio_0_to_1",
+  "heuristic_quality_scale": null,
+  "source_subsystem": "clouda_data"
+}

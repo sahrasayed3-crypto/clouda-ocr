@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "pipeline_mode": "disabled",
+  "live_dispatch_allowed": false,
+  "assignments": [
+    {"account_id": "google_person_01", "teacher_role": "PAGE_ANALYSIS", "secret_ref": "env:GOOGLE_PERSON_01_API_KEY"},
+    {"account_id": "google_person_02", "teacher_role": "ARABIC_MAIN_OCR", "secret_ref": "env:GOOGLE_PERSON_02_API_KEY"},
+    {"account_id": "google_person_03", "teacher_role": "MARGIN_AND_FOOTNOTE_OCR", "secret_ref": "env:GOOGLE_PERSON_03_API_KEY"},
+    {"account_id": "google_person_04", "teacher_role": "IMAGE_GROUNDED_ARABIC_CORRECTION", "secret_ref": "env:GOOGLE_PERSON_04_API_KEY"},
+    {"account_id": "google_person_05", "teacher_role": "QUALITY_JUDGE", "secret_ref": "env:GOOGLE_PERSON_05_API_KEY"},
+    {"account_id": "google_person_06", "teacher_role": "STRUCTURE_RECONSTRUCTION", "secret_ref": "env:GOOGLE_PERSON_06_API_KEY"},
+    {"account_id": "google_person_07", "teacher_role": "FINAL_IMAGE_GROUNDED_REVIEW", "secret_ref": "env:GOOGLE_PERSON_07_API_KEY"},
+    {"account_id": "google_person_08", "teacher_role": "DIFFICULT_PAGE_VISION", "secret_ref": "env:GOOGLE_PERSON_08_API_KEY"},
+    {"account_id": "google_person_09", "teacher_role": "SUBJECT_CLASSIFICATION", "secret_ref": "env:GOOGLE_PERSON_09_API_KEY"},
+    {"account_id": "google_person_10", "teacher_role": "ENGLISH_OCR", "secret_ref": "env:GOOGLE_PERSON_10_API_KEY"}
+  ],
+  "assignment_defaults": {
+    "provider_id": "google_gemini",
+    "enabled": false,
+    "dispatch_mode": "disabled",
+    "daily_request_budget": 0,
+    "daily_token_budget": 0,
+    "daily_cost_budget": 0
+  }
+}

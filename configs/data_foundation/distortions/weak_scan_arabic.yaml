@@ -1,0 +1,16 @@
+profile_id: weak_scan_arabic
+schema_version: 1
+description: Low-resolution weak Arabic scan.
+intended_use: Arabic stroke robustness.
+severity: heavy
+random_seed_policy: required_deterministic
+transformations: [{name: dpi_reduction, probability: 1.0, severity: heavy}, {name: low_contrast, probability: 0.8, severity: heavy}, {name: weak_dots, probability: 0.6, severity: heavy}, {name: gaussian_noise, probability: 0.6, severity: medium}]
+parameter_ranges: {}
+probabilities: {resolution: 1.0}
+exclusions: []
+maximum_chain_length: 8
+maximum_severity_budget: 16
+maximum_output_dimensions: [6000, 6000]
+expected_output_count_per_source_page: 3
+license_restrictions: Approved datasets only for training.
+quality_class_label: difficult

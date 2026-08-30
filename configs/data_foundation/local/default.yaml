@@ -1,0 +1,3 @@
+inherits: ../../config.example.yaml
+purpose: local CPU-safe preparation and validation
+

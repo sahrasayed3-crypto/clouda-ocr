@@ -1,0 +1,11 @@
+{
+  "name": "foundation_dry_run",
+  "ingest": false,
+  "render": false,
+  "distort": false,
+  "train": false,
+  "aws": false,
+  "validate_project": true,
+  "validate_profiles": true
+}
+

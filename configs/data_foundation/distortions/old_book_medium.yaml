@@ -1,0 +1,16 @@
+profile_id: old_book_medium
+schema_version: 1
+description: Medium aging, fading, and show-through.
+intended_use: Historical Arabic OCR.
+severity: medium
+random_seed_policy: required_deterministic
+transformations: [{name: browning, probability: 0.8, severity: medium}, {name: uneven_fading, probability: 0.7, severity: medium}, {name: show_through, probability: 0.6, severity: medium}, {name: foxing, probability: 0.5, severity: medium}]
+parameter_ranges: {}
+probabilities: {aging: 0.8}
+exclusions: []
+maximum_chain_length: 8
+maximum_severity_budget: 16
+maximum_output_dimensions: [8000, 8000]
+expected_output_count_per_source_page: 3
+license_restrictions: Approved datasets only for training.
+quality_class_label: medium

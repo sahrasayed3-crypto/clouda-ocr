@@ -1,0 +1,3 @@
+Weak scan sample.
+Blur, low contrast and skew.
+Manual review may be required.

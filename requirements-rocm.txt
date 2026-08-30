@@ -1,0 +1,6 @@
+# Preliminary only.
+# This project does not claim tested AMD ROCm support yet.
+# Add the selected OCR model's ROCm-compatible dependencies here after validation.
+#
+# Example placeholder:
+# torch --index-url https://download.pytorch.org/whl/rocm<validated-version>

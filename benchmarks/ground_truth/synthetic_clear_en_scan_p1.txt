@@ -1,0 +1,3 @@
+Clear OCR scan sample.
+Printed English text.
+Font size changes 123.

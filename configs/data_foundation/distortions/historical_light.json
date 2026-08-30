@@ -1,0 +1,15 @@
+{
+  "name": "historical_light",
+  "recommended_use": "Readable historical pages with mild paper aging.",
+  "distortions": [
+    {"name": "yellow_paper", "probability": 0.55, "severity": "light", "parameters": {"tint": [0.05, 0.15]}},
+    {"name": "faded_text", "probability": 0.25, "severity": "light", "parameters": {"fade": [0.05, 0.15]}},
+    {"name": "dust", "probability": 0.2, "severity": "light", "parameters": {"density": [0.001, 0.004]}}
+  ],
+  "ordering_constraints": ["paper effects before text fading"],
+  "mutually_exclusive": [],
+  "maximum_allowed_crop": 0.01,
+  "minimum_readable_text_threshold": 0.96,
+  "metadata_fields": ["layout_metadata", "operation_order", "parameters", "random_seed"]
+}
+

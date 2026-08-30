@@ -1,0 +1,1 @@
+"""Local manifest persistence."""

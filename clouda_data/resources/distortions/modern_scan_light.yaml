@@ -1,0 +1,16 @@
+profile_id: modern_scan_light
+schema_version: 1
+description: Mild office scanning artifacts.
+intended_use: Easy modern Arabic OCR.
+severity: light
+random_seed_policy: required_deterministic
+transformations: [{name: small_rotation, probability: 0.5, severity: light}, {name: gaussian_blur, probability: 0.4, severity: light}, {name: jpeg_compression, probability: 0.6, severity: light}]
+parameter_ranges: {degrees: [-1, 1], quality: [80, 95]}
+probabilities: {geometric: 0.5, compression: 0.6}
+exclusions: []
+maximum_chain_length: 8
+maximum_severity_budget: 16
+maximum_output_dimensions: [8000, 8000]
+expected_output_count_per_source_page: 3
+license_restrictions: Approved datasets only for training.
+quality_class_label: easy

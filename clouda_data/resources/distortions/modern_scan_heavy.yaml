@@ -1,0 +1,16 @@
+profile_id: modern_scan_heavy
+schema_version: 1
+description: Heavy office scan degradation.
+intended_use: Difficult modern Arabic OCR.
+severity: heavy
+random_seed_policy: required_deterministic
+transformations: [{name: page_misalignment, probability: 0.8, severity: heavy}, {name: motion_blur, probability: 0.6, severity: heavy}, {name: scanner_lines, probability: 0.6, severity: heavy}, {name: repeated_jpeg_compression, probability: 0.8, severity: heavy}]
+parameter_ranges: {}
+probabilities: {geometric: 0.8, compression: 0.8}
+exclusions: []
+maximum_chain_length: 8
+maximum_severity_budget: 16
+maximum_output_dimensions: [8000, 8000]
+expected_output_count_per_source_page: 3
+license_restrictions: Approved datasets only for training.
+quality_class_label: difficult

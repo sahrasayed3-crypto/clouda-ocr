@@ -1,0 +1,15 @@
+{
+  "name": "small_text",
+  "recommended_use": "Footnotes and small-font degradation studies.",
+  "distortions": [
+    {"name": "small_font_degradation", "probability": 0.7, "severity": "medium", "parameters": {"target_regions": ["footnote", "margin", "table"]}},
+    {"name": "dpi_reduction", "probability": 0.35, "severity": "medium", "parameters": {"dpi": [120, 220]}},
+    {"name": "weak_punctuation", "probability": 0.3, "severity": "light", "parameters": {"target_regions": ["footnote"]}}
+  ],
+  "ordering_constraints": ["region effects before full-page dpi reduction"],
+  "mutually_exclusive": [],
+  "maximum_allowed_crop": 0.0,
+  "minimum_readable_text_threshold": 0.9,
+  "metadata_fields": ["layout_metadata", "operation_order", "parameters", "random_seed"]
+}
+

@@ -1,0 +1,15 @@
+{
+  "name": "phone_camera",
+  "recommended_use": "Handheld phone capture preview profile.",
+  "distortions": [
+    {"name": "perspective", "probability": 0.45, "severity": "medium", "parameters": {"corner_shift": [0.01, 0.05]}},
+    {"name": "uneven_illumination", "probability": 0.5, "severity": "medium", "parameters": {"gradient": [0.08, 0.25]}},
+    {"name": "shadow", "probability": 0.3, "severity": "medium", "parameters": {"opacity": [0.08, 0.22]}}
+  ],
+  "ordering_constraints": ["perspective before illumination"],
+  "mutually_exclusive": [["shadow", "binding_shadow"]],
+  "maximum_allowed_crop": 0.04,
+  "minimum_readable_text_threshold": 0.9,
+  "metadata_fields": ["layout_metadata", "quality_metrics", "operation_order", "parameters", "random_seed"]
+}
+

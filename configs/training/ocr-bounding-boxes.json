@@ -1,0 +1,1 @@
+{"schema_version":1,"plan_id":"ocr-bounding-boxes","task":"ocr_bounding_boxes","dataset_ids":["rasam_dataset"],"page_limit":100,"seed":20260723,"split_ratios":[0.8,0.1,0.1],"base_model":"provider/model@revision","training_method":"adapter","augmentation_profiles":[]}

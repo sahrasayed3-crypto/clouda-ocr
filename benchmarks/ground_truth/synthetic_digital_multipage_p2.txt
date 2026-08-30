@@ -1,0 +1,2 @@
+Second synthetic page.
+DOCX export must add a page break.

@@ -1,0 +1,16 @@
+profile_id: footnote_stress
+schema_version: 1
+description: Region-aware footnote degradation.
+intended_use: Footnote OCR robustness.
+severity: heavy
+random_seed_policy: required_deterministic
+transformations: [{name: footnote_degradation, probability: 1.0, severity: heavy}, {name: local_blur, probability: 0.6, severity: medium}]
+parameter_ranges: {}
+probabilities: {footnote: 1.0}
+exclusions: [preserve_headings]
+maximum_chain_length: 8
+maximum_severity_budget: 16
+maximum_output_dimensions: [8000, 8000]
+expected_output_count_per_source_page: 3
+license_restrictions: Approved datasets only for training.
+quality_class_label: difficult

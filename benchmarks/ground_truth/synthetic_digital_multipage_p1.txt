@@ -1,0 +1,2 @@
+First synthetic page.
+The order of pages must stay stable.

@@ -1,0 +1,34 @@
+[Unit]
+Description=Clouda internal worker API
+After=network-online.target redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=clouda
+Group=clouda
+WorkingDirectory=/opt/clouda
+EnvironmentFile=-/opt/clouda/.env
+ExecStart=/opt/clouda/deploy/linux/run_api.sh
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+UMask=0077
+ReadWritePaths=/opt/clouda/data /opt/clouda/conversions /opt/clouda/logs
+
+[Install]
+WantedBy=multi-user.target

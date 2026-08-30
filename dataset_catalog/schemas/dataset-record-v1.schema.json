@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clouda.local/schemas/dataset-record-v1.schema.json",
+  "title": "Clouda dataset catalog record",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "dataset_id",
+    "display_name",
+    "owner",
+    "source",
+    "license_name",
+    "license_url_or_reference",
+    "permission_basis",
+    "commercial_training_allowed",
+    "evaluation_allowed",
+    "derived_weights_allowed",
+    "weight_distribution_allowed",
+    "original_data_redistribution_allowed",
+    "attribution_required",
+    "attribution_text",
+    "cloud_processing_allowed",
+    "status",
+    "review_date",
+    "evidence_reference",
+    "data_root_uri",
+    "schema_version"
+  ],
+  "properties": {
+    "dataset_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{1,79}$"
+    },
+    "status": {
+      "enum": [
+        "approved",
+        "approved_with_conditions",
+        "research_only",
+        "evaluation_only",
+        "pending",
+        "blocked",
+        "expired"
+      ]
+    },
+    "data_root_uri": {
+      "type": "string",
+      "pattern": "^dataset://"
+    },
+    "schema_version": {
+      "const": 1
+    }
+  }
+}
+

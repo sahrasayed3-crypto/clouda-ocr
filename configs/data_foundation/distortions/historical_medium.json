@@ -1,0 +1,15 @@
+{
+  "name": "historical_medium",
+  "recommended_use": "Aged documents with visible artifacts.",
+  "distortions": [
+    {"name": "paper_texture", "probability": 0.45, "severity": "medium", "parameters": {"strength": [0.15, 0.35]}},
+    {"name": "ink_bleed", "probability": 0.25, "severity": "medium", "parameters": {"radius": [0.2, 0.8]}},
+    {"name": "stains", "probability": 0.2, "severity": "medium", "parameters": {"count": [1, 4]}}
+  ],
+  "ordering_constraints": ["paper effects before stains", "ink effects after paper"],
+  "mutually_exclusive": [["ink_bleed", "faded_text"]],
+  "maximum_allowed_crop": 0.025,
+  "minimum_readable_text_threshold": 0.92,
+  "metadata_fields": ["layout_metadata", "quality_metrics", "operation_order", "parameters", "random_seed"]
+}
+

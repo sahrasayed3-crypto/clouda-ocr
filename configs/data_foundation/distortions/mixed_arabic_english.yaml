@@ -1,0 +1,16 @@
+profile_id: mixed_arabic_english
+schema_version: 1
+description: Moderate mixed-direction scan degradation.
+intended_use: Arabic-English mixed pages.
+severity: medium
+random_seed_policy: required_deterministic
+transformations: [{name: small_rotation, probability: 0.5, severity: light}, {name: uneven_illumination, probability: 0.6, severity: medium}, {name: jpeg_compression, probability: 0.7, severity: medium}]
+parameter_ranges: {}
+probabilities: {mixed: 1.0}
+exclusions: [preserve_reading_order]
+maximum_chain_length: 8
+maximum_severity_budget: 16
+maximum_output_dimensions: [8000, 8000]
+expected_output_count_per_source_page: 3
+license_restrictions: Approved datasets only for training.
+quality_class_label: medium

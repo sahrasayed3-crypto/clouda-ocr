@@ -1,0 +1,1 @@
+{"schema_version":1,"plan_id":"pilot-1000","task":"text_ocr","dataset_ids":["rasam_dataset","sard_synthetic_arabic_recognition_dataset"],"page_limit":1000,"seed":20260723,"split_ratios":[0.8,0.1,0.1],"base_model":"provider/model@revision","training_method":"lora","augmentation_profiles":["modern_light"]}

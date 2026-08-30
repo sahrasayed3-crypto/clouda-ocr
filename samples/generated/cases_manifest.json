@@ -1,0 +1,377 @@
+{
+  "fixture_version": 2,
+  "cases": [
+    {
+      "id": "clear_ar_modern",
+      "pdf": "samples/sample_clear_ar.pdf",
+      "language": "ar",
+      "category": "born_digital_modern",
+      "pages": [
+        1
+      ],
+      "expect_failure": false,
+      "reference": "samples/sample_clear_ar_ref.txt"
+    },
+    {
+      "id": "clear_ar_clean_scans",
+      "pdf": "samples/generated/clear_ar_clean_scans.pdf",
+      "language": "ar",
+      "category": "clean_scans",
+      "pages": [
+        1
+      ],
+      "expect_failure": false,
+      "reference": "samples/generated/clear_ar_clean_scans_ref.txt"
+    },
+    {
+      "id": "clear_ar_old_archived_scans",
+      "pdf": "samples/generated/clear_ar_old_archived_scans.pdf",
+      "language": "ar",
+      "category": "old_archived_scans",
+      "pages": [
+        1
+      ],
+      "expect_failure": false,
+      "reference": "samples/generated/clear_ar_old_archived_scans_ref.txt"
+    },
+    {
+      "id": "clear_ar_low_quality_scans",
+      "pdf": "samples/generated/clear_ar_low_quality_scans.pdf",
+      "language": "ar",
+      "category": "low_quality_scans",
+      "pages": [
+        1
+      ],
+      "expect_failure": false,
+      "reference": "samples/generated/clear_ar_low_quality_scans_ref.txt"
+    },
+    {
+      "id": "clear_ar_blurry_docs",
+      "pdf": "samples/generated/clear_ar_blurry_docs.pdf",
+      "language": "ar",
+      "category": "blurry_docs",
+      "pages": [
+        1
+      ],
+      "expect_failure": false,
+      "reference": "samples/generated/clear_ar_blurry_docs_ref.txt"
+    },
+    {
+      "id": "clear_ar_fax_style_pdfs",
+      "pdf": "samples/generated/clear_ar_fax_style_pdfs.pdf",
+      "language": "ar",
+      "category": "fax_style_pdfs",
+      "pages": [
+        1
+      ],
+      "expect_failure": false,
+      "reference": "samples/generated/clear_ar_fax_style_pdfs_ref.txt"
+    },
+    {
+      "id": "clear_ar_tilted_rotated_scans",
+      "pdf": "samples/generated/clear_ar_tilted_rotated_scans.pdf",
+      "language": "ar",
+      "category": "tilted_rotated_scans",
+      "pages": [
+        1
+      ],
+      "expect_failure": false,
+      "reference": "samples/generated/clear_ar_tilted_rotated_scans_ref.txt"
+    },
+    {
+      "id": "complex_ar_modern",
+      "pdf": "samples/sample_complex_ar.pdf",
+      "language": "ar",
+      "category": "born_digital_modern",
+      "pages": [
+        1
+      ],
+      "expect_failure": false,
+      "reference": "samples/sample_complex_ar_ref.txt"
+    },
+    {
+      "id": "complex_ar_clean_scans",
+      "pdf": "samples/generated/complex_ar_clean_scans.pdf",
+      "language": "ar",
+      "category": "clean_scans",
+      "pages": [
+        1
+      ],
+      "expect_failure": false,
+      "reference": "samples/generated/complex_ar_clean_scans_ref.txt"
+    },
+    {
+      "id": "complex_ar_old_archived_scans",
+      "pdf": "samples/generated/complex_ar_old_archived_scans.pdf",
+      "language": "ar",
+      "category": "old_archived_scans",
+      "pages": [
+        1
+      ],
+      "expect_failure": false,
+      "reference": "samples/generated/complex_ar_old_archived_scans_ref.txt"
+    },
+    {
+      "id": "complex_ar_low_quality_scans",
+      "pdf": "samples/generated/complex_ar_low_quality_scans.pdf",
+      "language": "ar",
+      "category": "low_quality_scans",
+      "pages": [
+        1
+      ],
+      "expect_failure": false,
+      "reference": "samples/generated/complex_ar_low_quality_scans_ref.txt"
+    },
+    {
+      "id": "complex_ar_blurry_docs",
+      "pdf": "samples/generated/complex_ar_blurry_docs.pdf",
+      "language": "ar",
+      "category": "blurry_docs",
+      "pages": [
+        1
+      ],
+      "expect_failure": false,
+      "reference": "samples/generated/complex_ar_blurry_docs_ref.txt"
+    },
+    {
+      "id": "complex_ar_fax_style_pdfs",
+      "pdf": "samples/generated/complex_ar_fax_style_pdfs.pdf",
+      "language": "ar",
+      "category": "fax_style_pdfs",
+      "pages": [
+        1
+      ],
+      "expect_failure": false,
+      "reference": "samples/generated/complex_ar_fax_style_pdfs_ref.txt"
+    },
+    {
+      "id": "complex_ar_tilted_rotated_scans",
+      "pdf": "samples/generated/complex_ar_tilted_rotated_scans.pdf",
+      "language": "ar",
+      "category": "tilted_rotated_scans",
+      "pages": [
+        1
+      ],
+      "expect_failure": false,
+      "reference": "samples/generated/complex_ar_tilted_rotated_scans_ref.txt"
+    },
+    {
+      "id": "clear_en_modern",
+      "pdf": "samples/sample_clear_en.pdf",
+      "language": "en",
+      "category": "born_digital_modern",
+      "pages": [
+        1
+      ],
+      "expect_failure": false,
+      "reference": "samples/sample_clear_en_ref.txt"
+    },
+    {
+      "id": "clear_en_clean_scans",
+      "pdf": "samples/generated/clear_en_clean_scans.pdf",
+      "language": "en",
+      "category": "clean_scans",
+      "pages": [
+        1
+      ],
+      "expect_failure": false,
+      "reference": "samples/generated/clear_en_clean_scans_ref.txt"
+    },
+    {
+      "id": "clear_en_old_archived_scans",
+      "pdf": "samples/generated/clear_en_old_archived_scans.pdf",
+      "language": "en",
+      "category": "old_archived_scans",
+      "pages": [
+        1
+      ],
+      "expect_failure": false,
+      "reference": "samples/generated/clear_en_old_archived_scans_ref.txt"
+    },
+    {
+      "id": "clear_en_low_quality_scans",
+      "pdf": "samples/generated/clear_en_low_quality_scans.pdf",
+      "language": "en",
+      "category": "low_quality_scans",
+      "pages": [
+        1
+      ],
+      "expect_failure": false,
+      "reference": "samples/generated/clear_en_low_quality_scans_ref.txt"
+    },
+    {
+      "id": "clear_en_blurry_docs",
+      "pdf": "samples/generated/clear_en_blurry_docs.pdf",
+      "language": "en",
+      "category": "blurry_docs",
+      "pages": [
+        1
+      ],
+      "expect_failure": false,
+      "reference": "samples/generated/clear_en_blurry_docs_ref.txt"
+    },
+    {
+      "id": "clear_en_fax_style_pdfs",
+      "pdf": "samples/generated/clear_en_fax_style_pdfs.pdf",
+      "language": "en",
+      "category": "fax_style_pdfs",
+      "pages": [
+        1
+      ],
+      "expect_failure": false,
+      "reference": "samples/generated/clear_en_fax_style_pdfs_ref.txt"
+    },
+    {
+      "id": "clear_en_tilted_rotated_scans",
+      "pdf": "samples/generated/clear_en_tilted_rotated_scans.pdf",
+      "language": "en",
+      "category": "tilted_rotated_scans",
+      "pages": [
+        1
+      ],
+      "expect_failure": false,
+      "reference": "samples/generated/clear_en_tilted_rotated_scans_ref.txt"
+    },
+    {
+      "id": "complex_en_modern",
+      "pdf": "samples/sample_complex_en.pdf",
+      "language": "en",
+      "category": "born_digital_modern",
+      "pages": [
+        1
+      ],
+      "expect_failure": false,
+      "reference": "samples/sample_complex_en_ref.txt"
+    },
+    {
+      "id": "complex_en_clean_scans",
+      "pdf": "samples/generated/complex_en_clean_scans.pdf",
+      "language": "en",
+      "category": "clean_scans",
+      "pages": [
+        1
+      ],
+      "expect_failure": false,
+      "reference": "samples/generated/complex_en_clean_scans_ref.txt"
+    },
+    {
+      "id": "complex_en_old_archived_scans",
+      "pdf": "samples/generated/complex_en_old_archived_scans.pdf",
+      "language": "en",
+      "category": "old_archived_scans",
+      "pages": [
+        1
+      ],
+      "expect_failure": false,
+      "reference": "samples/generated/complex_en_old_archived_scans_ref.txt"
+    },
+    {
+      "id": "complex_en_low_quality_scans",
+      "pdf": "samples/generated/complex_en_low_quality_scans.pdf",
+      "language": "en",
+      "category": "low_quality_scans",
+      "pages": [
+        1
+      ],
+      "expect_failure": false,
+      "reference": "samples/generated/complex_en_low_quality_scans_ref.txt"
+    },
+    {
+      "id": "complex_en_blurry_docs",
+      "pdf": "samples/generated/complex_en_blurry_docs.pdf",
+      "language": "en",
+      "category": "blurry_docs",
+      "pages": [
+        1
+      ],
+      "expect_failure": false,
+      "reference": "samples/generated/complex_en_blurry_docs_ref.txt"
+    },
+    {
+      "id": "complex_en_fax_style_pdfs",
+      "pdf": "samples/generated/complex_en_fax_style_pdfs.pdf",
+      "language": "en",
+      "category": "fax_style_pdfs",
+      "pages": [
+        1
+      ],
+      "expect_failure": false,
+      "reference": "samples/generated/complex_en_fax_style_pdfs_ref.txt"
+    },
+    {
+      "id": "complex_en_tilted_rotated_scans",
+      "pdf": "samples/generated/complex_en_tilted_rotated_scans.pdf",
+      "language": "en",
+      "category": "tilted_rotated_scans",
+      "pages": [
+        1
+      ],
+      "expect_failure": false,
+      "reference": "samples/generated/complex_en_tilted_rotated_scans_ref.txt"
+    },
+    {
+      "id": "arabic_mixed_multipage",
+      "pdf": "samples/generated/arabic_mixed_multipage.pdf",
+      "reference": "samples/generated/arabic_mixed_multipage_ref.txt",
+      "language": "ar",
+      "category": "mixed_multi_page_docs",
+      "pages": [
+        1,
+        2
+      ],
+      "expect_failure": false
+    },
+    {
+      "id": "english_mixed_multipage",
+      "pdf": "samples/generated/english_mixed_multipage.pdf",
+      "reference": "samples/generated/english_mixed_multipage_ref.txt",
+      "language": "en",
+      "category": "mixed_multi_page_docs",
+      "pages": [
+        1,
+        2
+      ],
+      "expect_failure": false
+    },
+    {
+      "id": "encrypted_pdf_expected_fail_ar",
+      "pdf": "samples/generated/encrypted_sample.pdf",
+      "language": "ar",
+      "category": "encrypted_pdfs",
+      "pages": [
+        1
+      ],
+      "expect_failure": true
+    },
+    {
+      "id": "encrypted_pdf_expected_fail_en",
+      "pdf": "samples/generated/encrypted_sample_en.pdf",
+      "language": "en",
+      "category": "encrypted_pdfs",
+      "pages": [
+        1
+      ],
+      "expect_failure": true
+    },
+    {
+      "id": "corrupted_pdf_expected_fail_ar",
+      "pdf": "samples/generated/corrupted_sample.pdf",
+      "language": "ar",
+      "category": "corrupted_pdfs",
+      "pages": [
+        1
+      ],
+      "expect_failure": true
+    },
+    {
+      "id": "corrupted_pdf_expected_fail_en",
+      "pdf": "samples/generated/corrupted_sample_en.pdf",
+      "language": "en",
+      "category": "corrupted_pdfs",
+      "pages": [
+        1
+      ],
+      "expect_failure": true
+    }
+  ]
+}

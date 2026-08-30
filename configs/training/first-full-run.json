@@ -1,0 +1,1 @@
+{"schema_version":1,"plan_id":"first-full-run","task":"ocr_markdown_layout","dataset_ids":["rasam_dataset","sard_synthetic_arabic_recognition_dataset","craneset_arabic_ocr_hf_sample"],"page_limit":null,"seed":20260723,"split_ratios":[0.8,0.1,0.1],"base_model":"provider/model@revision","training_method":"qlora","augmentation_profiles":["modern_light","historical_light"]}

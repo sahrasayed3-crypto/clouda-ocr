@@ -1,0 +1,7 @@
+Invoice QA Sample 2026
+Client: Northwind Trading
+Total before tax: 1250 USD
+Item Qty Price
+Pen 10 25
+Notebook 5 40
+Eraser 3 15

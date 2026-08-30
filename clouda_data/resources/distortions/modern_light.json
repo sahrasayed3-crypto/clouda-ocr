@@ -1,0 +1,15 @@
+{
+  "name": "modern_light",
+  "recommended_use": "Mild modern office scans.",
+  "distortions": [
+    {"name": "brightness_variation", "probability": 0.25, "severity": "light", "parameters": {"delta": [-8, 8]}},
+    {"name": "contrast_loss", "probability": 0.2, "severity": "light", "parameters": {"factor": [0.9, 1.0]}},
+    {"name": "jpeg_compression", "probability": 0.25, "severity": "light", "parameters": {"quality": [82, 95]}}
+  ],
+  "ordering_constraints": ["geometric before compression"],
+  "mutually_exclusive": [],
+  "maximum_allowed_crop": 0.01,
+  "minimum_readable_text_threshold": 0.98,
+  "metadata_fields": ["operation_order", "parameters", "random_seed"]
+}
+

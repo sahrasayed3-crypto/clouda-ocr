@@ -1,0 +1,4 @@
+تقرير OCR
+Arabic text with English OCR sample.
+الهامش: note 1
+

@@ -1,0 +1,25 @@
+Clouda PDF / OCR_PROJECT public repository
+
+Copyright 2026 Clouda PDF contributors.
+
+The public source-code and documentation files included in this repository are
+licensed under the Apache License, Version 2.0, unless a file states otherwise.
+Apache License 2.0 applies only to files that are actually present in this
+public repository.
+
+This repository contains the public source-code and documentation portion of the project. It does not include private datasets, final OCR model weights, LoRA/QLoRA adapters, checkpoints, production credentials, customer data, or proprietary commercial components unless such files are explicitly added under a separate written license.
+
+The following are not included in the public Apache 2.0 license grant:
+
+- training datasets and private reference texts
+- model weights and final OCR model artifacts
+- LoRA / QLoRA adapters
+- checkpoints and intermediate training artifacts
+- training recipes, final hyperparameters, and private evaluation thresholds
+- production configuration, deployment secrets, and hosted service code
+- customer data, uploaded PDFs, generated DOCX output, logs, and databases
+- local permission evidence and private correspondence under `docs/permissions/`
+- project trademarks, trade names, logos, and brand identifiers
+
+The project name, logo, and brand identifiers are not automatically licensed for
+trademark use by the source-code license.

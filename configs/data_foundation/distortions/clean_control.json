@@ -1,0 +1,10 @@
+{
+  "name": "clean_control",
+  "recommended_use": "Baseline control with no visual degradation.",
+  "distortions": [{"name": "downscale_upscale", "probability": 1.0, "severity": "minimal", "parameters": {}}],
+  "ordering_constraints": [],
+  "mutually_exclusive": [],
+  "maximum_allowed_crop": 0.0,
+  "minimum_readable_text_threshold": 1.0,
+  "metadata_fields": ["random_seed", "source_checksum", "text_checksum"]
+}

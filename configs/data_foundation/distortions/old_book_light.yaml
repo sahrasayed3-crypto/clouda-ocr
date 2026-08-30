@@ -1,0 +1,16 @@
+profile_id: old_book_light
+schema_version: 1
+description: Mild book aging and gutter shadow.
+intended_use: Historical page augmentation.
+severity: light
+random_seed_policy: required_deterministic
+transformations: [{name: yellow_paper, probability: 1.0, severity: light}, {name: binding_shadow, probability: 0.7, severity: light}, {name: paper_texture, probability: 0.6, severity: light}]
+parameter_ranges: {}
+probabilities: {aging: 1.0}
+exclusions: []
+maximum_chain_length: 8
+maximum_severity_budget: 16
+maximum_output_dimensions: [8000, 8000]
+expected_output_count_per_source_page: 3
+license_restrictions: Approved datasets only for training.
+quality_class_label: easy

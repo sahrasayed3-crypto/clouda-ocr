@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "models": [
+    {
+      "model_id": "future-vlm-adapter",
+      "base_model_name": "provider/model",
+      "model_revision": "UNRESOLVED",
+      "license": "license-review-required",
+      "model_type": "vision-language-ocr",
+      "parameter_count": null,
+      "architecture": "unknown",
+      "active_parameter_count": null,
+      "supported_image_inputs": ["png", "jpeg"],
+      "tokenizer_revision": "UNRESOLVED",
+      "processor_revision": "UNRESOLVED",
+      "training_method": "adapter",
+      "dataset_manifest_ids": [],
+      "checkpoint_uri": null,
+      "deployment_status": "disabled",
+      "commercial_use_status": "pending",
+      "attribution_requirements": "Pending final model and license selection."
+    }
+  ]
+}

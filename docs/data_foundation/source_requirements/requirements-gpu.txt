@@ -1,0 +1,3 @@
+# Future GPU-only packages belong here after hardware and CUDA/ROCm choices are approved.
+# No CUDA, ROCm, OCR model weights, or large AI frameworks are installed during foundation preparation.
+

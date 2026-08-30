@@ -1,0 +1,15 @@
+{
+  "name": "modern_medium",
+  "recommended_use": "Typical mixed-quality modern scans.",
+  "distortions": [
+    {"name": "skew", "probability": 0.3, "severity": "light", "parameters": {"degrees": [-1.5, 1.5]}},
+    {"name": "blur", "probability": 0.35, "severity": "medium", "parameters": {"radius": [0.3, 0.9]}},
+    {"name": "scanner_noise", "probability": 0.35, "severity": "medium", "parameters": {"amount": [0.01, 0.04]}}
+  ],
+  "ordering_constraints": ["skew before noise", "compression last"],
+  "mutually_exclusive": [["blur", "defocus_blur"]],
+  "maximum_allowed_crop": 0.02,
+  "minimum_readable_text_threshold": 0.95,
+  "metadata_fields": ["operation_order", "parameters", "random_seed"]
+}
+

@@ -1,0 +1,14 @@
+{
+  "name": "footnote_heavy",
+  "recommended_use": "Pages where tiny footnotes must remain linked to exact text.",
+  "distortions": [
+    {"name": "small_font_degradation", "probability": 0.65, "severity": "medium", "parameters": {"target_regions": ["footnote"]}},
+    {"name": "weak_punctuation", "probability": 0.45, "severity": "medium", "parameters": {"target_regions": ["footnote"]}},
+    {"name": "faded_text", "probability": 0.25, "severity": "light", "parameters": {"target_regions": ["footnote"]}}
+  ],
+  "ordering_constraints": ["footnote masks required before distortion"],
+  "mutually_exclusive": [],
+  "maximum_allowed_crop": 0.0,
+  "minimum_readable_text_threshold": 0.9,
+  "metadata_fields": ["layout_metadata", "quality_metrics", "operation_order", "parameters", "random_seed"]
+}

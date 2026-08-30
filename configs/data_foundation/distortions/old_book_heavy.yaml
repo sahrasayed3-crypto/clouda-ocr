@@ -1,0 +1,16 @@
+profile_id: old_book_heavy
+schema_version: 1
+description: Heavy aging, gutter deformation, and ink erosion.
+intended_use: Difficult historical Arabic OCR.
+severity: heavy
+random_seed_policy: required_deterministic
+transformations: [{name: old_paper_texture, probability: 1.0, severity: heavy}, {name: book_gutter_deformation, probability: 0.8, severity: heavy}, {name: ink_erosion, probability: 0.7, severity: heavy}, {name: stains, probability: 0.7, severity: heavy}]
+parameter_ranges: {}
+probabilities: {aging: 1.0}
+exclusions: []
+maximum_chain_length: 8
+maximum_severity_budget: 16
+maximum_output_dimensions: [8000, 8000]
+expected_output_count_per_source_page: 3
+license_restrictions: Approved datasets only for training.
+quality_class_label: difficult

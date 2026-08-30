@@ -1,0 +1,36 @@
+[Unit]
+Description=Clouda PDF to Word
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=clouda
+Group=clouda
+WorkingDirectory=/opt/clouda
+EnvironmentFile=-/opt/clouda/deploy/linux/clouda.env
+ExecStart=/opt/clouda/deploy/linux/run.sh
+ExecStop=/bin/kill -s TERM $MAINPID
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=60
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+UMask=0077
+ReadWritePaths=/opt/clouda/data /opt/clouda/conversions /opt/clouda/logs
+
+[Install]
+WantedBy=multi-user.target

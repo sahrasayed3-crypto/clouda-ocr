@@ -1,0 +1,15 @@
+{
+  "name": "weak_scan",
+  "recommended_use": "Low-contrast weak scanner captures.",
+  "distortions": [
+    {"name": "contrast_loss", "probability": 0.7, "severity": "medium", "parameters": {"factor": [0.55, 0.8]}},
+    {"name": "faded_text", "probability": 0.5, "severity": "medium", "parameters": {"fade": [0.15, 0.35]}},
+    {"name": "weak_punctuation", "probability": 0.35, "severity": "medium", "parameters": {"drop_strength": [0.05, 0.15]}}
+  ],
+  "ordering_constraints": ["contrast before compression"],
+  "mutually_exclusive": [],
+  "maximum_allowed_crop": 0.01,
+  "minimum_readable_text_threshold": 0.9,
+  "metadata_fields": ["quality_metrics", "operation_order", "parameters", "random_seed"]
+}
+

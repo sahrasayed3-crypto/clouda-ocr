@@ -1,0 +1,15 @@
+{
+  "name": "modern_heavy",
+  "recommended_use": "Stress test for poor modern scans.",
+  "distortions": [
+    {"name": "motion_blur", "probability": 0.3, "severity": "medium", "parameters": {"length": [3, 7]}},
+    {"name": "gaussian_noise", "probability": 0.45, "severity": "heavy", "parameters": {"sigma": [8, 18]}},
+    {"name": "jpeg_compression", "probability": 0.6, "severity": "heavy", "parameters": {"quality": [35, 65]}}
+  ],
+  "ordering_constraints": ["blur before noise", "compression last"],
+  "mutually_exclusive": [["motion_blur", "defocus_blur"]],
+  "maximum_allowed_crop": 0.04,
+  "minimum_readable_text_threshold": 0.9,
+  "metadata_fields": ["quality_metrics", "operation_order", "parameters", "random_seed"]
+}
+

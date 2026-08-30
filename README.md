@@ -126,7 +126,9 @@ python -m clouda_training.cli --help
 
 - A primary model candidate has been selected. Training has not started yet because dataset licensing and written-permission verification are still in progress.
 - The selected candidate is not treated as the final production model until licensing, integration, evaluation, and acceptance tests are complete.
-- Scanned-page OCR, CER, and WER results are not claimed. They require real ground-truth evaluation.
+- Production application accuracy is not claimed. A separate metadata-only
+  [177-page Arabic OCR benchmark](benchmarks/ocr_arabic/README.md) documents
+  controlled model-evaluation results without changing the application route.
 - Layout-perfect reconstruction, tables, images, margins, and footnotes are not rebuilt as DOCX objects; page boundaries and extracted text are retained.
 - AMD/ROCm readiness is architectural and diagnostic only. No GPU inference or training has been validated.
 - Qwen, Kraken, PaddleOCR, Tesseract, and other OCR candidates are benchmark candidates only until legally usable, installed, and evaluated on the same ground-truth set.
@@ -139,6 +141,7 @@ See [ROADMAP.md](ROADMAP.md), [docs/ROADMAP.md](docs/ROADMAP.md), and [docs/MODE
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Testing](docs/TESTING.md)
+- [Final Arabic OCR benchmark](benchmarks/ocr_arabic/README.md)
 - [Model integration](docs/MODEL_INTEGRATION.md)
 - [Data licenses](DATA_LICENSES.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)

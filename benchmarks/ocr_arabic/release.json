@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "clouda-ocr-arabic-177-v1",
+  "clean_source_count": 100,
+  "distorted_page_count": 177,
+  "manifest_sha256": "2a499ed0268a5c583a1b174ef241e05affb9c4ba757593eb9ee3fc6f3e4fb893",
+  "primary_metric": "normalized_arabic_cer",
+  "ranking_direction": "lower_is_better",
+  "complete_run_count": 6,
+  "partial_run_count": 1,
+  "failed_run_count": 1,
+  "asset_publication": "metadata_only",
+  "raw_evidence": "retained_privately"
+}

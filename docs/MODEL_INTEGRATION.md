@@ -2,11 +2,18 @@
 
 ## Current state
 
-A primary model candidate has been selected, but it is not installed or integrated as a final OCR engine. Training has not started yet because dataset licensing and written-permission verification are still in progress. The runtime performs direct extraction only; scanned or image-only pages remain `pending_ocr_model`.
+Benchmarking is complete. HunyuanOCR-1.5 is the current leading candidate based
+on this specific 177-page benchmark (Normalized Arabic CER 0.391497), but it is
+not installed or integrated as a final OCR engine. Model adaptation/training and
+runtime integration are the next major technical stage, currently limited
+primarily by access to suitable GPU compute. Dataset and model rights remain
+governed separately by the fail-closed licensing and provenance process. The
+runtime performs direct extraction only; scanned or image-only pages remain
+`pending_ocr_model`.
 
 ## Integration contract
 
-Add the selected primary candidate, or any future fallback engine, by implementing `pdfword.engines.ExtractionEngine`, returning `OCRResult`, and registering it in `EngineRegistry`. The contract supports optional confidence, layout boxes, reading order, timing, error details, and metadata without assuming a vendor, framework, CPU, GPU, CUDA, ROCm, or model family.
+Add the current leading candidate, or any future fallback engine, by implementing `pdfword.engines.ExtractionEngine`, returning `OCRResult`, and registering it in `EngineRegistry`. The contract supports optional confidence, layout boxes, reading order, timing, error details, and metadata without assuming a vendor, framework, CPU, GPU, CUDA, ROCm, or model family.
 
 ## Required gate before activation
 

@@ -6,7 +6,7 @@
 
 Clouda PDF is an open-source, model-agnostic PDF-to-DOCX project for Arabic, English, and mixed-language documents. Its long-term goal is reliable Arabic OCR for modern and historical books, including weak or medium-quality scanned pages, margins, footnotes, RTL text, and mixed Arabic-English reading order.
 
-The current verified implementation converts born-digital PDF documents into editable, text-only DOCX files while preserving page order, Arabic Unicode, RTL paragraph direction, footers, and page boundaries. Image-only scanned pages are detected and routed to `pending_ocr_model`; they are not treated as successful OCR output until the selected primary model candidate is licensed, integrated, trained or adapted as needed, and measured.
+The current verified implementation converts born-digital PDF documents into editable, text-only DOCX files while preserving page order, Arabic Unicode, RTL paragraph direction, footers, and page boundaries. Image-only scanned pages are detected and routed to `pending_ocr_model`; they are not treated as successful OCR output until a leading model candidate is licensed for the intended use, integrated, trained or adapted as needed, and measured in the application route.
 
 It is designed for modern and historical Arabic books as well as English and mixed-language documents. Text fidelity is the priority. The project does not currently attempt layout-perfect reconstruction of images, tables, or page artwork.
 
@@ -124,8 +124,8 @@ python -m clouda_training.cli --help
 
 ## Current limitations
 
-- A primary model candidate has been selected. Training has not started yet because dataset licensing and written-permission verification are still in progress.
-- The selected candidate is not treated as the final production model until licensing, integration, evaluation, and acceptance tests are complete.
+- Benchmarking is complete. Model adaptation/training and runtime integration are the next major technical stage. Progress on that stage is currently limited primarily by access to suitable GPU compute. Dataset and model rights remain governed separately by the existing fail-closed licensing and provenance process.
+- HunyuanOCR-1.5 is the current leading candidate based on this specific 177-page benchmark (Normalized Arabic CER 0.391497). Final production/runtime selection remains subject to architecture, licensing, deployment constraints, integration, and subsequent validation.
 - Production application accuracy is not claimed. A separate metadata-only
   [177-page Arabic OCR benchmark](benchmarks/ocr_arabic/README.md) documents
   controlled model-evaluation results without changing the application route.
@@ -135,7 +135,7 @@ python -m clouda_training.cli --help
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md), [docs/ROADMAP.md](docs/ROADMAP.md), and [docs/MODEL_INTEGRATION.md](docs/MODEL_INTEGRATION.md). The selected primary model candidate will only become the final OCR engine after licensing, written-permission checks, integration, documented benchmarks, and ground-truth evaluation.
+See [ROADMAP.md](ROADMAP.md), [docs/ROADMAP.md](docs/ROADMAP.md), and [docs/MODEL_INTEGRATION.md](docs/MODEL_INTEGRATION.md). The current leading candidate will become the final OCR engine only if architecture, licensing, deployment, integration, and subsequent validation requirements are satisfied.
 
 ## Documentation
 

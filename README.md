@@ -154,7 +154,7 @@ This repository contains the public open-source portion of OCR_PROJECT / Clouda 
 
 Some components are intentionally not included in this repository. Training data, private reference texts, final model weights, LoRA/QLoRA adapters, checkpoints, production service code, customer data, proprietary data-collection tools, advanced private training recipes, and sensitive deployment configuration may be licensed, hosted, or distributed separately.
 
-The Apache License 2.0 in `LICENSE` applies only to files actually present in this public repository, unless a file states otherwise. It does not cover private or separately licensed components.
+The Apache License 2.0 in `LICENSE` applies to original Clouda OCR source code and original project materials actually present in this public repository, unless otherwise noted. It does not cover private or separately licensed components or externally sourced materials.
 
 The following are not included in the public Apache 2.0 license grant: datasets, private reference texts, model weights, final OCR model artifacts, LoRA/QLoRA adapters, checkpoints, training recipes, final hyperparameters, production configuration, hosted service code, deployment secrets, customer data, uploaded PDFs, generated DOCX output, local permission evidence under `docs/permissions/`, trademarks, logos, project names, and brand assets.
 
@@ -162,4 +162,8 @@ This repository does not claim ownership of external datasets or third-party OCR
 
 ## License
 
-See [LICENSE](LICENSE).
+Original Clouda OCR source code and original project materials are licensed under the Apache License 2.0 unless otherwise noted.
+
+Third-party datasets, models, benchmark source materials, citations, and other externally sourced materials remain subject to their respective licenses, permissions, and terms.
+
+See [LICENSE](LICENSE) and [NOTICE](NOTICE).

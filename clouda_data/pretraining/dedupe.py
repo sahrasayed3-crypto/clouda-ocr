@@ -14,10 +14,12 @@ Deduplication never deletes data. Samples are classified and cross-linked:
 
 from __future__ import annotations
 
+import json
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any
 
-from .schema import DatasetSample, DuplicateState, sort_key
+from .schema import DatasetSample, DuplicateState, ValidationStatus, sort_key
 
 
 @dataclass
@@ -46,119 +48,187 @@ class DuplicateReport:
 def classify_duplicates(
     samples: list[DatasetSample],
 ) -> tuple[list[DatasetSample], DuplicateReport]:
-    """Classify duplicates over a deterministically ordered sample list."""
+    """Classify connected duplicate families with stable canonical selection."""
 
-    report = DuplicateReport()
-    ordered = sorted(samples, key=sort_key)
+    duplicate_reasons = {
+        "duplicate_sample_id",
+        "duplicate_source_record",
+        "duplicate_file_hash",
+    }
 
-    by_id: dict[str, str] = {}
-    by_record: dict[tuple[str, str], str] = {}
-    canonical_for_file_hash: dict[str, str] = {}
-    file_hash_families: dict[str, list[str]] = {}
-
-    for sample in ordered:
-        by_id.setdefault(sample.sample_id, sample.sample_id)
-        if sample.source_record_id:
-            by_record.setdefault(
-                (sample.source_id, sample.source_record_id), sample.sample_id
-            )
-        if sample.file_sha256:
-            family = file_hash_families.setdefault(sample.file_sha256, [])
-            family.append(sample.sample_id)
-
-    for file_hash, members in file_hash_families.items():
-        if len(members) > 1:
-            canonical_for_file_hash[file_hash] = members[0]
-            report.families.append(
-                {
-                    "kind": "file_hash",
-                    "canonical_sample_id": members[0],
-                    "member_sample_ids": members[1:],
-                }
-            )
-
-    updated: list[DatasetSample] = []
-    seen_ids: set[str] = set()
-    seen_records: set[tuple[str, str]] = set()
-
-    for sample in ordered:
-        state = DuplicateState.UNIQUE
-        canonical_id: str | None = None
-        reason: str | None = None
-
-        if sample.sample_id in seen_ids:
-            state = DuplicateState.DUPLICATE
-            canonical_id = by_id[sample.sample_id]
-            reason = "duplicate_sample_id"
-            report.duplicate_sample_id += 1
-        elif (
-            sample.source_record_id
-            and (sample.source_id, sample.source_record_id) in seen_records
+    def canonical_key(sample: DatasetSample) -> tuple[object, ...]:
+        payload = sample.to_dict()
+        for key in (
+            "duplicate_state",
+            "duplicate_of",
+            "target_split",
+            "validation_findings",
         ):
-            state = DuplicateState.DUPLICATE
-            canonical_id = by_record[(sample.source_id, sample.source_record_id)]
-            reason = "duplicate_source_record"
-            report.duplicate_source_record += 1
-        elif (
-            sample.file_sha256
-            and sample.file_sha256 in canonical_for_file_hash
-            and canonical_for_file_hash[sample.file_sha256] != sample.sample_id
-        ):
-            state = DuplicateState.DUPLICATE
-            canonical_id = canonical_for_file_hash[sample.file_sha256]
-            reason = "duplicate_file_hash"
-            report.duplicate_file_hash += 1
-        else:
-            report.unique += 1
-
-        seen_ids.add(sample.sample_id)
-        if sample.source_record_id:
-            seen_records.add((sample.source_id, sample.source_record_id))
-
-        exclusion_reason = sample.exclusion_reason
-        if state == DuplicateState.DUPLICATE and exclusion_reason is None:
-            exclusion_reason = reason
-        updated.append(
-            sample.evolve(
-                duplicate_state=state,
-                duplicate_of=canonical_id,
-                exclusion_reason=exclusion_reason,
-            )
+            payload.pop(key, None)
+        return (
+            sample.validation_status
+            in (ValidationStatus.ERROR, ValidationStatus.EXCLUDED),
+            sample.source_id,
+            sample.source_path,
+            sample.sample_id,
+            sample.source_record_id or "",
+            json.dumps(payload, ensure_ascii=False, sort_keys=True),
         )
 
-    # Conflicting duplicates: identical normalized text, different content.
-    by_text_hash: dict[str, list[int]] = {}
-    for index, sample in enumerate(updated):
-        if sample.normalized_text_sha256:
-            by_text_hash.setdefault(sample.normalized_text_sha256, []).append(index)
+    ordered = sorted(samples, key=canonical_key)
+    count = len(ordered)
+    parent = list(range(count))
 
-    for text_hash, indexes in sorted(by_text_hash.items()):
-        if len(indexes) < 2:
+    def find(index: int) -> int:
+        while parent[index] != index:
+            parent[index] = parent[parent[index]]
+            index = parent[index]
+        return index
+
+    def union(left: int, right: int) -> None:
+        left_root, right_root = find(left), find(right)
+        if left_root != right_root:
+            parent[max(left_root, right_root)] = min(left_root, right_root)
+
+    signal_owners: dict[tuple[str, object], int] = {}
+    for index, sample in enumerate(ordered):
+        signals: list[tuple[str, object]] = [("sample_id", sample.sample_id)]
+        if sample.source_record_id:
+            signals.append(
+                ("source_record", (sample.source_id, sample.source_record_id))
+            )
+        if sample.file_sha256:
+            signals.append(("file_hash", sample.file_sha256))
+        for signal in signals:
+            owner = signal_owners.setdefault(signal, index)
+            union(owner, index)
+
+    components: dict[int, list[int]] = {}
+    for index in range(count):
+        components.setdefault(find(index), []).append(index)
+
+    report = DuplicateReport()
+    updated = list(ordered)
+    for indexes in sorted(
+        components.values(), key=lambda values: canonical_key(ordered[min(values)])
+    ):
+        if len(indexes) == 1:
+            index = indexes[0]
+            sample = ordered[index]
+            exclusion = (
+                None
+                if sample.exclusion_reason in duplicate_reasons
+                else sample.exclusion_reason
+            )
+            updated[index] = sample.evolve(
+                duplicate_state=DuplicateState.UNIQUE,
+                duplicate_of=None,
+                exclusion_reason=exclusion,
+            )
+            report.unique += 1
             continue
-        text_members = [updated[i] for i in indexes]
-        if len({m.file_sha256 for m in text_members}) < 2:
-            continue
-        conflicting = [
-            m
-            for m in text_members
-            if m.duplicate_state != DuplicateState.DUPLICATE
-            and m.sample_id != text_members[0].sample_id
+
+        canonical_index = min(indexes, key=lambda value: canonical_key(ordered[value]))
+        canonical = ordered[canonical_index]
+        criteria: set[str] = set()
+        ids = [ordered[index].sample_id for index in indexes]
+        if len(set(ids)) < len(ids):
+            criteria.add("sample_id")
+        records = [
+            (ordered[index].source_id, ordered[index].source_record_id)
+            for index in indexes
+            if ordered[index].source_record_id
         ]
-        if not conflicting:
-            continue
-        conflicting_ids = {m.sample_id for m in conflicting}
-        for i in indexes:
-            if updated[i].sample_id in conflicting_ids:
-                updated[i] = updated[i].evolve(
-                    duplicate_state=DuplicateState.CONFLICTING_DUPLICATE
-                )
-        report.conflicting_duplicate += len(conflicting)
+        if len(set(records)) < len(records):
+            criteria.add("source_record")
+        hashes = [
+            ordered[index].file_sha256
+            for index in indexes
+            if ordered[index].file_sha256
+        ]
+        if len(set(hashes)) < len(hashes):
+            criteria.add("file_hash")
+        id_counts = Counter(ids)
+        record_counts = Counter(records)
+        hash_counts = Counter(hashes)
+
+        updated[canonical_index] = canonical.evolve(
+            duplicate_state=DuplicateState.CANONICAL,
+            duplicate_of=None,
+            exclusion_reason=(
+                None
+                if canonical.exclusion_reason in duplicate_reasons
+                else canonical.exclusion_reason
+            ),
+        )
+        for index in indexes:
+            if index == canonical_index:
+                continue
+            sample = ordered[index]
+            if id_counts[sample.sample_id] > 1:
+                reason = "duplicate_sample_id"
+                report.duplicate_sample_id += 1
+            elif (
+                sample.source_record_id
+                and record_counts[(sample.source_id, sample.source_record_id)] > 1
+            ):
+                reason = "duplicate_source_record"
+                report.duplicate_source_record += 1
+            elif sample.file_sha256 and hash_counts[sample.file_sha256] > 1:
+                reason = "duplicate_file_hash"
+                report.duplicate_file_hash += 1
+            else:  # connected transitively; retain an explicit cluster reason
+                reason = "duplicate_cluster"
+            updated[index] = sample.evolve(
+                duplicate_state=DuplicateState.DUPLICATE,
+                duplicate_of=canonical.sample_id,
+                exclusion_reason=sample.exclusion_reason or reason,
+            )
         report.families.append(
             {
-                "kind": "normalized_text",
-                "canonical_sample_id": text_members[0].sample_id,
-                "member_sample_ids": [m.sample_id for m in text_members[1:]],
+                "kind": "exact",
+                "criteria": sorted(criteria),
+                "canonical_sample_id": canonical.sample_id,
+                "member_sample_ids": sorted(
+                    ordered[index].sample_id
+                    for index in indexes
+                    if index != canonical_index
+                ),
             }
         )
 
-    return updated, report
+    by_text_hash: dict[str, list[int]] = {}
+    for index, sample in enumerate(updated):
+        if (
+            sample.normalized_text_sha256
+            and sample.duplicate_state != DuplicateState.DUPLICATE
+        ):
+            by_text_hash.setdefault(sample.normalized_text_sha256, []).append(index)
+
+    for _text_hash, indexes in sorted(by_text_hash.items()):
+        if len(indexes) < 2:
+            continue
+        if len({updated[index].file_sha256 for index in indexes}) < 2:
+            continue
+        canonical_index = min(indexes, key=lambda value: canonical_key(updated[value]))
+        for index in indexes:
+            if index == canonical_index:
+                continue
+            updated[index] = updated[index].evolve(
+                duplicate_state=DuplicateState.CONFLICTING_DUPLICATE,
+                duplicate_of=updated[canonical_index].sample_id,
+            )
+            report.conflicting_duplicate += 1
+        report.families.append(
+            {
+                "kind": "normalized_text",
+                "canonical_sample_id": updated[canonical_index].sample_id,
+                "member_sample_ids": sorted(
+                    updated[index].sample_id
+                    for index in indexes
+                    if index != canonical_index
+                ),
+            }
+        )
+
+    return sorted(updated, key=sort_key), report

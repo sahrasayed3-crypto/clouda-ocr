@@ -19,17 +19,31 @@ from .schema import (
     EXPORTABLE_SPLITS,
     EXPORTABLE_STATUSES,
     SplitName,
+    canonical_relative_path,
     sort_key,
 )
 
 
-@dataclass
+@dataclass(frozen=True)
 class ExportConfig:
     include_holdout: bool = False
     include_duplicates: bool = False
     include_raw_text: bool = False
     text_field: str = "normalized"  # or "raw"
     splits: tuple[str, ...] = tuple(split.value for split in EXPORTABLE_SPLITS)
+
+    def __post_init__(self) -> None:
+        for name in ("include_holdout", "include_duplicates", "include_raw_text"):
+            if not isinstance(getattr(self, name), bool):
+                raise TypeError(f"{name} must be a boolean")
+        if self.text_field not in {"normalized", "raw"}:
+            raise ValueError("text_field must be 'normalized' or 'raw'")
+        known = {split.value for split in SplitName if split != SplitName.UNASSIGNED}
+        unknown = set(self.splits) - known
+        if unknown:
+            raise ValueError(f"Unknown export splits: {sorted(unknown)}")
+        if SplitName.HOLDOUT.value in self.splits and not self.include_holdout:
+            raise ValueError("holdout requires include_holdout=True")
 
 
 @dataclass
@@ -79,6 +93,14 @@ def select_exportable(
                 continue
         if sample.target_split.value not in allowed_splits:
             continue
+        if sample.image_path is not None:
+            try:
+                canonical_relative_path(sample.image_path)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"Unsafe image path for sample {sample.sample_id}: "
+                    f"{sample.image_path!r}"
+                ) from exc
         selected.append(sample)
     return selected
 
@@ -100,16 +122,23 @@ class JsonlTrainingExporter:
             by_split.setdefault(sample.target_split.value, []).append(sample)
 
         out_dir.mkdir(parents=True, exist_ok=True)
+        expected_files = {f"{split}.jsonl" for split in by_split}
+        for split in SplitName:
+            if split == SplitName.UNASSIGNED:
+                continue
+            stale = out_dir / f"{split.value}.jsonl"
+            if stale.name not in expected_files:
+                stale.unlink(missing_ok=True)
         files: list[str] = []
         counts: dict[str, int] = {}
-        for split in sorted(by_split):
-            rows = [self._row(sample, config) for sample in by_split[split]]
+        for split_name in sorted(by_split):
+            rows = [self._row(sample, config) for sample in by_split[split_name]]
             path = atomic_write_text(
-                out_dir / f"{split}.jsonl",
+                out_dir / f"{split_name}.jsonl",
                 "".join(row + "\n" for row in rows),
             )
             files.append(str(path))
-            counts[split] = len(rows)
+            counts[split_name] = len(rows)
         return ExportResult(exporter=self.name, files=files, counts=counts)
 
     def _row(self, sample: DatasetSample, config: ExportConfig) -> str:
@@ -125,6 +154,10 @@ class JsonlTrainingExporter:
             "text": text or "",
             "sample_id": sample.sample_id,
             "source_id": sample.source_id,
+            "source_path": sample.source_path,
+            "source_record_id": sample.source_record_id,
+            "source_license": sample.source_license,
+            "source_split": sample.source_split,
             "document_id": sample.document_id,
             "page_id": sample.page_id,
             "language": sample.language,

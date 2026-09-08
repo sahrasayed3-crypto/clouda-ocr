@@ -55,11 +55,11 @@ def test_sample_round_trip_preserves_enums_and_version():
     assert restored.target_split == SplitName.HOLDOUT
 
 
-def test_from_dict_ignores_unknown_fields():
-    restored = DatasetSample.from_dict(
-        {"sample_id": "smp_y", "source_id": "src", "future_field": 1}
-    )
-    assert restored.sample_id == "smp_y"
+def test_from_dict_rejects_unknown_fields():
+    with pytest.raises(ValueError, match="Unknown sample fields"):
+        DatasetSample.from_dict(
+            {"sample_id": "smp_y", "source_id": "src", "future_field": 1}
+        )
 
 
 # --------------------------------------------------------------- sources
@@ -118,15 +118,16 @@ def test_hash_cache_is_resumable_and_size_sensitive(tmp_path: Path):
     payload = tmp_path / "data.bin"
     payload.write_bytes(b"abcdef")
     cache = HashCache(cache_path)
-    cache.put("data.bin", 6, "h1")
-    cache.put("data.bin", 6, "h1")  # idempotent append
+    digest = "1" * 64
+    cache.put("source", "data.bin", 6, 10, digest)
+    cache.put("source", "data.bin", 6, 10, digest)  # idempotent append
     reopened = HashCache(cache_path)
-    assert reopened.get("data.bin", 6) == "h1"
-    assert reopened.get("data.bin", 7) is None  # size change invalidates
+    assert reopened.get("source", "data.bin", 6, 10) == digest
+    assert reopened.get("source", "data.bin", 7, 10) is None
     # truncated last line must not crash the loader
     with cache_path.open("a", encoding="utf-8") as handle:
         handle.write('{"key": "trunc')
-    assert HashCache(cache_path).get("data.bin", 6) == "h1"
+    assert HashCache(cache_path).get("source", "data.bin", 6, 10) == digest
 
 
 # ------------------------------------------------------------- discovery
@@ -183,7 +184,7 @@ def test_draft_jsonl_records_flag_malformed_rows(tmp_path: Path):
 
 
 def test_normalization_preserves_raw_and_normalizes_copy():
-    policy = NormalizationPolicy()
+    policy = NormalizationPolicy(remove_zero_width=True, collapse_whitespace=True)
     raw = "\ufeff" + ARABIC_TEXT + "\u200f  \r\n"
     result = normalize_text(raw, policy)
     assert result.value == ARABIC_TEXT
@@ -205,7 +206,7 @@ def test_normalization_diacritics_and_tatweel_are_opt_in():
 
 
 def test_normalization_zero_width_and_control_characters():
-    policy = NormalizationPolicy()
+    policy = NormalizationPolicy(remove_zero_width=True, remove_control_characters=True)
     result = normalize_text("عال\u200b matte\u0007o", policy)
     assert "\u200b" not in result.value
     assert "\u0007" not in result.value

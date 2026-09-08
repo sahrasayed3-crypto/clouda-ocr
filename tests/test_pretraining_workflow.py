@@ -149,7 +149,7 @@ def test_stats_and_export_after_full_pipeline(fixture_roots, workspace):
     stats = workflow.stats_workspace(workspace)
     assert stats["total_samples"] > 0
     assert stats["holdout_samples"] >= 0
-    assert stats["by_split"].get("unassigned", 0) == 0
+    assert stats["by_split"].get("unassigned", 0) == stats["excluded_samples"]
     result = workflow.export_workspace(workspace, PreparationConfig())
     assert sum(result.counts.values()) > 0
 
@@ -161,7 +161,7 @@ def test_data_factory_handoff_boundary(fixture_roots, workspace):
         "fixture_a",
         seed=5,
         write_handoff=True,
-        handoff_profiles=["03_normal_office_scan"],
+        handoff_profiles=["z_profile", "a_profile", "z_profile"],
         intended_output=str(workspace / "factory_out"),
     )
     request_path = workspace / "handoff" / "data_factory_handoff.json"
@@ -169,7 +169,7 @@ def test_data_factory_handoff_boundary(fixture_roots, workspace):
     assert request_path.exists() and candidates_path.exists()
     request = json.loads(request_path.read_text(encoding="utf-8"))
     assert request["boundary_version"] == "clouda.data_factory.handoff.v1"
-    assert request["requested_profiles"] == ["03_normal_office_scan"]
+    assert request["requested_profiles"] == ["a_profile", "z_profile"]
     assert request["seed"] == 5
     assert request["sample_count"] > 0
     # No clouda-data-factory import/call anywhere in the pretraining package.

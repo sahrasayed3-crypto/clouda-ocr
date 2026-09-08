@@ -9,11 +9,51 @@ and JSON-serializable. Rows are plain dictionaries when written to manifests;
 from __future__ import annotations
 
 import hashlib
+import posixpath
+import re
+import unicodedata
 from dataclasses import asdict, dataclass, field, fields, replace
 from enum import Enum
 from typing import Any
 
 SCHEMA_VERSION = "clouda.pretraining.sample.v1"
+_WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:($|/)")
+
+
+def _contains_unsafe_format_character(value: str) -> bool:
+    """Detect invisible controls and direction-changing format characters."""
+
+    return any(unicodedata.category(character) in {"Cc", "Cf"} for character in value)
+
+
+def canonical_relative_path(value: str, *, allow_empty: bool = False) -> str:
+    """Return a platform-neutral, root-relative provenance path.
+
+    This is deliberately lexical: callers that access the filesystem must also
+    resolve the result beneath their configured root to defend against symlinks.
+    """
+
+    if not isinstance(value, str):
+        raise TypeError("Provenance paths must be strings.")
+    if _contains_unsafe_format_character(value):
+        raise ValueError(
+            "Provenance paths cannot contain control or invisible format characters."
+        )
+    normalized_separators = value.replace("\\", "/")
+    if (
+        normalized_separators.startswith("/")
+        or normalized_separators.startswith("//")
+        or _WINDOWS_DRIVE_RE.match(normalized_separators)
+    ):
+        raise ValueError(f"Provenance path must be relative: {value!r}")
+    normalized = posixpath.normpath(normalized_separators)
+    if normalized == ".":
+        normalized = ""
+    if normalized == ".." or normalized.startswith("../"):
+        raise ValueError(f"Provenance path escapes its root: {value!r}")
+    if not normalized and not allow_empty:
+        raise ValueError("Provenance path cannot be empty.")
+    return normalized
 
 
 class SplitName(str, Enum):
@@ -48,10 +88,17 @@ EXPORTABLE_DUPLICATE_STATES = (
 
 
 def stable_sample_id(source_id: str, source_path: str, record_key: str = "") -> str:
-    """Derive a deterministic sample id from provenance coordinates."""
+    """Derive an id from source id plus canonical root-relative coordinates."""
+
+    if not source_id or _contains_unsafe_format_character(source_id):
+        raise ValueError("source_id must be a non-empty string without controls.")
+    canonical_source_path = canonical_relative_path(source_path)
+    canonical_record_key = canonical_relative_path(record_key, allow_empty=True)
 
     digest = hashlib.sha256(
-        "\x00".join((source_id, source_path, record_key)).encode("utf-8")
+        "\x00".join((source_id, canonical_source_path, canonical_record_key)).encode(
+            "utf-8"
+        )
     ).hexdigest()
     return f"smp_{digest[:20]}"
 
@@ -106,7 +153,16 @@ class DatasetSample:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> DatasetSample:
         known = {f.name for f in fields(cls)}
-        kwargs = {k: v for k, v in data.items() if k in known}
+        unknown = set(data) - known
+        if unknown:
+            raise ValueError(f"Unknown sample fields: {sorted(unknown)}")
+        version = data.get("schema_version", SCHEMA_VERSION)
+        if version != SCHEMA_VERSION:
+            raise ValueError(
+                f"Unsupported sample schema version: {version!r}; expected "
+                f"{SCHEMA_VERSION!r}."
+            )
+        kwargs = dict(data)
         kwargs["validation_status"] = ValidationStatus(
             kwargs.get("validation_status", ValidationStatus.OK.value)
         )

@@ -18,7 +18,9 @@ Rules:
 from __future__ import annotations
 
 import hashlib
+import math
 from dataclasses import dataclass, field
+from fractions import Fraction
 from typing import Any
 
 from .schema import DatasetSample, SplitName, ValidationStatus
@@ -80,7 +82,7 @@ class SplitReport:
 
 def resolve_group_key(sample: DatasetSample) -> str:
     if sample.group_id:
-        return sample.group_id
+        return f"{sample.source_id}:group:{sample.group_id}"
     if sample.document_id:
         return f"{sample.source_id}:{sample.document_id}"
     if sample.source_record_id:
@@ -88,13 +90,11 @@ def resolve_group_key(sample: DatasetSample) -> str:
     return sample.sample_id
 
 
-def _split_for_key(
-    key: str, seed: int, boundaries: list[tuple[str, float]]
-) -> SplitName:
+def _split_for_key(key: str, seed: int, boundaries: list[tuple[str, int]]) -> SplitName:
     digest = hashlib.sha256(f"{seed}:split:{key}".encode("utf-8")).digest()
-    fraction = int.from_bytes(digest[:8], "big") / (2**64 - 1)
+    bucket = int.from_bytes(digest, "big")
     for name, cumulative in boundaries:
-        if fraction < cumulative:
+        if bucket < cumulative:
             return SplitName(name)
     return SplitName.HOLDOUT
 
@@ -110,7 +110,17 @@ def assign_splits(
     ratios = dict(ratios or DEFAULT_RATIOS)
     if set(ratios) != {name.value for name in SPLIT_ORDER}:
         raise ValueError("Split ratios must define train, validation, test, holdout.")
-    if abs(sum(ratios.values()) - 1.0) > 1e-9:
+    if any(
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or value < 0
+        or value > 1
+        for value in ratios.values()
+    ):
+        raise ValueError("Split ratios must be finite numbers between 0 and 1.")
+    exact_ratios = {name: Fraction(str(value)) for name, value in ratios.items()}
+    if sum(exact_ratios.values()) != 1:
         raise ValueError("Split ratios must sum to 1.0.")
 
     active = [
@@ -121,34 +131,51 @@ def assign_splits(
     ]
 
     group_members: dict[str, list[str]] = {}
+    samples_by_group: dict[str, list[DatasetSample]] = {}
     for sample in active:
-        group_members.setdefault(resolve_group_key(sample), []).append(sample.sample_id)
+        key = resolve_group_key(sample)
+        group_members.setdefault(key, []).append(sample.sample_id)
+        samples_by_group.setdefault(key, []).append(sample)
 
-    sample_by_id = {s.sample_id: s for s in active}
     union = _UnionFind()
     for key in group_members:
         union.add(key)
-    hash_owner: dict[str, str] = {}
+    hash_owner: dict[tuple[str, str], str] = {}
+    sample_groups: dict[str, set[str]] = {}
     for key in sorted(group_members):
-        for sample_id in group_members[key]:
-            sample = sample_by_id[sample_id]
-            for hash_value in (sample.file_sha256, sample.normalized_text_sha256):
+        for sample in sorted(
+            samples_by_group[key],
+            key=lambda item: (item.sample_id, item.source_path),
+        ):
+            sample_groups.setdefault(sample.sample_id, set()).add(key)
+            for kind, hash_value in (
+                ("file", sample.file_sha256),
+                ("text", sample.normalized_text_sha256),
+            ):
                 if not hash_value:
                     continue
-                owner = hash_owner.setdefault(hash_value, key)
+                owner = hash_owner.setdefault((kind, hash_value), key)
                 if owner != key:
                     union.union(owner, key)
+
+    for sample in active:
+        if not sample.duplicate_of:
+            continue
+        own_key = resolve_group_key(sample)
+        for canonical_key in sorted(sample_groups.get(sample.duplicate_of, set())):
+            union.union(own_key, canonical_key)
 
     merged_root: dict[str, str] = {key: union.find(key) for key in group_members}
     merged_members: dict[str, list[str]] = {}
     for key, root in merged_root.items():
         merged_members.setdefault(root, []).append(key)
 
-    cumulative = 0.0
-    boundaries: list[tuple[str, float]] = []
+    cumulative = Fraction(0)
+    domain_size = 1 << 256
+    boundaries: list[tuple[str, int]] = []
     for name in ("train", "validation", "test", "holdout"):
-        cumulative += ratios[name]
-        boundaries.append((name, cumulative))
+        cumulative += exact_ratios[name]
+        boundaries.append((name, int(cumulative * domain_size)))
 
     split_of_group: dict[str, SplitName] = {}
     for root, members in merged_members.items():
@@ -230,6 +257,36 @@ def _build_report(
     record(
         "document_not_shared_across_splits",
         {d for d, splits in document_split.items() if len(splits) > 1},
+    )
+    group_split: dict[str, set[str]] = {}
+    sample_id_splits: dict[str, set[str]] = {}
+    for sample in active:
+        group_split.setdefault(resolve_group_key(sample), set()).add(
+            sample.target_split.value
+        )
+        sample_id_splits.setdefault(sample.sample_id, set()).add(
+            sample.target_split.value
+        )
+    record(
+        "group_not_shared_across_splits",
+        {group for group, splits in group_split.items() if len(splits) > 1},
+    )
+    duplicate_cluster_splits: dict[str, set[str]] = {}
+    for sample in active:
+        if sample.duplicate_of:
+            duplicate_cluster_splits.setdefault(sample.duplicate_of, set()).add(
+                sample.target_split.value
+            )
+            duplicate_cluster_splits[sample.duplicate_of].update(
+                sample_id_splits.get(sample.duplicate_of, set())
+            )
+    record(
+        "duplicate_cluster_not_shared_across_splits",
+        {
+            canonical
+            for canonical, splits in duplicate_cluster_splits.items()
+            if len(splits) > 1
+        },
     )
 
     # Groups are assigned exactly one split, so the holdout group set is

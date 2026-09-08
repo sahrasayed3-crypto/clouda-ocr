@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import math
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any
@@ -54,8 +56,20 @@ class PreparationConfig:
             payload[key] = sorted(payload[key])
         return payload
 
+    def fingerprint(self) -> str:
+        payload = json.dumps(
+            self.to_dict(), ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        )
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
     @classmethod
     def from_mapping(cls, data: dict[str, Any]) -> PreparationConfig:
+        data = dict(data)
+        version = data.pop("_schema_version", PREPARATION_CONFIG_VERSION)
+        if version != PREPARATION_CONFIG_VERSION:
+            raise PreparationConfigError(
+                f"Unsupported preparation config version: {version!r}"
+            )
         known = {f.name for f in fields(cls)}
         unknown = set(data) - known
         if unknown:
@@ -82,20 +96,78 @@ class PreparationConfig:
 def _validate(config: PreparationConfig) -> None:
     if config.text_without_image_policy not in {"exclude", "keep"}:
         raise PreparationConfigError("text_without_image_policy must be exclude|keep")
+    extension_groups = (
+        (config.allowed_image_extensions, IMAGE_EXTENSIONS, "image"),
+        (config.allowed_record_extensions, RECORD_EXTENSIONS, "record"),
+        (config.allowed_text_extensions, TEXT_EXTENSIONS, "text"),
+    )
+    for configured, supported, label in extension_groups:
+        if not all(isinstance(value, str) for value in configured):
+            raise PreparationConfigError(f"allowed_{label}_extensions must be strings")
+        unsupported = set(configured) - supported
+        if unsupported:
+            raise PreparationConfigError(
+                f"Unsupported {label} extensions: {sorted(unsupported)}"
+            )
     if set(config.split_ratios) != {"train", "validation", "test", "holdout"}:
         raise PreparationConfigError(
             "split_ratios must define train, validation, test, holdout"
         )
-    if abs(sum(config.split_ratios.values()) - 1.0) > 1e-9:
+    ratio_values = list(config.split_ratios.values())
+    if any(
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or value < 0
+        or value > 1
+        for value in ratio_values
+    ):
+        raise PreparationConfigError(
+            "split_ratios values must be finite numbers between 0 and 1"
+        )
+    if abs(sum(ratio_values) - 1.0) > 1e-9:
         raise PreparationConfigError("split_ratios must sum to 1.0")
+    boolean_fields = (
+        "holdout_enabled",
+        "require_text",
+        "require_image",
+        "hash_cache_enabled",
+        "include_holdout_in_export",
+        "include_duplicates_in_export",
+        "include_raw_text_in_export",
+    )
+    if any(not isinstance(getattr(config, name), bool) for name in boolean_fields):
+        raise PreparationConfigError(
+            "Boolean preparation options must be JSON/YAML booleans."
+        )
+    if not config.holdout_enabled and config.split_ratios["holdout"] != 0:
+        raise PreparationConfigError(
+            "holdout ratio must be zero when holdout_enabled is false"
+        )
+    integer_fields = (
+        "split_seed",
+        "workers",
+        "min_width",
+        "min_height",
+        "max_pixels",
+        "max_text_chars",
+    )
+    if any(
+        isinstance(getattr(config, name), bool)
+        or not isinstance(getattr(config, name), int)
+        for name in integer_fields
+    ):
+        raise PreparationConfigError(
+            "Seed, worker, dimension, pixel, and text limits must be integers."
+        )
     if config.split_seed < 0:
         raise PreparationConfigError("split_seed cannot be negative")
     if config.workers < 1:
         raise PreparationConfigError("workers must be at least 1")
     if config.min_width < 1 or config.min_height < 1:
         raise PreparationConfigError("min_width/min_height must be positive")
-    if config.max_text_chars < 1:
-        raise PreparationConfigError("max_text_chars must be positive")
+    if config.max_text_chars < 1 or config.max_pixels < 1:
+        raise PreparationConfigError("max_text_chars/max_pixels must be positive")
     if config.exporter != "jsonl":
         raise PreparationConfigError("exporter must be 'jsonl' (only built-in)")
 

@@ -69,7 +69,7 @@ def build_data_factory_handoff(
     candidates = select_exportable(
         sorted(samples, key=sort_key), ExportConfig(include_holdout=False)
     )
-    handoff_dir = Path(workspace) / "handoff"
+    handoff_dir = Path(workspace).resolve() / "handoff"
     handoff_dir.mkdir(parents=True, exist_ok=True)
 
     candidate_rows = [
@@ -98,12 +98,12 @@ def build_data_factory_handoff(
         source_root=str(Path(dataset_root).resolve()),
         candidate_manifest=str(candidate_path),
         candidate_manifest_sha256=sha256_file(candidate_path),
-        dataset_manifest=str(dataset_manifest_path),
-        dataset_manifest_sha256=sha256_file(dataset_manifest_path),
+        dataset_manifest=str(dataset_manifest_path.resolve()),
+        dataset_manifest_sha256=sha256_file(dataset_manifest_path.resolve()),
         source_ids=sorted({sample.source_id for sample in candidates}),
-        requested_profiles=list(requested_profiles),
+        requested_profiles=sorted(set(requested_profiles)),
         seed=seed,
-        intended_output=intended_output,
+        intended_output=str(Path(intended_output).resolve()),
         sample_count=len(candidates),
         provenance={
             "note": (

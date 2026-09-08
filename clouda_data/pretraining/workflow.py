@@ -25,16 +25,22 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from .config import PreparationConfig
 from .dedupe import classify_duplicates
-from .discovery import DiscoveredFile, draft_samples, scan_source
+from .discovery import REFERENCE_EXTENSIONS, DiscoveredFile, draft_samples, scan_source
 from .export import ExportConfig, get_exporter
 from .hashing import HashCache, sha256_file, sha256_text
-from .manifest import read_manifest, write_manifest
+from .manifest import MANIFEST_SCHEMA_VERSION, read_manifest, write_manifest
 from .normalize import normalize_text
-from .schema import DatasetSample, SplitName, sort_key, stable_sample_id
+from .schema import (
+    DatasetSample,
+    DuplicateState,
+    SplitName,
+    sort_key,
+    stable_sample_id,
+)
 from .sources import (
     SourceDefinition,
     SourceRegistryError,
@@ -43,7 +49,7 @@ from .sources import (
     register_source,
 )
 from .splitting import DEFAULT_RATIOS, assign_splits
-from .validation import ValidationThresholds, apply_validation, set_thresholds
+from .validation import ValidationThresholds, apply_validation
 
 logger = logging.getLogger(__name__)
 
@@ -120,16 +126,14 @@ def _load_config(config: PreparationConfig | None) -> PreparationConfig:
     return config or PreparationConfig()
 
 
-def _apply_thresholds(config: PreparationConfig) -> None:
-    set_thresholds(
-        ValidationThresholds(
-            min_width=config.min_width,
-            min_height=config.min_height,
-            max_pixels=config.max_pixels,
-            max_text_chars=config.max_text_chars,
-            require_text=config.require_text,
-            require_image=config.require_image,
-        )
+def _validation_thresholds(config: PreparationConfig) -> ValidationThresholds:
+    return ValidationThresholds(
+        min_width=config.min_width,
+        min_height=config.min_height,
+        max_pixels=config.max_pixels,
+        max_text_chars=config.max_text_chars,
+        require_text=config.require_text,
+        require_image=config.require_image,
     )
 
 
@@ -146,37 +150,58 @@ def ensure_source_registered(workspace: Path | str, source: SourceDefinition) ->
 
 def _compute_index_rows(
     source: SourceDefinition,
-    previous: dict[str, tuple[int, str]],
+    previous: dict[str, tuple[int, int, str]],
     cache: HashCache | None,
-) -> tuple[list[dict[str, Any]], int, int]:
+    allowed_extensions: frozenset[str] | None = None,
+) -> tuple[list[dict[str, Any]], int, int, int]:
     rows: list[dict[str, Any]] = []
     hashed_now = 0
     reused = 0
-    for item in sorted(scan_source(source), key=lambda f: f.rel_path):
+    reused_cache = 0
+    for item in sorted(
+        scan_source(source, allowed_extensions=allowed_extensions),
+        key=lambda f: f.rel_path,
+    ):
         cached = previous.get(item.rel_path)
         file_hash: str | None
-        if cached and cached[0] == item.size_bytes:
-            file_hash = cached[1]
+        if cached and cached[:2] == (item.size_bytes, item.mtime_ns):
+            file_hash = cached[2]
             reused += 1
         else:
-            file_hash = cache.get(item.rel_path, item.size_bytes) if cache else None
+            file_hash = (
+                cache.get(
+                    source.source_id,
+                    item.rel_path,
+                    item.size_bytes,
+                    item.mtime_ns,
+                )
+                if cache
+                else None
+            )
             if file_hash is None:
                 file_hash = sha256_file(Path(source.local_root) / item.rel_path)
                 hashed_now += 1
                 if cache is not None:
-                    cache.put(item.rel_path, item.size_bytes, file_hash)
+                    cache.put(
+                        source.source_id,
+                        item.rel_path,
+                        item.size_bytes,
+                        item.mtime_ns,
+                        file_hash,
+                    )
             else:
-                hashed_now += 1
+                reused_cache += 1
         rows.append(
             {
                 "source_id": item.source_id,
                 "rel_path": item.rel_path,
                 "kind": item.kind,
                 "size_bytes": item.size_bytes,
+                "mtime_ns": item.mtime_ns,
                 "file_sha256": file_hash,
             }
         )
-    return rows, hashed_now, reused
+    return rows, hashed_now, reused, reused_cache
 
 
 def index_source(
@@ -192,21 +217,35 @@ def index_source(
     cfg = _load_config(config)
     paths = WorkspacePaths(Path(workspace))
     index_path = paths.source_index(source.source_id)
-    previous: dict[str, tuple[int, str]] = {}
+    previous: dict[str, tuple[int, int, str]] = {}
     if resume and index_path.exists():
         for row in _iter_index(index_path):
-            previous[row["rel_path"]] = (row["size_bytes"], row["file_sha256"])
+            if "mtime_ns" in row:
+                previous[row["rel_path"]] = (
+                    row["size_bytes"],
+                    row["mtime_ns"],
+                    row["file_sha256"],
+                )
 
     cache = (
         HashCache(paths.hash_cache) if cfg.hash_cache_enabled and not dry_run else None
     )
-    rows, hashed_now, reused = _compute_index_rows(source, previous, cache)
+    rows, hashed_now, reused, reused_cache = _compute_index_rows(
+        source,
+        previous,
+        cache,
+        cfg.allowed_image_extensions
+        | cfg.allowed_record_extensions
+        | cfg.allowed_text_extensions
+        | frozenset(REFERENCE_EXTENSIONS),
+    )
 
     report = {
         "source_id": source.source_id,
         "files": len(rows),
         "hashed_now": hashed_now,
         "reused_from_index": reused,
+        "reused_from_cache": reused_cache,
         "dry_run": dry_run,
     }
     if not dry_run:
@@ -278,6 +317,7 @@ def _build_samples(
             rel_path=row["rel_path"],
             kind=row["kind"],
             size_bytes=row["size_bytes"],
+            mtime_ns=row["mtime_ns"],
         )
         for row in index_rows
     ]
@@ -370,6 +410,48 @@ def _write_report(
     tmp_path.replace(target)
 
 
+def _merge_validation_reports(
+    reports: list[dict[str, object]], total: int
+) -> dict[str, object]:
+    counts = {"ok": 0, "warning": 0, "error": 0, "excluded": 0}
+    severity_counts = {"info": 0, "warning": 0, "error": 0, "exclusion": 0}
+    for report in reports:
+        report_counts = cast(dict[str, int], report["counts"])
+        report_severities = cast(dict[str, int], report["findings_by_severity"])
+        for name, value in report_counts.items():
+            counts[name] = counts.get(name, 0) + value
+        for name, value in report_severities.items():
+            severity_counts[name] = severity_counts.get(name, 0) + value
+    return {
+        "counts": counts,
+        "findings_by_severity": severity_counts,
+        "total": total,
+        "schema_version": "clouda.pretraining.validation.v1",
+    }
+
+
+def _invalidate_exports(paths: WorkspacePaths) -> None:
+    export_dir = paths.export_dir / "jsonl"
+    if not export_dir.is_dir():
+        return
+    for split in SplitName:
+        if split != SplitName.UNASSIGNED:
+            (export_dir / f"{split.value}.jsonl").unlink(missing_ok=True)
+
+
+def _active_sources(
+    paths: WorkspacePaths, current: SourceDefinition
+) -> list[SourceDefinition]:
+    by_id = {
+        source.source_id: source for source in load_source_registry(paths.sources_file)
+    }
+    by_id[current.source_id] = current
+    return sorted(
+        (source for source in by_id.values() if source.enabled and source.local_root),
+        key=lambda source: source.source_id,
+    )
+
+
 def prepare_dataset(
     workspace: Path | str,
     source_value: str | Path,
@@ -385,45 +467,79 @@ def prepare_dataset(
     """Run the full preparation pipeline for one source."""
 
     cfg = _load_config(config)
-    _apply_thresholds(cfg)
+    effective_seed = seed if seed is not None else cfg.split_seed
     root = Path(workspace)
     paths = WorkspacePaths(root)
     source = resolve_source(root, source_value)
     if not source.enabled:
         raise SourceRegistryError(f"Source is disabled: {source.source_id}")
-    ensure_source_registered(root, source)
+    if not dry_run:
+        ensure_source_registered(root, source)
 
-    index_report = index_source(root, source, cfg, resume=resume, dry_run=dry_run)
-    if dry_run:
-        index_rows, _hashed, _reused = _compute_index_rows(source, {}, None)
-    else:
-        index_rows = _iter_index(paths.source_index(source.source_id))
-    samples = _build_samples(source, index_rows, cfg)
+    active_sources = _active_sources(paths, source)
+    samples: list[DatasetSample] = []
+    validation_reports: list[dict[str, object]] = []
+    index_reports: dict[str, dict[str, Any]] = {}
+    current_samples: set[str] = set()
+    for active_source in active_sources:
+        if dry_run:
+            index_rows, hashed, reused, cache_reused = _compute_index_rows(
+                active_source,
+                {},
+                None,
+                cfg.allowed_image_extensions
+                | cfg.allowed_record_extensions
+                | cfg.allowed_text_extensions
+                | frozenset(REFERENCE_EXTENSIONS),
+            )
+            report = {
+                "source_id": active_source.source_id,
+                "files": len(index_rows),
+                "hashed_now": hashed,
+                "reused_from_index": reused,
+                "reused_from_cache": cache_reused,
+                "dry_run": True,
+            }
+        else:
+            report = index_source(
+                root,
+                active_source,
+                cfg,
+                resume=resume,
+                dry_run=False,
+            )
+            index_rows = _iter_index(paths.source_index(active_source.source_id))
+        index_reports[active_source.source_id] = report
+        source_samples = _build_samples(active_source, index_rows, cfg)
+        source_samples, source_validation = apply_validation(
+            source_samples,
+            Path(active_source.local_root),
+            thresholds=_validation_thresholds(cfg),
+        )
+        validation_reports.append(source_validation)
+        samples.extend(source_samples)
+        if active_source.source_id == source.source_id:
+            current_samples.update(sample.sample_id for sample in source_samples)
 
-    samples, validation_report = apply_validation(samples, Path(source.local_root))
+    validation_report = _merge_validation_reports(validation_reports, len(samples))
     samples, dedupe_report = classify_duplicates(samples)
     samples, split_report = assign_splits(
         samples,
-        seed=seed if seed is not None else cfg.split_seed,
+        seed=effective_seed,
         ratios=cfg.split_ratios,
     )
 
     rows = [sample.to_dict() for sample in samples]
     if not dry_run:
-        # Accumulate across sources: keep other sources' rows, replace this one.
-        existing_header, existing_rows = read_manifest(paths.manifest)
-        kept = [
-            row for row in existing_rows if row.get("source_id") != source.source_id
-        ]
-        merged = kept + rows
-        merged.sort(
-            key=lambda row: (
-                row.get("source_id", ""),
-                row.get("source_path", ""),
-                row.get("sample_id", ""),
-            )
+        write_manifest(
+            paths.manifest,
+            rows,
+            metadata={
+                "preparation_config_fingerprint": cfg.fingerprint(),
+                "split_seed": effective_seed,
+                "source_ids": [item.source_id for item in active_sources],
+            },
         )
-        write_manifest(paths.manifest, merged)
     _write_report(paths, "validation.json", validation_report, dry_run)
     _write_report(paths, "dedupe_report.json", dedupe_report.to_dict(), dry_run)
     _write_report(paths, "split_report.json", split_report.to_dict(), dry_run)
@@ -441,9 +557,14 @@ def prepare_dataset(
         _handoff, _candidates, request_path = build_data_factory_handoff(
             Path(source.local_root),
             root,
-            samples,
+            [
+                sample
+                for sample in samples
+                if sample.sample_id in current_samples
+                and sample.source_id == source.source_id
+            ],
             requested_profiles=handoff_profiles or [],
-            seed=seed if seed is not None else cfg.split_seed,
+            seed=effective_seed,
             intended_output=intended_output or str(paths.export_dir),
             dataset_manifest_path=paths.manifest,
         )
@@ -452,7 +573,8 @@ def prepare_dataset(
     return {
         "source_id": source.source_id,
         "dry_run": dry_run,
-        "index": index_report,
+        "index": index_reports[source.source_id],
+        "indexed_sources": index_reports,
         "samples": len(rows),
         "validation": validation_report,
         "dedupe": dedupe_report.to_dict()["counts"],
@@ -466,7 +588,13 @@ def prepare_dataset(
 
 
 def _load_manifest_samples(paths: WorkspacePaths) -> list[DatasetSample]:
-    _, rows = read_manifest(paths.manifest)
+    header, rows = read_manifest(paths.manifest)
+    version = header.get("_schema_version")
+    if version != MANIFEST_SCHEMA_VERSION:
+        raise ValueError(
+            f"Unsupported manifest schema version: {version!r}; expected "
+            f"{MANIFEST_SCHEMA_VERSION!r}."
+        )
     return [DatasetSample.from_dict(row) for row in rows]
 
 
@@ -474,12 +602,39 @@ def validate_workspace(
     workspace: Path | str, config: PreparationConfig | None = None
 ) -> dict[str, Any]:
     cfg = _load_config(config)
-    _apply_thresholds(cfg)
     paths = WorkspacePaths(Path(workspace))
-    source = resolve_source(paths.root, _sole_source_id(paths))
     samples = _load_manifest_samples(paths)
-    samples, report = apply_validation(samples, Path(source.local_root))
-    write_manifest(paths.manifest, [sample.to_dict() for sample in samples])
+    sources = {
+        source.source_id: source for source in load_source_registry(paths.sources_file)
+    }
+    by_source: dict[str, list[DatasetSample]] = {}
+    for sample in samples:
+        by_source.setdefault(sample.source_id, []).append(sample)
+    updated: list[DatasetSample] = []
+    reports: list[dict[str, object]] = []
+    for source_id, source_samples in sorted(by_source.items()):
+        source = sources.get(source_id)
+        if source is None or not source.local_root:
+            raise SourceRegistryError(
+                f"Manifest references source without a local root: {source_id}"
+            )
+        validated, source_report = apply_validation(
+            source_samples,
+            Path(source.local_root),
+            thresholds=_validation_thresholds(cfg),
+        )
+        updated.extend(
+            sample.evolve(
+                duplicate_state=DuplicateState.UNIQUE,
+                duplicate_of=None,
+                target_split=SplitName.UNASSIGNED,
+            )
+            for sample in validated
+        )
+        reports.append(source_report)
+    report = _merge_validation_reports(reports, len(updated))
+    write_manifest(paths.manifest, [sample.to_dict() for sample in updated])
+    _invalidate_exports(paths)
     _write_report(paths, "validation.json", report, dry_run=False)
     return report
 
@@ -495,23 +650,52 @@ def normalize_workspace(
     changed = 0
     updated: list[DatasetSample] = []
     for sample in samples:
+        reset_exclusion = (
+            None
+            if sample.exclusion_reason
+            in {
+                "duplicate_sample_id",
+                "duplicate_source_record",
+                "duplicate_file_hash",
+                "duplicate_cluster",
+            }
+            else sample.exclusion_reason
+        )
         if sample.raw_text is None:
-            updated.append(sample)
+            if sample.text is not None:
+                raise ValueError(
+                    f"Cannot normalize sample {sample.sample_id!r} without raw_text; "
+                    "the current text cannot be reconstructed under a new policy."
+                )
+            updated.append(
+                sample.evolve(
+                    text=None,
+                    normalized_text_sha256=None,
+                    transformations=[],
+                    duplicate_state=DuplicateState.UNIQUE,
+                    duplicate_of=None,
+                    exclusion_reason=reset_exclusion,
+                    target_split=SplitName.UNASSIGNED,
+                )
+            )
             continue
         result = normalize_text(sample.raw_text, cfg.normalization)
-        text_hash = sha256_text(result.value) if result.value else None
+        text_hash = sha256_text(result.value)
         if result.value != (sample.text or ""):
             changed += 1
         updated.append(
             sample.evolve(
                 text=result.value,
                 normalized_text_sha256=text_hash,
-                transformations=sorted(
-                    set(sample.transformations) | set(result.applied)
-                ),
+                transformations=list(result.applied),
+                duplicate_state=DuplicateState.UNIQUE,
+                duplicate_of=None,
+                exclusion_reason=reset_exclusion,
+                target_split=SplitName.UNASSIGNED,
             )
         )
     write_manifest(paths.manifest, [sample.to_dict() for sample in updated])
+    _invalidate_exports(paths)
     report = {
         "samples": len(updated),
         "normalized_now": changed,
@@ -526,7 +710,9 @@ def dedupe_workspace(workspace: Path | str) -> dict[str, Any]:
     paths = WorkspacePaths(Path(workspace))
     samples = _load_manifest_samples(paths)
     samples, report = classify_duplicates(samples)
+    samples = [sample.evolve(target_split=SplitName.UNASSIGNED) for sample in samples]
     write_manifest(paths.manifest, [sample.to_dict() for sample in samples])
+    _invalidate_exports(paths)
     _write_report(paths, "dedupe_report.json", report.to_dict(), dry_run=False)
     return report.to_dict()
 
@@ -545,6 +731,7 @@ def split_workspace(
         ratios=ratios or DEFAULT_RATIOS,
     )
     write_manifest(paths.manifest, [sample.to_dict() for sample in samples])
+    _invalidate_exports(paths)
     _write_report(paths, "split_report.json", report.to_dict(), dry_run=False)
     return report.to_dict()
 
@@ -618,10 +805,3 @@ def stats_workspace(workspace: Path | str) -> dict[str, Any]:
     paths = WorkspacePaths(Path(workspace))
     _, rows = read_manifest(paths.manifest)
     return compute_stats(rows)
-
-
-def _sole_source_id(paths: WorkspacePaths) -> str:
-    ids = sorted({sample.source_id for sample in _load_manifest_samples(paths)})
-    if not ids:
-        raise FileNotFoundError("Dataset manifest is empty or missing.")
-    return ids[0]

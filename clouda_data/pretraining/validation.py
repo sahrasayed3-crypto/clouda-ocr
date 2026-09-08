@@ -7,6 +7,7 @@ exclusion with a machine-readable reason.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
 
@@ -29,25 +30,16 @@ class Finding:
         return asdict(self)
 
 
+@dataclass(frozen=True)
 class ValidationThresholds:
     """Validation limits (kept as a plain class for cheap construction)."""
 
-    def __init__(
-        self,
-        *,
-        min_width: int = 8,
-        min_height: int = 8,
-        max_pixels: int = 100_000_000,
-        max_text_chars: int = 100_000,
-        require_text: bool = True,
-        require_image: bool = True,
-    ) -> None:
-        self.min_width = min_width
-        self.min_height = min_height
-        self.max_pixels = max_pixels
-        self.max_text_chars = max_text_chars
-        self.require_text = require_text
-        self.require_image = require_image
+    min_width: int = 8
+    min_height: int = 8
+    max_pixels: int = 100_000_000
+    max_text_chars: int = 100_000
+    require_text: bool = True
+    require_image: bool = True
 
 
 def _path_inside(root: Path, relative: str | None) -> bool:
@@ -61,7 +53,12 @@ def _path_inside(root: Path, relative: str | None) -> bool:
     return True
 
 
-def _validate_image(sample: DatasetSample, root: Path, findings: list[Finding]) -> None:
+def _validate_image(
+    sample: DatasetSample,
+    root: Path,
+    findings: list[Finding],
+    thresholds: ValidationThresholds,
+) -> None:
     from PIL import Image  # local import keeps module import cheap
 
     image_path = root / str(sample.image_path)
@@ -73,11 +70,31 @@ def _validate_image(sample: DatasetSample, root: Path, findings: list[Finding]) 
         )
         return
     try:
-        with Image.open(image_path) as image:
-            width, height = image.size
-            image.verify()
-        with Image.open(image_path) as reopened:
-            reopened.load()
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(image_path) as image:
+                width, height = image.size
+                if width <= 0 or height <= 0:
+                    findings.append(
+                        Finding(
+                            "invalid_dimensions",
+                            SEVERITY_ERROR,
+                            f"invalid image dimensions: {width}x{height}",
+                        )
+                    )
+                    return
+                if width * height > thresholds.max_pixels:
+                    findings.append(
+                        Finding(
+                            "oversized_image",
+                            SEVERITY_ERROR,
+                            f"image exceeds max pixels: {width * height}",
+                        )
+                    )
+                    return
+                image.verify()
+            with Image.open(image_path) as reopened:
+                reopened.load()
     except Exception:  # noqa: BLE001 - any decoder failure is a finding
         findings.append(
             Finding(
@@ -87,12 +104,7 @@ def _validate_image(sample: DatasetSample, root: Path, findings: list[Finding]) 
             )
         )
         return
-    if width < 0 or height < 0:
-        findings.append(
-            Finding("invalid_dimensions", SEVERITY_ERROR, "negative dimensions")
-        )
-        return
-    if width < _thresholds.min_width or height < _thresholds.min_height:
+    if width < thresholds.min_width or height < thresholds.min_height:
         findings.append(
             Finding(
                 "tiny_image",
@@ -100,33 +112,19 @@ def _validate_image(sample: DatasetSample, root: Path, findings: list[Finding]) 
                 f"image below minimum dimensions: {width}x{height}",
             )
         )
-    if width * height > _thresholds.max_pixels:
-        findings.append(
-            Finding(
-                "oversized_image",
-                SEVERITY_WARNING,
-                f"image exceeds max pixels: {width * height}",
-            )
-        )
-
-
-_thresholds = ValidationThresholds()
-
-
-def set_thresholds(thresholds: ValidationThresholds) -> None:
-    """Install the active validation thresholds (module-level by design)."""
-
-    global _thresholds
-    _thresholds = thresholds
 
 
 def validate_sample(
-    sample: DatasetSample, dataset_root: Path
+    sample: DatasetSample,
+    dataset_root: Path,
+    *,
+    thresholds: ValidationThresholds | None = None,
 ) -> tuple[ValidationStatus, list[Finding]]:
     """Validate one sample. Never raises on bad data."""
 
     findings: list[Finding] = []
     root = Path(dataset_root)
+    limits = thresholds or ValidationThresholds()
 
     if not sample.sample_id or not sample.source_id:
         findings.append(
@@ -151,13 +149,13 @@ def validate_sample(
                 )
             )
         else:
-            _validate_image(sample, root, findings)
-    elif _thresholds.require_image:
+            _validate_image(sample, root, findings, limits)
+    elif limits.require_image:
         findings.append(Finding("missing_image", SEVERITY_ERROR, "sample has no image"))
 
     text = sample.raw_text if sample.raw_text is not None else sample.text
     if text is None:
-        if _thresholds.require_text:
+        if limits.require_text:
             findings.append(
                 Finding("missing_text", SEVERITY_ERROR, "sample has no text")
             )
@@ -166,7 +164,7 @@ def validate_sample(
             findings.append(
                 Finding("empty_text", SEVERITY_ERROR, "text is empty or whitespace")
             )
-        elif len(text) > _thresholds.max_text_chars:
+        elif len(text) > limits.max_text_chars:
             findings.append(
                 Finding(
                     "text_too_long",
@@ -204,7 +202,10 @@ def validate_sample(
 
 
 def apply_validation(
-    samples: list[DatasetSample], dataset_root: Path
+    samples: list[DatasetSample],
+    dataset_root: Path,
+    *,
+    thresholds: ValidationThresholds | None = None,
 ) -> tuple[list[DatasetSample], dict[str, object]]:
     """Validate all samples, returning updated samples and a report."""
 
@@ -217,11 +218,27 @@ def apply_validation(
         SEVERITY_EXCLUSION: 0,
     }
     for sample in samples:
-        status, findings = validate_sample(sample, dataset_root)
-        exclusion_reason = sample.exclusion_reason
-        quality_flags = list(sample.quality_flags)
+        status, findings = validate_sample(sample, dataset_root, thresholds=thresholds)
+        prior_validation_codes = {
+            str(finding.get("code"))
+            for finding in sample.validation_findings
+            if isinstance(finding, dict)
+        }
+        exclusion_reason = (
+            None
+            if sample.exclusion_reason in prior_validation_codes
+            else sample.exclusion_reason
+        )
+        quality_flags = [
+            flag
+            for flag in sample.quality_flags
+            if flag not in {"validation_error", "validation_warning"}
+        ]
         if status == ValidationStatus.ERROR:
-            exclusion_reason = exclusion_reason or findings[0].code
+            first_error = next(
+                finding for finding in findings if finding.severity == SEVERITY_ERROR
+            )
+            exclusion_reason = exclusion_reason or first_error.code
             counts["error"] += 1
             quality_flags.append("validation_error")
         elif status == ValidationStatus.WARNING:
@@ -238,7 +255,7 @@ def apply_validation(
                 validation_status=status,
                 validation_findings=[finding.to_dict() for finding in findings],
                 exclusion_reason=exclusion_reason,
-                quality_flags=quality_flags,
+                quality_flags=sorted(set(quality_flags)),
             )
         )
     report = {

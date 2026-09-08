@@ -23,7 +23,6 @@ from clouda_data.pretraining.splitting import (
 from clouda_data.pretraining.validation import (
     ValidationThresholds,
     apply_validation,
-    set_thresholds,
     validate_sample,
 )
 
@@ -40,13 +39,6 @@ def _sample(sample_id: str, **kwargs: object) -> DatasetSample:
     }
     base.update(kwargs)
     return DatasetSample(**base)
-
-
-@pytest.fixture(autouse=True)
-def _thresholds(tmp_path: Path):
-    set_thresholds(ValidationThresholds(require_image=False))
-    yield
-    set_thresholds(ValidationThresholds())
 
 
 # ------------------------------------------------------------- validation
@@ -68,11 +60,15 @@ def test_validation_flags_path_escape(tmp_path: Path):
 
 def test_validation_flags_empty_and_long_text(tmp_path: Path):
     empty = _sample("a", raw_text="   ", text="  ")
-    status, _ = validate_sample(empty, tmp_path)
+    limits = ValidationThresholds(require_image=False)
+    status, _ = validate_sample(empty, tmp_path, thresholds=limits)
     assert status == ValidationStatus.ERROR
     long_sample = _sample("b", raw_text="x" * 200, text="x" * 200)
-    set_thresholds(ValidationThresholds(require_image=False, max_text_chars=100))
-    status, findings = validate_sample(long_sample, tmp_path)
+    status, findings = validate_sample(
+        long_sample,
+        tmp_path,
+        thresholds=ValidationThresholds(require_image=False, max_text_chars=100),
+    )
     assert any(f.code == "text_too_long" for f in findings)
     assert status == ValidationStatus.ERROR
 
@@ -83,7 +79,9 @@ def test_validation_bad_sample_does_not_abort_dataset(tmp_path: Path):
         _sample("bad", image_path="../escape.png"),
         _sample("good2", image_path=None),
     ]
-    updated, report = apply_validation(samples, tmp_path)
+    updated, report = apply_validation(
+        samples, tmp_path, thresholds=ValidationThresholds(require_image=False)
+    )
     assert report["counts"]["error"] == 1
     assert report["counts"]["ok"] == 2
     assert len(updated) == 3
@@ -92,7 +90,9 @@ def test_validation_bad_sample_does_not_abort_dataset(tmp_path: Path):
 
 def test_validation_reports_malformed_metadata(tmp_path: Path):
     sample = _sample("a", provenance={"malformed_metadata": True})
-    _, findings = validate_sample(sample, tmp_path)
+    _, findings = validate_sample(
+        sample, tmp_path, thresholds=ValidationThresholds(require_image=False)
+    )
     assert any(f.code == "malformed_metadata" for f in findings)
 
 
@@ -107,7 +107,7 @@ def test_exact_file_duplicates_classified_with_provenance():
     ]
     updated, report = classify_duplicates(samples)
     states = {s.sample_id: s.duplicate_state for s in updated}
-    assert states["a"] == DuplicateState.UNIQUE
+    assert states["a"] == DuplicateState.CANONICAL
     assert states["b"] == DuplicateState.DUPLICATE
     dup = next(s for s in updated if s.sample_id == "b")
     assert dup.duplicate_of == "a"
@@ -168,7 +168,9 @@ def test_split_is_deterministic_across_reruns():
     second = assign_splits(_split_samples(), seed=42)
     assert [s.target_split for s in first[0]] == [s.target_split for s in second[0]]
     other_seed = assign_splits(_split_samples(), seed=43)[0]
-    assert first[0] != other_seed or True  # seed changes assignment
+    assert [sample.target_split for sample in first[0]] != [
+        sample.target_split for sample in other_seed
+    ]
 
 
 def test_pages_of_same_document_never_cross_splits():

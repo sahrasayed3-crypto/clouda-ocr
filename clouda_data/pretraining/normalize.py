@@ -57,15 +57,47 @@ class NormalizationPolicy:
     strip_bom: bool = True
     normalize_line_endings: bool = True
     preserve_line_breaks: bool = True
-    collapse_whitespace: bool = True
-    remove_zero_width: bool = True
-    remove_control_characters: bool = True
+    collapse_whitespace: bool = False
+    remove_zero_width: bool = False
+    remove_control_characters: bool = False
     remove_tatweel: bool = False
     remove_diacritics: bool = False
     fold_alef: bool = False
     fold_ya: bool = False
     fold_digits: bool = False
     presentation_forms: str = "preserve"  # or "compose"
+
+    def __post_init__(self) -> None:
+        boolean_fields = (
+            "strip_bom",
+            "normalize_line_endings",
+            "preserve_line_breaks",
+            "collapse_whitespace",
+            "remove_zero_width",
+            "remove_control_characters",
+            "remove_tatweel",
+            "remove_diacritics",
+            "fold_alef",
+            "fold_ya",
+            "fold_digits",
+        )
+        if any(not isinstance(getattr(self, name), bool) for name in boolean_fields):
+            raise TypeError("Normalization switches must be booleans.")
+        if self.unicode_form not in {"NFC", "NFD", "NFKC", "NFKD"}:
+            raise ValueError(f"Unsupported unicode form: {self.unicode_form}")
+        if self.presentation_forms not in {"preserve", "compose"}:
+            raise ValueError("presentation_forms must be 'preserve' or 'compose'")
+        if (
+            self.unicode_form in {"NFKC", "NFKD"}
+            and self.presentation_forms != "compose"
+        ):
+            raise ValueError(
+                "Compatibility normalization requires presentation_forms='compose'"
+            )
+        if self.presentation_forms == "compose" and self.unicode_form != "NFKC":
+            raise ValueError(
+                "presentation_forms='compose' requires unicode_form='NFKC'"
+            )
 
     def fingerprint(self) -> str:
         payload = json.dumps(asdict(self), sort_keys=True, ensure_ascii=False)
@@ -99,13 +131,6 @@ def normalize_text(text: str, policy: NormalizationPolicy) -> NormalizedText:
         value = value.replace("\r\n", "\n").replace("\r", "\n")
         applied.append("normalize_line_endings")
 
-    if policy.unicode_form not in {"NFC", "NFD", "NFKC", "NFKD"}:
-        raise ValueError(f"Unsupported unicode form: {policy.unicode_form}")
-    if policy.presentation_forms == "compose":
-        if policy.unicode_form != "NFKC":
-            raise ValueError(
-                "presentation_forms='compose' requires unicode_form='NFKC'"
-            )
     form = cast("Literal['NFC', 'NFD', 'NFKC', 'NFKD']", policy.unicode_form)
     if not unicodedata.is_normalized(form, value):
         value = unicodedata.normalize(form, value)

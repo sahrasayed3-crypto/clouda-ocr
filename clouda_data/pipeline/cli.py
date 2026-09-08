@@ -43,6 +43,9 @@ from clouda_data.locations import (
     repository_root,
 )
 from clouda_data.pipeline.profiles import list_profile_paths, load_profile
+from clouda_data.pretraining.config import PreparationConfig, load_preparation_config
+from clouda_data.pretraining.sources import SourceDefinition
+from clouda_data.pretraining import workflow as pretraining_workflow
 from clouda_data.rendering import (
     RenderConfig,
     render_document,
@@ -556,6 +559,141 @@ def verify_archive_cli(args: argparse.Namespace) -> int:
     return 0 if report["passed"] else 1
 
 
+# ---------------------------------------------------------------------------
+# Pre-training dataset infrastructure (clouda_data.pretraining)
+# ---------------------------------------------------------------------------
+
+
+def _preparation_config(args: argparse.Namespace) -> PreparationConfig:
+    return (
+        load_preparation_config(args.config)
+        if getattr(args, "config", None)
+        else PreparationConfig()
+    )
+
+
+def _apply_seed(
+    args: argparse.Namespace, config: PreparationConfig
+) -> PreparationConfig:
+    seed = getattr(args, "seed", None)
+    if seed is not None and seed != config.split_seed:
+        return PreparationConfig.from_mapping({**config.to_dict(), "split_seed": seed})
+    return config
+
+
+def _parse_ratios(value: str | None) -> dict[str, float] | None:
+    if not value:
+        return None
+    parts = [part.strip() for part in value.split(",")]
+    if len(parts) != 4:
+        raise ValueError("Ratios must be train,validation,test,holdout.")
+    names = ("train", "validation", "test", "holdout")
+    return dict(zip(names, (float(part) for part in parts), strict=True))
+
+
+def dataset_register_source_cli(args: argparse.Namespace) -> int:
+    source = SourceDefinition(
+        source_id=args.source_id,
+        name=args.name,
+        origin=args.origin or "",
+        license=args.license or "unknown",
+        languages=tuple(args.languages.split(",")) if args.languages else ("ar",),
+        expected_format=args.expected_format,
+        local_root=str(Path(args.local_root).resolve()) if args.local_root else "",
+        remote_ref=args.remote_ref,
+        adapter=args.adapter,
+        enabled=not args.disabled,
+        redistribution=args.redistribution,
+        classification=args.classification,
+        notes=args.notes or "",
+    )
+    path = pretraining_workflow.ensure_source_registered(args.workspace, source)
+    print(json.dumps({"registered": source.source_id, "registry": str(path)}, indent=2))
+    return 0
+
+
+def dataset_scan_cli(args: argparse.Namespace) -> int:
+    source = pretraining_workflow.resolve_source(args.workspace, args.source)
+    report = pretraining_workflow.index_source(
+        args.workspace,
+        source,
+        _preparation_config(args),
+        resume=not args.fresh,
+        dry_run=args.dry_run,
+    )
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    return 0
+
+
+def dataset_validate_cli(args: argparse.Namespace) -> int:
+    report = pretraining_workflow.validate_workspace(
+        args.workspace, _preparation_config(args)
+    )
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    return 0 if report["counts"]["error"] == 0 else 1
+
+
+def dataset_normalize_cli(args: argparse.Namespace) -> int:
+    report = pretraining_workflow.normalize_workspace(
+        args.workspace, _preparation_config(args)
+    )
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    return 0
+
+
+def dataset_dedupe_cli(args: argparse.Namespace) -> int:
+    report = pretraining_workflow.dedupe_workspace(args.workspace)
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    return 0
+
+
+def dataset_split_cli(args: argparse.Namespace) -> int:
+    report = pretraining_workflow.split_workspace(
+        args.workspace,
+        seed=args.seed,
+        ratios=_parse_ratios(args.ratios),
+    )
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    return 0 if report["passed"] else 1
+
+
+def dataset_export_cli(args: argparse.Namespace) -> int:
+    config = _preparation_config(args)
+    if args.include_holdout:
+        config = PreparationConfig.from_mapping(
+            {**config.to_dict(), "include_holdout_in_export": True}
+        )
+    result = pretraining_workflow.export_workspace(args.workspace, config)
+    print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+    return 0
+
+
+def dataset_stats_cli(args: argparse.Namespace) -> int:
+    stats = pretraining_workflow.stats_workspace(args.workspace)
+    print(json.dumps(stats, ensure_ascii=False, indent=2))
+    return 0
+
+
+def dataset_prepare_cli(args: argparse.Namespace) -> int:
+    config = _apply_seed(args, _preparation_config(args))
+    report = pretraining_workflow.prepare_dataset(
+        args.workspace,
+        args.source,
+        config,
+        seed=args.seed,
+        dry_run=args.dry_run,
+        resume=not args.fresh,
+        write_handoff=args.data_factory_handoff,
+        handoff_profiles=[
+            profile for profile in (args.handoff_profiles or "").split(",") if profile
+        ],
+        intended_output=args.intended_output,
+    )
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    passed = report["split"]["passed"] and not report["validation"]["counts"]["error"]
+    return 0 if passed else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m clouda_data.pipeline.cli")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -823,6 +961,86 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("verify-archive")
     p.add_argument("archive")
     p.set_defaults(func=verify_archive_cli)
+
+    # Pre-training dataset infrastructure ---------------------------------
+    p = sub.add_parser("dataset-register-source")
+    p.add_argument("workspace")
+    p.add_argument("source_id")
+    p.add_argument("--name", required=True)
+    p.add_argument("--local-root")
+    p.add_argument("--origin")
+    p.add_argument("--license")
+    p.add_argument("--languages", help="comma separated, e.g. ar,en")
+    p.add_argument("--expected-format", default="image+text")
+    p.add_argument("--remote-ref")
+    p.add_argument("--adapter", default="auto")
+    p.add_argument("--disabled", action="store_true")
+    p.add_argument(
+        "--redistribution",
+        choices=["allowed", "attribution_required", "restricted", "forbidden"],
+        default="restricted",
+    )
+    p.add_argument(
+        "--classification",
+        choices=["training_only", "public", "private", "restricted"],
+        default="private",
+    )
+    p.add_argument("--notes")
+    p.set_defaults(func=dataset_register_source_cli)
+
+    p = sub.add_parser("dataset-scan")
+    p.add_argument("source", help="registered source id or local directory")
+    p.add_argument("workspace")
+    p.add_argument("--config")
+    p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--fresh", action="store_true", help="ignore existing index")
+    p.set_defaults(func=dataset_scan_cli)
+
+    p = sub.add_parser("dataset-validate")
+    p.add_argument("workspace")
+    p.add_argument("--config")
+    p.set_defaults(func=dataset_validate_cli)
+
+    p = sub.add_parser("dataset-normalize")
+    p.add_argument("workspace")
+    p.add_argument("--config")
+    p.set_defaults(func=dataset_normalize_cli)
+
+    p = sub.add_parser("dataset-dedupe")
+    p.add_argument("workspace")
+    p.set_defaults(func=dataset_dedupe_cli)
+
+    p = sub.add_parser("dataset-split")
+    p.add_argument("workspace")
+    p.add_argument("--seed", type=int)
+    p.add_argument("--ratios", help="train,validation,test,holdout floats")
+    p.set_defaults(func=dataset_split_cli)
+
+    p = sub.add_parser("dataset-export")
+    p.add_argument("workspace")
+    p.add_argument("--config")
+    p.add_argument("--include-holdout", action="store_true")
+    p.set_defaults(func=dataset_export_cli)
+
+    p = sub.add_parser("dataset-stats")
+    p.add_argument("workspace")
+    p.set_defaults(func=dataset_stats_cli)
+
+    p = sub.add_parser("dataset-prepare")
+    p.add_argument("source", help="registered source id or local directory")
+    p.add_argument("workspace")
+    p.add_argument("--config")
+    p.add_argument("--seed", type=int)
+    p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--fresh", action="store_true")
+    p.add_argument(
+        "--data-factory-handoff",
+        action="store_true",
+        help="emit a declarative handoff request for clouda-data-factory",
+    )
+    p.add_argument("--handoff-profiles", default="")
+    p.add_argument("--intended-output")
+    p.set_defaults(func=dataset_prepare_cli)
 
     return parser
 

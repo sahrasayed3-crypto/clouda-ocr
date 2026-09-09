@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import csv
+import io
 import json
 from pathlib import Path
 
@@ -13,6 +15,27 @@ from clouda_training.exporter import (
     export_training_data,
     training_statistics,
 )
+from clouda_training.experiments import (
+    ConfigError,
+    RunStatus,
+    compare_runs,
+    list_checkpoints,
+    list_runs,
+    load_experiment_config,
+    load_run,
+    resume_run,
+    run_experiment,
+)
+
+
+def _machine_flag(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--json", action="store_true", help="Emit machine-readable JSON."
+    )
+
+
+def _runs_root(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--runs-root", type=Path, default=Path("runs"))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -52,11 +75,170 @@ def build_parser() -> argparse.ArgumentParser:
     statistics.add_argument("manifest", type=Path)
     estimate = subparsers.add_parser("estimate-storage")
     estimate.add_argument("manifest", type=Path)
+
+    validate_config = subparsers.add_parser(
+        "validate-config", help="Validate and hash an experiment configuration."
+    )
+    validate_config.add_argument("config", type=Path)
+    validate_config.add_argument("--override", action="append", default=[])
+    _machine_flag(validate_config)
+    for command, help_text in (
+        ("run", "Run a configured adapter (mock adapters only in this build)."),
+        ("dry-run", "Run the complete offline mock experiment lifecycle."),
+    ):
+        run_parser = subparsers.add_parser(command, help=help_text)
+        run_parser.add_argument("config", type=Path)
+        run_parser.add_argument("--override", action="append", default=[])
+        _machine_flag(run_parser)
+    listing = subparsers.add_parser("list", help="List filesystem-registered runs.")
+    _runs_root(listing)
+    listing.add_argument("--status", choices=[status.value for status in RunStatus])
+    listing.add_argument("--tag", action="append", default=[])
+    _machine_flag(listing)
+    show = subparsers.add_parser("show", help="Show one run and its summary.")
+    show.add_argument("run_id")
+    _runs_root(show)
+    _machine_flag(show)
+    compare = subparsers.add_parser(
+        "compare", help="Compare configs and metrics for two runs."
+    )
+    compare.add_argument("run_a")
+    compare.add_argument("run_b")
+    _runs_root(compare)
+    compare.add_argument("--format", choices=["human", "json", "csv"], default="human")
+    resume = subparsers.add_parser(
+        "resume", help="Resume an interrupted or failed mock run."
+    )
+    resume.add_argument("run_id")
+    _runs_root(resume)
+    _machine_flag(resume)
+    checkpoints = subparsers.add_parser(
+        "checkpoints", help="List validated checkpoints for a run."
+    )
+    checkpoints.add_argument("run_id")
+    _runs_root(checkpoints)
+    _machine_flag(checkpoints)
     return parser
+
+
+def _emit(payload: object, *, machine: bool, heading: str = "") -> None:
+    if machine:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+    if heading:
+        print(heading)
+    if isinstance(payload, list):
+        for item in payload:
+            if isinstance(item, dict):
+                print(f"{item.get('run_id', '-')}: {item.get('status', '')}")
+            else:
+                print(item)
+    elif isinstance(payload, dict):
+        for key, value in payload.items():
+            print(f"{key}: {value}")
+    else:
+        print(payload)
+
+
+def _comparison_csv(payload: dict) -> str:
+    output = io.StringIO()
+    writer = csv.writer(output, lineterminator="\n")
+    writer.writerow(["kind", "field", "run_a", "run_b"])
+    for kind in ("config_differences", "metric_differences"):
+        for field, values in payload[kind].items():
+            writer.writerow([kind, field, values[0], values[1]])
+    return output.getvalue()
+
+
+def _experiment_command(args: argparse.Namespace) -> int:
+    try:
+        if args.command == "validate-config":
+            config = load_experiment_config(args.config, overrides=args.override)
+            _emit(
+                {
+                    "valid": True,
+                    "config_hash": config.hash,
+                    "experiment": config.experiment.name,
+                },
+                machine=args.json,
+                heading="Experiment configuration is valid.",
+            )
+            return 0
+        if args.command in {"run", "dry-run"}:
+            overrides = list(args.override)
+            if args.command == "dry-run":
+                overrides.extend(["runtime.dry_run=true", "runtime.offline=true"])
+            run = run_experiment(
+                load_experiment_config(args.config, overrides=overrides)
+            )
+            _emit(run.to_dict(), machine=args.json, heading="Experiment run completed.")
+            return 0
+        if args.command == "list":
+            status = RunStatus(args.status) if args.status else None
+            run_payload = [
+                run.to_dict()
+                for run in list_runs(args.runs_root, status=status, tags=set(args.tag))
+            ]
+            _emit(run_payload, machine=args.json, heading="Experiment runs")
+            return 0
+        if args.command == "show":
+            _emit(load_run(args.run_id, args.runs_root).to_dict(), machine=args.json)
+            return 0
+        if args.command == "compare":
+            comparison_payload = compare_runs(
+                load_run(args.run_a, args.runs_root),
+                load_run(args.run_b, args.runs_root),
+            )
+            if args.format == "csv":
+                print(_comparison_csv(comparison_payload), end="")
+            else:
+                _emit(
+                    comparison_payload,
+                    machine=args.format == "json",
+                    heading="Run comparison",
+                )
+            return 0
+        if args.command == "resume":
+            run = resume_run(args.run_id, args.runs_root)
+            _emit(run.to_dict(), machine=args.json, heading="Experiment run resumed.")
+            return 0
+        if args.command == "checkpoints":
+            run = load_run(args.run_id, args.runs_root)
+            _emit(
+                [item.to_dict() for item in list_checkpoints(run.path)],
+                machine=args.json,
+                heading="Checkpoints",
+            )
+            return 0
+    except (
+        ConfigError,
+        FileNotFoundError,
+        PermissionError,
+        ValueError,
+        RuntimeError,
+    ) as exc:
+        _emit(
+            {"valid": False, "error": str(exc), "error_type": type(exc).__name__},
+            machine=getattr(args, "json", False)
+            or getattr(args, "format", "") == "json",
+        )
+        return 2
+    raise AssertionError(f"Unhandled experiment command: {args.command}")
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.command in {
+        "validate-config",
+        "run",
+        "dry-run",
+        "list",
+        "show",
+        "compare",
+        "resume",
+        "checkpoints",
+    }:
+        return _experiment_command(args)
     if args.command in {"export", "split"}:
         result = export_training_data(
             args.manifest,

@@ -1,0 +1,61 @@
+schema_version: 1
+experiment:
+  name: arabic_ocr_mock_baseline
+  description: Offline lifecycle example; performs no model training.
+  tags: [example, offline, mock]
+  parent_experiment: null
+  notes: Safe CPU-only example for experiment-framework validation.
+model:
+  model_id: mock/clouda-ocr
+  revision: fixture-v1
+  model_family: multimodal-ocr
+  adapter_type: mock
+  tokenizer_id: null
+  tokenizer_revision: null
+  trust_remote_code: false
+  precision: float32
+dataset:
+  dataset_id: clouda-training-fixture
+  dataset_version: fixture-v1
+  manifest_path: mock-manifest.jsonl
+  split: train
+  sample_limit: 2
+  preprocessing_version: clouda.pretraining.normalize.v1
+training:
+  seed: 20260909
+  epochs: 1
+  max_steps: 6
+  batch_size: 2
+  gradient_accumulation_steps: 1
+  learning_rate: 0.0001
+  weight_decay: 0.01
+  warmup_steps: 1
+  scheduler: linear
+  max_grad_norm: 1.0
+  mixed_precision: false
+  gradient_checkpointing: false
+checkpoint:
+  save_strategy: steps
+  save_steps: 2
+  save_total_limit: 2
+  resume_from: null
+  keep_best: true
+  metric_for_best: loss
+  greater_is_better: false
+evaluation:
+  enabled: true
+  eval_split: validation
+  eval_steps: 2
+  metrics: [cer, wer]
+  max_samples: 2
+runtime:
+  device: cpu
+  num_workers: 0
+  output_root: ../../runs
+  dry_run: true
+  offline: true
+  deterministic: true
+tracking:
+  enabled: true
+  backend: jsonl
+  log_steps: 1

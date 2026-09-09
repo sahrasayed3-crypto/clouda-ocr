@@ -62,7 +62,13 @@ The data foundation and training planner are available as:
 ```powershell
 python -m clouda_data.pipeline.cli --help
 python -m clouda_training.cli plan --config configs\training\smoke-100.json --catalog dataset_catalog\registry\datasets_v1.json
+python -m clouda_training.cli validate-config configs\training\mock-experiment.yaml
+python -m clouda_training.cli dry-run configs\training\mock-experiment.yaml
 ```
+
+The experiment flow is a reproducible CPU-only mock run: it downloads no model
+or dataset and performs no real training. See the
+[training experiment framework guide](docs/training/EXPERIMENT_FRAMEWORK.md).
 
 ## Run
 

@@ -5,7 +5,9 @@ preparation, training preparation, and model evaluation have separate queues,
 timeouts, retry policies, worker capabilities, and filesystem access.
 
 The Streamlit and FastAPI entrypoints do not import `clouda_training`.
-Training execution is intentionally disabled; the subsystem validates
-licenses, estimates local examples and bytes, creates deterministic
-document-level splits, and emits plans. User documents have no route into the
-dataset catalog or training planner.
+Production model training remains intentionally disabled. The subsystem
+validates licenses, estimates local examples and bytes, creates deterministic
+document-level splits, emits plans, and can execute a CPU-only mock experiment
+lifecycle for engineering validation. User documents have no route into the
+dataset catalog, training planner, or experiment runner. Real adapters remain
+fail-closed until hardware and license validation is complete.

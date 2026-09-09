@@ -1,0 +1,162 @@
+# =============================================================================
+# Arabic OCR Benchmark - Page rendering & layout configuration
+# =============================================================================
+# Controls how source text is paginated and rendered into clean page images.
+# Layout for each page is chosen deterministically from these option pools
+# using the page index and the global seed.
+# =============================================================================
+version: 1
+
+page:
+  # A4 at the working DPI. width_px/height_px are derived: mm / 25.4 * dpi
+  size_name: A4
+  width_mm: 210.0
+  height_mm: 297.0
+  dpi: 150
+  background: 255          # clean paper value (8-bit grey)
+  ink: 20                  # near-black ink, not pure 0 - matches real print
+  mode: L                  # render greyscale; distortions may promote to RGB
+  column_gutter_mm: 8.0    # space between columns in two-column layouts
+
+fonts:
+  # Logical name -> file under assets/fonts/. All must cover Arabic + Latin +
+  # both digit sets; verified at startup by the font coverage check.
+  dir: assets/fonts
+  families:
+    amiri:
+      regular: Amiri-Regular.ttf
+      bold: Amiri-Bold.ttf
+      style: naskh
+    scheherazade:
+      regular: ScheherazadeNew-Regular.ttf
+      bold: ScheherazadeNew-Bold.ttf
+      style: naskh
+    noto_naskh:
+      regular: NotoNaskhArabic.ttf
+      bold: NotoNaskhArabic.ttf
+      style: naskh
+    cairo:
+      regular: Cairo.ttf
+      bold: Cairo.ttf
+      style: sans
+  # Pool the layout picker draws from, with relative weights.
+  pool:
+    - {family: amiri,        weight: 3}
+    - {family: scheherazade, weight: 3}
+    - {family: noto_naskh,   weight: 2}
+    - {family: cairo,        weight: 2}
+
+# -----------------------------------------------------------------------------
+# Option pools. One value is drawn per page, deterministically.
+# -----------------------------------------------------------------------------
+variation:
+
+  columns:
+    - {value: 1, weight: 7}
+    - {value: 2, weight: 3}
+
+  # Body text size in typographic points.
+  body_pt:
+    - {value: 10.5, weight: 2}
+    - {value: 11.5, weight: 3}
+    - {value: 12.5, weight: 3}
+    - {value: 14.0, weight: 2}
+    - {value: 16.0, weight: 1}
+
+  # Multiplier on font size to get baseline-to-baseline distance.
+  line_spacing:
+    - {value: 1.30, weight: 2}
+    - {value: 1.50, weight: 3}
+    - {value: 1.70, weight: 3}
+    - {value: 2.00, weight: 2}
+
+  # Page margins in millimetres [top, right, bottom, left].
+  margins_mm:
+    - {value: [18, 16, 18, 16], weight: 2, name: narrow}
+    - {value: [25, 22, 25, 22], weight: 3, name: normal}
+    - {value: [32, 30, 32, 30], weight: 2, name: wide}
+    - {value: [28, 38, 28, 20], weight: 1, name: asymmetric_gutter}
+
+  # Text density target - drives how much of the frame gets filled.
+  density:
+    - {value: dense,  weight: 3, fill: 1.00}
+    - {value: normal, weight: 4, fill: 0.92}
+    - {value: sparse, weight: 3, fill: 0.74}
+
+  # First-line indent of body paragraphs, in em units.
+  paragraph_indent_em:
+    - {value: 0.0, weight: 4}
+    - {value: 1.5, weight: 4}
+    - {value: 2.5, weight: 2}
+
+  # Inter-paragraph vertical gap, in em units.
+  paragraph_gap_em:
+    - {value: 0.0, weight: 3}
+    - {value: 0.4, weight: 4}
+    - {value: 0.8, weight: 3}
+
+  justify:
+    - {value: true,  weight: 6}
+    - {value: false, weight: 4}
+
+  heading_scale:
+    - {value: 1.15, weight: 3, name: small}
+    - {value: 1.35, weight: 3, name: medium}
+    - {value: 1.75, weight: 2, name: large}
+    - {value: 2.20, weight: 2, name: xlarge}
+
+  running_header:
+    - {value: true,  weight: 5}
+    - {value: false, weight: 5}
+
+  running_footer:
+    - {value: true,  weight: 4}
+    - {value: false, weight: 6}
+
+  page_number:
+    - {value: true,  weight: 8}
+    - {value: false, weight: 2}
+
+  page_number_position:
+    - {value: bottom_center, weight: 5}
+    - {value: bottom_outer,  weight: 3}
+    - {value: top_outer,     weight: 2}
+
+  # Which digit shapes are used for the synthesized page number.
+  numeral_system:
+    - {value: arabic_indic, weight: 6}   # ٠١٢٣٤٥٦٧٨٩
+    - {value: western,      weight: 4}   # 0123456789
+
+  # Probability that a page carrying a short trailing segment renders it as a
+  # footnote (with a rule and a reference marker in the body) instead of inline.
+  footnote_probability: 0.22
+
+  # Draw a thin rule under the running header / above the footer.
+  header_rule_probability: 0.5
+
+typography:
+  # Body/heading colour jitter, simulating ink density variation between pages.
+  ink_jitter: [0, 26]
+  # Maximum extra word-space added when justifying, as a fraction of a space.
+  max_justify_stretch: 3.0
+  # Do not justify a line if it would need more stretch than the above.
+  # Footnote text size relative to body.
+  footnote_scale: 0.82
+  # Running header/footer size relative to body.
+  running_scale: 0.80
+  # Page number size relative to body.
+  page_number_scale: 0.85
+  # Rule thickness in px at 150dpi, scaled with dpi.
+  rule_px: 1.5
+  # Superscript footnote marker size relative to body.
+  footnote_marker_scale: 0.62
+
+pagination:
+  # A segment shorter than this many characters may be promoted to a footnote.
+  footnote_max_chars: 220
+  # Never leave fewer than this many lines of a split paragraph on a page
+  # (widow/orphan control) - if violated, the whole paragraph moves to the next page.
+  min_orphan_lines: 2
+  min_widow_lines: 2
+  # A heading must be followed by at least this many body lines on the same page.
+  heading_keep_with_next_lines: 2

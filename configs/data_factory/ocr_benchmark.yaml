@@ -1,0 +1,317 @@
+# =============================================================================
+# Arabic OCR Benchmark - Distortion Configuration
+# =============================================================================
+# ALL tunable distortion parameters live here. Implementation code in
+# scripts/ocrbench/distortions.py must not hard-code any of these values.
+#
+# Each distortion declares:
+#   family      logical grouping used by the allocator / contact sheets
+#   output_dir  subdirectory under distorted/ where samples are written
+#   severities  parameter set per severity level (light | medium | heavy)
+#
+# Ranges written as [lo, hi] are sampled from the per-sample deterministic RNG.
+# Scalars are used as-is.
+# =============================================================================
+version: 1
+
+# -----------------------------------------------------------------------------
+# Human-readability guard.
+# The brief requires that no sample be degraded past human legibility unless it
+# is explicitly classified `extreme`. QC measures each sample against these
+# floors (relative to its own clean original) and fails the run if a
+# non-extreme sample drops below them.
+# -----------------------------------------------------------------------------
+readability:
+  enforce_for_non_extreme: true
+  # Retained global contrast (std-dev of pixels) as a fraction of the clean page.
+  min_contrast_ratio: 0.18
+  # Retained edge energy (variance of Laplacian) as a fraction of the clean page.
+  min_sharpness_ratio: 0.010
+  # Ink coverage must stay within this band relative to clean (catches pages
+  # washed to blank white or flooded to solid black).
+  # Calibrated for locally adaptive coverage: the 0.15 floor retains a visibly
+  # legible 50px manuscript line; the next-lowest benchmark sample is 0.275.
+  min_ink_ratio: 0.15
+  max_ink_ratio: 4.0
+  # Severities considered `extreme` and therefore exempt from the guard.
+  extreme_severities: [extreme]
+
+# -----------------------------------------------------------------------------
+# Atomic distortions
+# -----------------------------------------------------------------------------
+distortions:
+
+  gaussian_blur:
+    family: blur
+    output_dir: blur
+    description: Out-of-focus scan / soft optics.
+    severities:
+      light:  {sigma: 0.7}
+      medium: {sigma: 1.3}
+      heavy:  {sigma: 1.5}
+
+  motion_blur:
+    family: blur
+    output_dir: blur
+    description: Camera or platen movement during capture.
+    severities:
+      light:  {kernel: 5,  angle_range: [-20.0, 20.0]}
+      medium: {kernel: 9,  angle_range: [-35.0, 35.0]}
+      heavy:  {kernel: 13, angle_range: [-45.0, 45.0]}
+
+  jpeg_compression:
+    family: jpeg
+    output_dir: jpeg
+    description: Lossy re-encoding artefacts (blocking, ringing around glyphs).
+    severities:
+      light:  {quality: 38}
+      medium: {quality: 20}
+      heavy:  {quality: 9}
+
+  gaussian_noise:
+    family: noise
+    output_dir: noise
+    description: Sensor / amplifier noise.
+    severities:
+      light:  {sigma: 5.0}
+      medium: {sigma: 12.0}
+      heavy:  {sigma: 21.0}
+
+  salt_pepper_noise:
+    family: noise
+    output_dir: noise
+    description: Dust, dead pixels, binarisation speckle.
+    severities:
+      light:  {amount: 0.0040}
+      medium: {amount: 0.0120}
+      heavy:  {amount: 0.0280}
+
+  low_resolution:
+    family: low_resolution
+    output_dir: low_resolution
+    description: Downscale then upscale - loss of glyph detail (dot/diacritic merge).
+    severities:
+      light:  {scale: 0.65, down_interp: area, up_interp: cubic}
+      medium: {scale: 0.45, down_interp: area, up_interp: cubic}
+      heavy:  {scale: 0.33, down_interp: area, up_interp: cubic}
+
+  rotation:
+    family: skew
+    output_dir: skew
+    description: Whole-page rotation (sheet not square on the platen).
+    severities:
+      light:  {angle_range: [-0.8, 0.8]}
+      medium: {angle_range: [-2.0, 2.0]}
+      heavy:  {angle_range: [-4.0, 4.0]}
+
+  skew:
+    family: skew
+    output_dir: skew
+    description: Horizontal/vertical shear (feed misalignment).
+    severities:
+      light:  {shear_x_range: [-0.010, 0.010], shear_y_range: [-0.004, 0.004]}
+      medium: {shear_x_range: [-0.028, 0.028], shear_y_range: [-0.010, 0.010]}
+      heavy:  {shear_x_range: [-0.055, 0.055], shear_y_range: [-0.018, 0.018]}
+
+  perspective:
+    family: perspective
+    output_dir: perspective
+    description: Off-axis photograph of a page - keystone distortion.
+    severities:
+      light:  {jitter: 0.007}
+      medium: {jitter: 0.018}
+      heavy:  {jitter: 0.032}
+
+  low_contrast:
+    family: contrast
+    output_dir: contrast
+    description: Washed-out scan - ink and paper values pulled together.
+    severities:
+      light:  {alpha: 0.82, beta: 40.0}
+      medium: {alpha: 0.62, beta: 82.0}
+      heavy:  {alpha: 0.45, beta: 118.0}
+
+  brightness:
+    family: contrast
+    output_dir: contrast
+    description: Global exposure error - under- or over-exposed capture.
+    severities:
+      light:  {dark_range: [0.88, 0.94], bright_range: [1.08, 1.16], bright_probability: 0.5}
+      medium: {dark_range: [0.74, 0.85], bright_range: [1.20, 1.34], bright_probability: 0.5}
+      heavy:  {dark_range: [0.60, 0.72], bright_range: [1.40, 1.60], bright_probability: 0.5}
+
+  uneven_lighting:
+    family: shadow
+    output_dir: shadow
+    description: Smooth low-frequency illumination gradient across the sheet.
+    severities:
+      light:  {strength: 0.12, sigma_frac: 0.55}
+      medium: {strength: 0.26, sigma_frac: 0.45}
+      heavy:  {strength: 0.40, sigma_frac: 0.38}
+
+  shadow:
+    family: shadow
+    output_dir: shadow
+    description: Hard-edged cast shadow - book gutter or the operator's hand.
+    severities:
+      light:  {strength: 0.18, width_frac: [0.10, 0.22], softness_frac: 0.060}
+      medium: {strength: 0.28, width_frac: [0.14, 0.30], softness_frac: 0.055}
+      heavy:  {strength: 0.38, width_frac: [0.18, 0.36], softness_frac: 0.048}
+
+  faded_scan:
+    family: faded
+    output_dir: faded
+    description: Ink lifted toward the paper value - weak toner or aged writing.
+    severities:
+      light:  {ink_lift: 0.16, gamma: 1.10}
+      medium: {ink_lift: 0.30, gamma: 1.24}
+      heavy:  {ink_lift: 0.44, gamma: 1.38}
+
+  paper_degradation:
+    family: faded
+    output_dir: faded
+    description: Aged paper - warm tint, fibre grain, diffuse foxing blotches.
+    severities:
+      light:  {tint: [252, 246, 232], grain: 4.0,  blotch_count: [3, 6],   blotch_strength: 0.05}
+      medium: {tint: [246, 235, 208], grain: 8.0,  blotch_count: [6, 12],  blotch_strength: 0.10}
+      heavy:  {tint: [236, 220, 182], grain: 13.0, blotch_count: [10, 20], blotch_strength: 0.17}
+
+  bleedthrough:
+    family: bleedthrough
+    output_dir: bleedthrough
+    description: >
+      Text from the reverse side showing through thin paper. Uses a real
+      mirrored page image from the dataset as the verso, chosen deterministically.
+    severities:
+      light:  {alpha: 0.06, blur_sigma: 1.6, offset_frac: [0.004, 0.004]}
+      medium: {alpha: 0.13, blur_sigma: 2.2, offset_frac: [0.007, 0.006]}
+      heavy:  {alpha: 0.20, blur_sigma: 2.8, offset_frac: [0.010, 0.008]}
+
+  stains:
+    family: faded
+    output_dir: faded
+    description: Light liquid stains and scanner-glass artefacts.
+    severities:
+      light:  {count: [1, 3], radius_frac: [0.03, 0.07], strength: 0.07}
+      medium: {count: [2, 5], radius_frac: [0.05, 0.11], strength: 0.13}
+      heavy:  {count: [4, 9], radius_frac: [0.06, 0.15], strength: 0.20}
+
+# -----------------------------------------------------------------------------
+# Realistic combined degradation profiles.
+#
+# Two authoring forms are accepted:
+#   1. `steps:`  - explicit ordered list (canonical; order is the pipeline order)
+#   2. `mapping:`- the shorthand `{alias: severity}` form; expanded to steps via
+#                  the `profile_aliases` table below in a fixed, documented order.
+# Both are fully deterministic and reusable.
+# -----------------------------------------------------------------------------
+profile_aliases:
+  blur: gaussian_blur
+  fading: faded_scan
+  contrast: low_contrast
+  noise: gaussian_noise
+  compression: jpeg_compression
+  lighting: uneven_lighting
+  paper_degradation: paper_degradation
+  bleedthrough: bleedthrough
+  shadow: shadow
+  perspective: perspective
+  rotation: rotation
+  low_resolution: low_resolution
+  stains: stains
+
+# Fixed order used when expanding the `mapping:` shorthand into a pipeline.
+# Geometry first, then surface/paper, then ink, then optics, then sensor/codec -
+# this mirrors the physical order in which real degradations occur.
+mapping_expansion_order:
+  - rotation
+  - perspective
+  - paper_degradation
+  - bleedthrough
+  - stains
+  - faded_scan
+  - low_contrast
+  - uneven_lighting
+  - shadow
+  - gaussian_blur
+  - low_resolution
+  - gaussian_noise
+  - jpeg_compression
+
+profiles:
+
+  # Authored in the shorthand form given in the project brief.
+  old_book_medium:
+    output_dir: combined
+    description: Mid-20th-century book, moderately aged and softly printed.
+    mapping:
+      blur: light
+      fading: medium
+      contrast: medium
+      bleedthrough: light
+      paper_degradation: medium
+
+  old_book_light:
+    output_dir: combined
+    description: Well-kept older book, light ageing only.
+    steps:
+      - {distortion: paper_degradation, severity: light}
+      - {distortion: bleedthrough,      severity: light}
+      - {distortion: faded_scan,        severity: light}
+      - {distortion: gaussian_blur,     severity: light}
+
+  bad_scan_medium:
+    output_dir: combined
+    description: Office flatbed, sheet askew, uneven lamp, noisy sensor, JPEG output.
+    steps:
+      - {distortion: rotation,          severity: medium}
+      - {distortion: uneven_lighting,   severity: medium}
+      - {distortion: gaussian_noise,    severity: medium}
+      - {distortion: jpeg_compression,  severity: medium}
+
+  bad_scan_heavy:
+    output_dir: combined
+    description: Worst-case office scan - badly askew, gutter shadow, speckle, hard JPEG.
+    steps:
+      - {distortion: rotation,           severity: heavy}
+      - {distortion: shadow,             severity: medium}
+      - {distortion: gaussian_noise,     severity: medium}
+      - {distortion: salt_pepper_noise,  severity: light}
+      - {distortion: low_resolution,     severity: light}
+      - {distortion: jpeg_compression,   severity: heavy}
+
+  phone_photo_light:
+    output_dir: combined
+    description: Steady handheld phone capture in decent light.
+    steps:
+      - {distortion: perspective,       severity: light}
+      - {distortion: uneven_lighting,   severity: light}
+      - {distortion: motion_blur,       severity: light}
+      - {distortion: jpeg_compression,  severity: light}
+
+  phone_photo_medium:
+    output_dir: combined
+    description: Handheld phone capture, off-axis, own shadow across the page.
+    steps:
+      - {distortion: perspective,       severity: medium}
+      - {distortion: shadow,            severity: medium}
+      - {distortion: uneven_lighting,   severity: medium}
+      - {distortion: motion_blur,       severity: medium}
+      - {distortion: jpeg_compression,  severity: medium}
+
+  faded_archive:
+    output_dir: combined
+    description: Long-stored archival sheet - heavy fading, foxing, water stains.
+    steps:
+      - {distortion: paper_degradation, severity: medium}
+      - {distortion: stains,            severity: medium}
+      - {distortion: faded_scan,        severity: heavy}
+      - {distortion: low_contrast,      severity: light}
+
+  compressed_scan:
+    output_dir: combined
+    description: Low-DPI scan saved at aggressive JPEG quality - the classic PDF-mill page.
+    steps:
+      - {distortion: low_resolution,    severity: medium}
+      - {distortion: gaussian_noise,    severity: light}
+      - {distortion: jpeg_compression,  severity: heavy}

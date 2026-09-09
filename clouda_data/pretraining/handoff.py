@@ -1,9 +1,11 @@
-"""Clean integration boundary toward the separate Clouda Data Factory project.
+"""Handoff boundary toward the Data Factory subsystem.
 
-This module does NOT import, vendor, or call ``clouda-data-factory``. It
-only writes a self-contained handoff request describing which clean source
-samples could later be rendered/distorted by that project (which exposes a
-one-command ``clouda-data-factory run <input> <output>`` flow).
+Historically this module described a handoff toward the separate external
+``clouda-data-factory`` project. Since the integration, that project is
+superseded by ``clouda_data.factory`` inside this repository; the handoff
+artifact is still the declarative record of which clean source samples a
+factory run should process, and the reverse direction (factory run ->
+canonical manifest) lives in ``clouda_data.factory.adapters``.
 
 The handoff artifact contains:
 

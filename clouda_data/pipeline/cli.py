@@ -64,6 +64,14 @@ from clouda_data.lifecycle import (
     cleanup as lifecycle_cleanup,
     verify_archive,
 )
+from clouda_data.factory.adapters import (
+    run_dir_to_dataset_manifest,
+)
+from clouda_data.factory.cli import (
+    command_profiles as factory_profiles_command,
+    command_seeds as factory_seeds_command,
+    command_verify as factory_verify_command,
+)
 
 
 def _project_root() -> Path:
@@ -694,6 +702,56 @@ def dataset_prepare_cli(args: argparse.Namespace) -> int:
     return 0 if passed else 1
 
 
+# ---------------------------------------------------------------------------
+# Clouda Data Factory (clouda_data.factory) — synthetic data generation
+# ---------------------------------------------------------------------------
+
+
+def factory_generate_cli(args: argparse.Namespace) -> int:
+    from clouda_data.factory.cli import command_generate
+
+    return command_generate(args)
+
+
+def factory_run_cli(args: argparse.Namespace) -> int:
+    from clouda_data.factory.cli import command_run
+
+    return command_run(args)
+
+
+def factory_profiles_cli(args: argparse.Namespace) -> int:
+    return factory_profiles_command(args)
+
+
+def factory_verify_cli(args: argparse.Namespace) -> int:
+    return factory_verify_command(args)
+
+
+def factory_seeds_cli(args: argparse.Namespace) -> int:
+    return factory_seeds_command(args)
+
+
+def factory_manifest_cli(args: argparse.Namespace) -> int:
+    """Convert a Data Factory run into a canonical pre-training manifest."""
+    path, report, manifest_hash = run_dir_to_dataset_manifest(
+        args.run_dir,
+        args.output,
+        source_id=args.source_id,
+    )
+    print(
+        json.dumps(
+            {
+                "manifest": str(path),
+                "manifest_sha256": manifest_hash,
+                "report": report.to_dict(),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m clouda_data.pipeline.cli")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1041,6 +1099,112 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--handoff-profiles", default="")
     p.add_argument("--intended-output")
     p.set_defaults(func=dataset_prepare_cli)
+
+    # Clouda Data Factory ---------------------------------------------------
+    p = sub.add_parser(
+        "factory-generate",
+        help="Generate clean + synthetic scan data from text/image inputs.",
+    )
+    p.add_argument(
+        "inputs", nargs="+", type=Path, help="text/image files or directories"
+    )
+    p.add_argument("--output", type=Path, required=True, help="runs root directory")
+    p.add_argument(
+        "--profiles",
+        default="05_old_book_medium",
+        help="comma-separated profile names cycled across variants",
+    )
+    p.add_argument("--variants", type=int, default=1, help="scan variants per page")
+    p.add_argument("--seed", type=int, default=20260831, help="base seed")
+    p.add_argument(
+        "--seed-mode",
+        choices=["v1", "ocr_benchmark", "arabic_scan_factory"],
+        default="v1",
+    )
+    p.add_argument(
+        "--backend", default=None, help="render backend (default: first available)"
+    )
+    p.add_argument("--workers", type=int, default=1, help="parallel worker processes")
+    p.add_argument("--no-pdf", action="store_true", help="skip distorted PDF export")
+    p.add_argument("--no-png", action="store_true", help="skip distorted PNG export")
+    p.add_argument("--max-pages", type=int, default=8, help="pages per text document")
+    p.add_argument(
+        "--resume", action="store_true", help="resume an existing run directory"
+    )
+    p.add_argument("--run-id", default=None, help="explicit run id")
+    p.set_defaults(func=factory_generate_cli)
+
+    p = sub.add_parser(
+        "factory-run",
+        help="Zero-configuration one-command data factory.",
+    )
+    p.add_argument("input", type=Path, help="text/image/PDF file or mixed directory")
+    p.add_argument(
+        "output", type=Path, help="output root directory (runs created inside)"
+    )
+    p.add_argument(
+        "--variants", type=int, default=None, help="scan variants per page (default: 2)"
+    )
+    p.add_argument(
+        "--profiles",
+        default=None,
+        help="comma-separated profile names (default: automatic sensible pair)",
+    )
+    p.add_argument("--seed", type=int, default=20260831, help="base seed")
+    p.add_argument(
+        "--seed-mode",
+        choices=["v1", "ocr_benchmark", "arabic_scan_factory"],
+        default="v1",
+    )
+    p.add_argument(
+        "--backend", default="auto", help="render backend (default: best available)"
+    )
+    p.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="worker processes (default: automatic)",
+    )
+    p.add_argument(
+        "--no-pdf", action="store_true", help="skip image-only scan PDF export"
+    )
+    p.add_argument("--no-png", action="store_true", help="skip distorted PNG export")
+    p.add_argument("--max-pages", type=int, default=8, help="pages per text document")
+    p.add_argument(
+        "--fresh",
+        action="store_true",
+        help="force a new run instead of auto-resuming the identical run",
+    )
+    p.set_defaults(func=factory_run_cli)
+
+    p = sub.add_parser(
+        "factory-profiles", help="List Data Factory profiles and backends."
+    )
+    p.set_defaults(func=factory_profiles_cli)
+
+    p = sub.add_parser(
+        "factory-verify", help="Verify hashes in a Data Factory run manifest."
+    )
+    p.add_argument("run_dir", type=Path)
+    p.set_defaults(func=factory_verify_cli)
+
+    p = sub.add_parser(
+        "factory-seeds", help="Show Data Factory seed derivation vectors."
+    )
+    p.set_defaults(func=factory_seeds_cli)
+
+    p = sub.add_parser(
+        "factory-manifest",
+        help="Convert a Data Factory run into a canonical pre-training manifest.",
+    )
+    p.add_argument("run_dir", type=Path, help="Data Factory run directory")
+    p.add_argument("output", type=Path, help="output canonical manifest path")
+    p.add_argument(
+        "--source-id",
+        default="clouda_data_factory",
+        help="source id recorded in the canonical manifest",
+    )
+    p.set_defaults(func=factory_manifest_cli)
 
     return parser
 

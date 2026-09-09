@@ -26,3 +26,7 @@ uvicorn==0.51.0
 PyYAML==6.0.2
 defusedxml==0.7.1
 jsonschema==4.23.0
+numpy==2.4.6
+opencv-python-headless==5.0.0.93
+img2pdf==0.6.3
+pikepdf==10.13.0.post1

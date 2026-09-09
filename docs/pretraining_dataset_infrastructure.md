@@ -25,8 +25,9 @@ the practical scaling limits and migration point are described in §15.
 - No dataset downloading (the existing `clouda_data.datasets` download gate
   stays the only network path, and it is license-gated).
 - No dependency on a trained OCR model, no inference serving, no OCR routing.
-- No distortion/rendering (that is the separate `clouda-data-factory`
-  project; integration is a declarative file boundary, §13).
+- No distortion/rendering itself (that is `clouda_data.factory`,
+  [DATA_FACTORY.md](data_foundation/DATA_FACTORY.md); the handoff boundary is
+  described in §13).
 - No heavyweight services: plain files and standard library only (PIL for
   image validation, which is already a project dependency).
 
@@ -183,17 +184,22 @@ does not upload data, and is not a substitute for a future authoritative policy
 engine. Callers must apply the source-specific permission contract before using
 or releasing data or derived artifacts.
 
-## 13. Clouda Data Factory boundary
+## 13. Clouda Data Factory integration
 
-`handoff.py` writes a declarative request (`handoff/data_factory_handoff.json`)
-plus a candidate manifest of clean, non-holdout samples from the source targeted
-by the prepare command: absolute source root, sample ids, sorted unique requested
-profiles, seed, absolute intended output location, and manifest SHA-256
-provenance. This repository never imports or calls
-`clouda-data-factory` (public repo: `sahrasayed3-crypto/clouda-data-factory`);
-a future caller would feed the candidate manifest to that project's
-`clouda-data-factory run <input> <output>` flow. The main project's tests
-never require the external package.
+The Data Factory is integrated as `clouda_data.factory` (see
+[DATA_FACTORY.md](data_foundation/DATA_FACTORY.md)). Two directions exist:
+
+- **Handoff out** (`handoff.py`): a declarative request
+  (`handoff/data_factory_handoff.json`) plus a candidate manifest of clean,
+  non-holdout samples from the prepared source. The declarative artifact
+  remains the record of which samples a factory run should process.
+- **Conversion in** (`clouda_data.factory.adapters`): a completed factory run
+  manifest converts losslessly into the canonical
+  `clouda.pretraining.manifest.v1` (`factory-manifest <run_dir> <output>`),
+  with leakage-safe split assignment applied, making it directly consumable by
+  the Training Experiment Framework. Provenance (source hashes, seeds,
+  profiles, transform steps, QC) is preserved in each sample's `provenance`
+  dict; holdout data can never originate from a factory run.
 
 ## 14. Running on a tiny local dataset
 

@@ -47,7 +47,7 @@ jobs:
           python -m pip install --upgrade pip &&
           python -m pip install
           -c constraints/py311.txt
-          -e ".[server,worker,data,training,models,test,dev]"
+          -e ".[server,worker,data,training,models,test,dev,factory]"
       - name: Import and CLI smoke tests
         run: |
           python -c "import pdfword, clouda_contracts, clouda_data, clouda_training, clouda_models"
@@ -56,6 +56,9 @@ jobs:
           python -m clouda_data.pipeline.cli distort-batch --help
           python -m clouda_data.pipeline.cli render --help
           python -m clouda_training.cli export --help
+          python -m clouda_data.factory --help
+          python -m clouda_data.pipeline.cli factory-profiles > /dev/null
+          python -m clouda_data.pipeline.cli factory-seeds > /dev/null
       - name: Compile maintained-source gate
         run: >-
           python -m compileall -q

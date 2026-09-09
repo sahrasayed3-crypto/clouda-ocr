@@ -36,6 +36,15 @@ data = [
   "defusedxml==0.7.1",
   "jsonschema==4.23.0"
 ]
+factory = [
+  "numpy>=1.26",
+  "opencv-python-headless>=4.9",
+  "img2pdf>=0.5",
+  "pikepdf>=9"
+]
+factory-render = [
+  "WeasyPrint>=66,<70"
+]
 training = [
   "PyYAML==6.0.2",
   "jsonschema==4.23.0"
@@ -92,7 +101,6 @@ clouda_data = [
   "resources/distortions/*.yaml",
   "resources/schemas/*.json"
 ]
-
 [tool.black]
 line-length = 88
 target-version = ["py311"]
@@ -112,6 +120,11 @@ extend-exclude = [
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+# Vendored RAQM render stack (byte-parity with the legacy engine): imports are
+# intentionally placed after logger setup to preserve the original structure.
+"clouda_data/factory/render/_raqm/*" = ["E402"]
 
 [tool.bandit]
 targets = ["pdfword", "tools", "scripts"]

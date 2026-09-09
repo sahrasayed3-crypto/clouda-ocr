@@ -1,2 +1,4 @@
 -e .[data]
+-e .[factory]
 
+-r requirements-base.txt

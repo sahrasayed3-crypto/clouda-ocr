@@ -12,3 +12,11 @@ subject to their respective licenses, permissions, and terms.
 Publication of benchmark metadata, provenance information, citations,
 and evaluation results does not grant any rights to the underlying
 third-party datasets or source assets.
+
+Bundled Arabic fonts (assets/fonts/): Amiri, Scheherazade New, Noto Naskh
+Arabic, and Cairo are licensed under the SIL Open Font License, Version 1.1.
+Amiri is Copyright (c) The Amiri Project. Scheherazade New is Copyright
+(c) 1994-2026 SIL Global. Noto Naskh Arabic is Copyright (c) Google LLC.
+Cairo is Copyright (c) The Cairo Project authors. The OFL 1.1 permits
+redistribution with the license and copyright notices; the fonts are
+embedded in outputs as rendered, not redistributed as datasets.

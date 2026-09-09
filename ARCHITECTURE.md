@@ -2,7 +2,10 @@
 
 Clouda is one repository with isolated domains and external state. `pdfword` is
 the production PDF-to-DOCX runtime. `clouda_data` prepares and evaluates
-licensed OCR datasets. `clouda_contracts` is the dependency-light boundary
+licensed OCR datasets and hosts the integrated Data Factory
+(`clouda_data.factory`: deterministic synthetic Arabic document generation —
+see [docs/data_foundation/DATA_FACTORY.md](docs/data_foundation/DATA_FACTORY.md)).
+`clouda_contracts` is the dependency-light boundary
 between domains. `clouda_training` plans training and executes reproducible
 offline mock experiments without model downloads, and
 `clouda_models` records model metadata without storing weights.

@@ -51,3 +51,7 @@ python -m venv .venv
 .\.venv\Scripts\python -m clouda_data.pipeline.cli list-dataset-sources
 .\.venv\Scripts\python -m clouda_data.pipeline.cli download-dataset-sample rasam_dataset --max-bytes 104857600
 ```
+
+## Data Factory
+
+The integrated synthetic data factory lives in `clouda_data.factory`. See [DATA_FACTORY.md](DATA_FACTORY.md).

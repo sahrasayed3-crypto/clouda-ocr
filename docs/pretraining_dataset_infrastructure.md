@@ -125,7 +125,7 @@ signal without changing the classification contract.
 
 ## 8. Leakage prevention
 
-`splitting.py`. Three barriers:
+`splitting.py`. Four barriers:
 
 1. pages of one document share a source-scoped group (`group_id` → `document_id` →
    `source_record_id` → `sample_id`) and never cross splits;
@@ -175,6 +175,13 @@ Each run replaces its selected split files and removes stale split files.
 Future formats (Hugging Face datasets, Parquet,
 model-specific layouts) plug in via `register_exporter` without touching
 the core pipeline.
+
+Source, license, restriction, and record provenance remain attached to every
+eligible exported row. The generic exporter prepares local training input; it
+does not grant training, redistribution, publication, or model-release rights,
+does not upload data, and is not a substitute for a future authoritative policy
+engine. Callers must apply the source-specific permission contract before using
+or releasing data or derived artifacts.
 
 ## 13. Clouda Data Factory boundary
 

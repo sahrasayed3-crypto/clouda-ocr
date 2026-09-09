@@ -1,8 +1,10 @@
 # Clouda PDF
 
 > The repository now includes the production runtime plus isolated data,
-> training-planning, model-registry, and shared-contract subsystems. Model
-> training and local OCR inference remain disabled by default.
+> training-planning, model-registry, and shared-contract subsystems. The
+> pre-training dataset-preparation infrastructure is ready and frozen pending
+> real data ingestion. No final trained OCR model exists; model training and
+> local OCR inference remain disabled by default.
 
 Clouda PDF is an open-source, model-agnostic PDF-to-DOCX project for Arabic, English, and mixed-language documents. Its long-term goal is reliable Arabic OCR for modern and historical books, including weak or medium-quality scanned pages, margins, footnotes, RTL text, and mixed Arabic-English reading order.
 
@@ -79,7 +81,10 @@ Open `http://127.0.0.1:8501`.
 .\.venv311\Scripts\python.exe -m mypy .
 ```
 
-Verified on 2026-07-14: `146 passed` with `81%` overall `pdfword` coverage. Ruff, Black, mypy, and compile validation pass across the project.
+The repository contains focused suites for each subsystem. Run the commands
+above for the current checkout rather than relying on a historical test-count
+snapshot; known environment-specific exceptions, when present, are documented
+in the corresponding subsystem documentation.
 
 ## External tools
 
@@ -112,6 +117,19 @@ remain disabled by default. Start with:
 python -m clouda_data.pipeline.cli --help
 python -m clouda_training.cli --help
 ```
+
+### Pre-training stage status
+
+Ready now: local source registration and deterministic discovery, provenance-
+preserving manifests, conservative Arabic normalization, validation, exact
+deduplication, leakage-safe train/validation/test/protected-holdout splitting,
+generic training JSONL export, and the declarative Data Factory handoff boundary.
+See [the pre-training infrastructure guide](docs/pretraining_dataset_infrastructure.md).
+
+Not done yet: real large-scale dataset ingestion, model training, a final trained
+OCR model, production model inference or serving, and a paid hosted OCR service.
+Those are later stages and are not implied by the presence of preparation or
+training-planning code.
 
 ## Example outcome
 

@@ -361,12 +361,12 @@ class TransformersVisionLanguageProvider:
             return
         if not self.available():
             raise RuntimeError("A local model directory is required")
-        from transformers import AutoModelForVision2Seq, AutoProcessor
+        from transformers import AutoModelForImageTextToText, AutoProcessor
 
         self._processor = AutoProcessor.from_pretrained(
             str(self.processor_path), local_files_only=True, trust_remote_code=False
         )
-        self._model = AutoModelForVision2Seq.from_pretrained(
+        self._model = AutoModelForImageTextToText.from_pretrained(
             str(self.model_path),
             local_files_only=True,
             trust_remote_code=False,

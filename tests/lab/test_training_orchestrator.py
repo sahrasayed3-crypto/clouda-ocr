@@ -188,6 +188,34 @@ class TestSelectionToExperiment:
         )
         assert metadata["training_data"]["loader_config_hash"]
 
+    @pytest.mark.parametrize(
+        ("field", "value", "match"),
+        [
+            ("manifest_sha256", "0" * 64, "manifest hash"),
+            ("shard_index_sha256", "0" * 64, "shard-index hash"),
+        ],
+    )
+    def test_prepared_loader_rejects_tampered_descriptor_hashes(
+        self,
+        base_manifest: Path,
+        tmp_path: Path,
+        field: str,
+        value: str,
+        match: str,
+    ):
+        orchestrator = TrainingOrchestrator(runs_root=tmp_path / "runs")
+        prepared = orchestrator.create_training_experiment_from_selection(
+            manifest_path=str(base_manifest),
+            criteria=SelectionCriteria(limit=4),
+            output_dir=tmp_path / "lab",
+            experiment_name="loader_descriptor_integrity",
+        )
+        descriptor = dict(prepared["training_data"])
+        descriptor[field] = value
+
+        with pytest.raises(ValueError, match=match):
+            orchestrator.create_training_data_loader(descriptor)
+
     def test_loader_aware_framework_resume_continues_from_sealed_cursor(
         self, base_manifest: Path, tmp_path: Path
     ):

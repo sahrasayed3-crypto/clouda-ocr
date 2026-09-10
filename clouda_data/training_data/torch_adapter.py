@@ -21,8 +21,8 @@ from __future__ import annotations
 from typing import Any, Iterator
 
 _TORCH_HINT = (
-    "PyTorch is not installed. Install the 'training' extra "
-    "(pip install -e .[training]) or add torch to use the torch adapter."
+    "PyTorch is not installed. Install a platform-compatible PyTorch "
+    "distribution separately to use the optional torch adapter."
 )
 
 

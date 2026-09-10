@@ -412,6 +412,7 @@ class TestEndToEnd:
                 "target_split": "train",
                 "source_id": "synthetic",
                 "source_license": "Apache-2.0",
+                "text": f"synthetic text for {row['sample_id']}",
             }
             for row in rows
         )

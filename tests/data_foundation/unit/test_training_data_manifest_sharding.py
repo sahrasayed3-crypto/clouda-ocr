@@ -294,6 +294,7 @@ class TestSharding:
         )
         assert index.total_samples == 24
         assert index.total_shards >= 1
+        assert max(entry.sample_count for entry in index.shards) <= 5
 
     def test_shard_rows_preserve_provenance(self, synthetic_dataset, tmp_path):
         manifest, _root = synthetic_dataset
@@ -382,4 +383,16 @@ class TestShardIndex:
         payload = shard_index.to_dict()
         payload["shards"][0]["path"] = "../../outside.jsonl"
         with pytest.raises(ShardIndexError, match="path"):
+            type(shard_index).from_dict(payload)
+
+    def test_shard_index_rejects_corrupted_derived_identity(self, shard_index):
+        payload = shard_index.to_dict()
+        payload["shards"][0]["shard_id"] = "shard-0000000000000000"
+        with pytest.raises(ShardIndexError, match="identity"):
+            type(shard_index).from_dict(payload)
+
+    def test_shard_index_rejects_inconsistent_counts(self, shard_index):
+        payload = shard_index.to_dict()
+        payload["total_shards"] += 1
+        with pytest.raises(ShardIndexError, match="total_shards"):
             type(shard_index).from_dict(payload)

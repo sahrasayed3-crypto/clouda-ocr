@@ -112,6 +112,10 @@ class ShardIndex:
             raise ShardIndexError(
                 f"Unsupported shard index schema: {payload.get('schema_version')!r}"
             )
+        dataset_id = str(payload["dataset_id"])
+        dataset_version = str(payload["dataset_version"])
+        manifest_hash = str(payload["source_manifest_sha256"])
+        config_hash = str(payload["shard_config_hash"])
         entries = tuple(
             ShardIndexEntry(
                 shard_id=str(item["shard_id"]),
@@ -123,12 +127,37 @@ class ShardIndex:
             )
             for item in payload["shards"]
         )
+        if int(payload.get("total_shards", -1)) != len(entries):
+            raise ShardIndexError("Shard index total_shards does not match entries")
+        if [entry.ordinal for entry in entries] != list(range(len(entries))):
+            raise ShardIndexError("Shard index ordinals must be contiguous and ordered")
+        if len({entry.path for entry in entries}) != len(entries):
+            raise ShardIndexError("Shard index contains duplicate paths")
+        for entry in entries:
+            expected_id = derive_shard_id(
+                dataset_id,
+                dataset_version,
+                manifest_hash,
+                config_hash,
+                entry.ordinal,
+            )
+            if entry.shard_id != expected_id:
+                raise ShardIndexError(
+                    f"Shard identity mismatch at ordinal {entry.ordinal}"
+                )
+            if entry.sample_count < 1:
+                raise ShardIndexError("Shard sample_count must be positive")
+        total_samples = int(payload["total_samples"])
+        if total_samples != sum(entry.sample_count for entry in entries):
+            raise ShardIndexError(
+                "Shard index total_samples does not match entry counts"
+            )
         return cls(
-            dataset_id=str(payload["dataset_id"]),
-            dataset_version=str(payload["dataset_version"]),
-            source_manifest_sha256=str(payload["source_manifest_sha256"]),
-            shard_config_hash=str(payload["shard_config_hash"]),
-            total_samples=int(payload["total_samples"]),
+            dataset_id=dataset_id,
+            dataset_version=dataset_version,
+            source_manifest_sha256=manifest_hash,
+            shard_config_hash=config_hash,
+            total_samples=total_samples,
             shards=entries,
         )
 
@@ -246,21 +275,27 @@ def build_shards(
             current_shard_id = derive_shard_id(
                 dataset_id, dataset_version, manifest_digest, config_hash, ordinal
             )
-        payload = _shard_row_payload(row, current_shard_id, len(current_lines))
         row_bytes = _approx_row_bytes(row)
-        should_close = False
-        if config.strategy is ShardStrategy.COUNT:
-            should_close = len(current_lines) + 1 >= config.samples_per_shard
-        else:  # SIZE_AWARE
-            should_close = (
-                len(current_lines) + 1 > config.samples_per_shard
+        if (
+            config.strategy is ShardStrategy.SIZE_AWARE
+            and current_lines
+            and (
+                len(current_lines) >= config.samples_per_shard
                 or current_bytes + row_bytes > config.max_shard_bytes
-                and bool(current_lines)
             )
+        ):
+            _flush()
+            current_shard_id = derive_shard_id(
+                dataset_id, dataset_version, manifest_digest, config_hash, ordinal
+            )
+        payload = _shard_row_payload(row, current_shard_id, len(current_lines))
         current_lines.append(payload)
         current_bytes += row_bytes
         total_samples += 1
-        if should_close:
+        if (
+            config.strategy is ShardStrategy.COUNT
+            and len(current_lines) >= config.samples_per_shard
+        ):
             _flush()
     _flush()
 

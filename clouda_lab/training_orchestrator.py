@@ -146,6 +146,12 @@ class TrainingOrchestrator:
         """Construct the canonical runtime loader from prepared local paths."""
         if descriptor.get("schema_version") != "clouda.training_data.prepared.v1":
             raise ValueError("Unsupported prepared training-data descriptor")
+        manifest_path = Path(str(descriptor["manifest_path"]))
+        shard_index_path = Path(str(descriptor["shard_index_path"]))
+        if sha256_file(manifest_path) != descriptor.get("manifest_sha256"):
+            raise ValueError("Prepared training-data manifest hash mismatch")
+        if sha256_file(shard_index_path) != descriptor.get("shard_index_sha256"):
+            raise ValueError("Prepared training-data shard-index hash mismatch")
         config = TrainingDataConfig(
             dataset_id=str(descriptor["dataset_id"]),
             dataset_version=str(descriptor["dataset_version"]),
@@ -155,9 +161,9 @@ class TrainingOrchestrator:
             validation_mode=ValidationMode.NONE,
         )
         loader = StreamingTrainingDataLoader(
-            shard_index_path=Path(str(descriptor["shard_index_path"])),
+            shard_index_path=shard_index_path,
             loader_config=config,
-            manifest_path=Path(str(descriptor["manifest_path"])),
+            manifest_path=manifest_path,
             dataset_root=Path(str(descriptor["dataset_root"])),
         )
         if loader.config_hash != descriptor.get("loader_config_hash"):

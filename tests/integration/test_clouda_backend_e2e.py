@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from PIL import Image, ImageDraw
+import pytest
 
 from clouda_data.factory.adapters import run_dir_to_dataset_manifest
 from clouda_data.factory.factory import generate_run
@@ -20,6 +22,7 @@ from clouda_data.results.models import (
 from clouda_data.results.service import NewPrediction, ResultsService
 from clouda_lab import SelectionCriteria, StoredResultsAnalysisService
 from clouda_lab.training_orchestrator import TrainingOrchestrator
+from clouda_training.experiments import load_experiment_config, run_experiment
 
 
 def _tiny_factory_dataset(tmp_path: Path) -> tuple[Path, dict, dict, str]:
@@ -150,10 +153,43 @@ def test_tiny_offline_backend_flow_from_factory_to_training_lineage(
         output_dir=tmp_path / "training-config",
         experiment_name="clouda-backend-e2e",
     )
-    training_run = orchestrator.start_dry_run(prepared["experiment_config_path"])
+    loader = orchestrator.create_training_data_loader(prepared["training_data"])
+    assert list(loader.iter_sample_ids(epoch=0)) == [page_id]
+    config = load_experiment_config(Path(prepared["experiment_config_path"]))
+    interrupted_loader = orchestrator.create_training_data_loader(
+        prepared["training_data"]
+    )
+    with pytest.raises(KeyboardInterrupt):
+        run_experiment(config, interrupt_at_step=3, data_loader=interrupted_loader)
+    interrupted_path = next(
+        (tmp_path / "training-runs" / "clouda-backend-e2e").iterdir()
+    )
+    interrupted_state = json.loads(
+        (interrupted_path / "checkpoints" / "step-00000002" / "state.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert interrupted_state["data_cursor"]["yielded_count"] > 0
+
+    training_run = orchestrator.resume(
+        interrupted_path.name, training_data=prepared["training_data"]
+    )
     assert training_run["status"] == "COMPLETED"
     assert prepared["experiment_config"]["runtime"]["dry_run"] is True
     assert prepared["experiment_config"]["model"]["adapter_type"] == "mock"
+    run_path = Path(training_run["path"])
+    run_metadata = json.loads((run_path / "metadata.json").read_text(encoding="utf-8"))
+    assert (
+        run_metadata["training_data"]["manifest_sha256"]
+        == prepared["training_data"]["manifest_sha256"]
+    )
+    checkpoint_path = Path(
+        orchestrator.get_checkpoints(training_run["run_id"])[-1]["path"]
+    )
+    checkpoint_state = json.loads(
+        (checkpoint_path / "state.json").read_text(encoding="utf-8")
+    )
+    assert checkpoint_state["data_cursor"]["yielded_count"] > 0
 
     trained_model = training_run_to_model_record(Path(training_run["path"]))
     results.register_model(trained_model)

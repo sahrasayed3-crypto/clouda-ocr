@@ -5,11 +5,9 @@ The loader consumes the canonical Clouda pre-training manifest
 Validation is fail-closed: malformed or unsafe manifests are rejected before
 training iteration begins.
 
-Holdout protection deliberately delegates to the existing data-policy engine
-(``clouda_training.experiments.dataset``) — the same
-``PROTECTED_SPLIT_NAMES`` / ``PROTECTED_ROLES`` / protected-marker rules used
-by the Training Experiment Framework — so there is exactly one definition of
-"protected" in the repository.
+Holdout protection uses the shared canonical policy in
+``clouda_contracts.protection``. The Training Experiment Framework, Results,
+Lab, and this loader therefore share one definition of "protected".
 """
 
 from __future__ import annotations

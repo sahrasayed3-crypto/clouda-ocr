@@ -18,7 +18,8 @@ Batching + Prefetch                           (loader + training_data/prefetch.p
         ↓
 Transform / Collation hooks                   (training_data/collation.py)
         ↓
-Trainer adapter (future HunyuanOCR) / Checkpoint resume bridge
+Training Experiment Framework / future HunyuanOCR adapter
+        ↓  canonical framework checkpoint with sealed loader cursor
         ↓                                     (training_data/checkpoint_bridge.py)
 GPU (deferred — see HARDWARE_VALIDATION.md)
 ```
@@ -53,8 +54,7 @@ No competing format is defined.
 Validation (`validate_canonical_manifest`) is fail-closed and checks:
 
 - header `_schema_version` equals `clouda.pretraining.manifest.v1`;
-- `dataset_id` / `dataset_version` in the header match the loader config
-  (delegated to `clouda_training.experiments.dataset.validate_training_dataset`);
+- `dataset_id` / `dataset_version` in the header match the loader config;
 - the file's actual SHA-256 is computed and later cross-checked against
   the shard index (`manifest hash changed → reject`);
 - every row: non-empty `sample_id`, unique ids, an artifact reference
@@ -66,11 +66,9 @@ Validation (`validate_canonical_manifest`) is fail-closed and checks:
 
 ## 2. Holdout / policy safety (fail closed)
 
-Holdout protection is **delegated** to the existing data-policy engine
-(`clouda_training.experiments.dataset`) — the same
-`PROTECTED_SPLIT_NAMES` / `PROTECTED_ROLES` / protected-marker logic used
-by the Training Experiment Framework. There is exactly one definition of
-"protected" in the repository.
+Holdout protection uses the canonical `clouda_contracts.protection` policy,
+shared by the Training Experiment Framework, Results, Lab, and this loader.
+There is exactly one definition of "protected" in the repository.
 
 The loader rejects (raises `ProtectedManifestError`, a `PermissionError`
 subclass, or `ManifestInputError`):
@@ -149,9 +147,11 @@ Python's built-in `hash()` is never used anywhere in this subsystem
 
 `StreamingTrainingDataLoader.iter_samples` streams shard files line by
 line and yields typed `SampleReference` objects (metadata only — the full
-row dict, image path, text). The entire corpus is never resident: memory
-is bounded by (shard index + one shard's lines + shuffle buffer). Shards
-are opened lazily in visit order and closed after use.
+row dict, image path, text). The entire corpus is never resident: `NONE` and
+`BUFFERED` modes are bounded by the shard index plus the configured shuffle
+buffer; exact `SHARD_ORDER` mode holds at most one configured-bounded shard.
+Shards are opened lazily in visit order and closed after use. Canonical
+manifest validation and framework dataset validation are streaming as well.
 
 ## 8. Shuffle strategy
 
@@ -257,13 +257,16 @@ undercounts delivered samples.
 
 ## 17. Training checkpoint integration
 
-`LoaderCheckpointHook` attaches the cursor to Training Experiment
-Framework checkpoints: `hook.attach_to_state(trainer_state)` produces the
-checkpoint `state.json` payload (the cursor rides beside trainer state
-inside the existing `CheckpointManager` integrity envelope). On resume,
-`read_cursor_from_checkpoint(checkpoint_dir)` + `loader.restore(cursor)`
-continue data iteration without duplicates or gaps. No new run registry or
-checkpoint system is introduced. See
+`LoaderCheckpointHook` attaches the cursor to Training Experiment Framework
+checkpoints. Loader-aware `run_experiment` saves the cursor beside trainer
+state inside the existing `CheckpointManager` integrity envelope;
+loader-aware `resume_run` verifies exact dataset/manifest/config/shard
+identity and restores it before continuing without duplicates or gaps. Lab's
+`TrainingOrchestrator` prepares deterministic shards, constructs the canonical
+loader, and delegates run/resume to those framework APIs. Runtime-only local
+paths are returned in the prepared descriptor but are never persisted as run
+lineage; persisted lineage contains only stable identities and hashes. No new
+run registry or checkpoint system is introduced. See
 `tests/data_foundation/integration/test_training_data_e2e.py` for the
 full flow.
 
@@ -323,9 +326,9 @@ exactly) without any training.
 
 ## 22. Performance considerations
 
-- Memory-resident structures: shard index, one shard's lines, the bounded
-  shuffle buffer, the current batch, the prefetch queue. Nothing scales
-  with total dataset size.
+- Memory-resident structures: shard index, the bounded shuffle buffer, the
+  current batch, and the prefetch queue. Exact `SHARD_ORDER` additionally
+  holds one configured-bounded shard. Nothing scales with total dataset size.
 - The benchmark (`python -m clouda_data.training_data.benchmark`) measures
   init/iteration/memory at 100/1,000/10,000-sample scales on tiny
   fixtures; CI runs the 100-sample case, the 1,000-sample case is marked

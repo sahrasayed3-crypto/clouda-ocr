@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from clouda_training.experiments import dataset as dataset_module
 from clouda_training.experiments.checkpoints import CheckpointManager
 from clouda_training.experiments import runs as runs_module
 from clouda_training.experiments import (
@@ -267,6 +268,21 @@ def test_malformed_nested_protection_metadata_is_rejected(
     config = _config(tmp_path / "experiment.json", manifest, tmp_path / "runs")
     with pytest.raises(ValueError, match="protection metadata"):
         run_experiment(load_experiment_config(config))
+
+
+def test_training_dataset_validation_streams_manifest(
+    tmp_path: Path, monkeypatch
+) -> None:
+    manifest = _manifest(tmp_path / "manifest.jsonl")
+    config_path = _config(tmp_path / "experiment.json", manifest, tmp_path / "runs")
+
+    def reject_materialization(*_args, **_kwargs):
+        raise AssertionError("training validation must not materialize the manifest")
+
+    monkeypatch.setattr(
+        dataset_module, "read_manifest", reject_materialization, raising=False
+    )
+    run_experiment(load_experiment_config(config_path))
 
 
 def test_evaluation_cannot_target_protected_holdout(tmp_path: Path) -> None:

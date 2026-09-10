@@ -430,9 +430,11 @@ def write_selection_manifest(
     The header preserves source identity, source manifest hash, criteria,
     seed, timestamp, and lineage so the subset is fully auditable.
     """
+    derived_dataset_id = dataset_id or f"lab_selection_{result.selection_id}"
+    derived_dataset_version = dataset_version or result.selection_id
     header = {
-        "dataset_id": dataset_id or f"lab_selection_{result.selection_id}",
-        "dataset_version": dataset_version or result.selection_id,
+        "dataset_id": derived_dataset_id,
+        "dataset_version": derived_dataset_version,
         "manifest_role": "lab_selection",
         "selection_schema_version": SELECTION_SCHEMA_VERSION,
         "selection_id": result.selection_id,
@@ -444,7 +446,15 @@ def write_selection_manifest(
         "source_sample_count": len(result.sample_ids),
         "selection_lineage": list(lineage),
     }
-    write_manifest(output_path, list(result.rows), metadata=header)
+    rows = [
+        {
+            **row,
+            "dataset_id": derived_dataset_id,
+            "dataset_version": derived_dataset_version,
+        }
+        for row in result.rows
+    ]
+    write_manifest(output_path, rows, metadata=header)
     written_header, _rows = read_manifest(output_path)
     return written_header
 

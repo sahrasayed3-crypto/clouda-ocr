@@ -83,6 +83,8 @@ def test_factory_run_converts_to_canonical_manifest(tmp_path):
     assert header["_schema_version"] == "clouda.pretraining.manifest.v1"
     assert header["_row_count"] == 3
     assert header["dataset_role"] == "training"
+    assert header["dataset_id"] == "factory_integration"
+    assert len(header["dataset_version"]) == 64
     assert len(rows) == 3
     for row in rows:
         assert row["source_id"] == "factory_integration"
@@ -93,7 +95,16 @@ def test_factory_run_converts_to_canonical_manifest(tmp_path):
         assert row["provenance"]["output_sha256"]
         assert row["provenance"]["source_sha256"] or row["provenance"]["clean_sha256"]
         assert row["provenance"]["transform_steps"]
-        assert row["file_sha256"]
+        assert row["provenance"]["render_config"]
+        assert row["provenance"]["distortion_config"]
+        assert row["provenance"]["config_hash"] == meta["config_hash"]
+        assert row["provenance"]["source_ref"] == "sample_page.png"
+        assert not Path(row["provenance"]["source_ref"]).is_absolute()
+        assert row["image_path"].endswith(".png")
+        assert "\\" not in row["image_path"]
+        assert row["file_sha256"] == row["provenance"]["output_sha256"]
+        with Image.open(run_dir / Path(row["image_path"])) as image:
+            image.verify()
         # run_dir_to_dataset_manifest assigns leakage-safe splits directly
         assert row["target_split"] in {"train", "validation", "test"}
 
@@ -149,8 +160,8 @@ model:
   adapter_type: mock
   precision: float32
 dataset:
-  dataset_id: factory-integration-dataset
-  dataset_version: v1
+  dataset_id: factory_integration
+  dataset_version: {_header["dataset_version"]}
   manifest_path: {manifest_path.as_posix()}
   split: {selected_split}
   sample_limit: 2
@@ -185,7 +196,7 @@ tracking:
         encoding="utf-8",
     )
     config = load_experiment_config(config_yaml)
-    assert config.dataset.dataset_id == "factory-integration-dataset"
+    assert config.dataset.dataset_id == "factory_integration"
     assert config.dataset.manifest_path == manifest_path.resolve()
 
     handle = run_experiment(config)
@@ -193,7 +204,7 @@ tracking:
     summary = handle.summary()
     assert summary["status"] == "COMPLETED"
     metadata = json.loads((handle.path / "metadata.json").read_text(encoding="utf-8"))
-    assert metadata["dataset_id"] == "factory-integration-dataset"
+    assert metadata["dataset_id"] == "factory_integration"
     assert metadata["dataset_manifest_hash"] == manifest_hash
     assert metadata["dataset_split"] == selected_split
     assert metadata["dataset_rows"] >= 1
@@ -220,6 +231,93 @@ def test_adapter_rejects_protected_split_rows(tmp_path):
     ]
     with pytest.raises(FactoryAdapterError):
         factory_rows_to_samples(rows, source_id="s")
+
+
+def test_adapter_rejects_pdf_only_rows_as_training_images():
+    row = {
+        "run_id": "r",
+        "document_id": "d",
+        "page_index": 0,
+        "variant_id": "v00__x",
+        "status": "ok",
+        "profile": "p",
+        "output_path": "scans/x.pdf",
+        "output_sha256": "a" * 64,
+        "source_sha256": "b" * 64,
+    }
+    with pytest.raises(FactoryAdapterError, match="raster image"):
+        factory_rows_to_samples([row], source_id="s")
+
+
+@pytest.mark.parametrize(
+    "marker",
+    [" HOLDOUT ", "Holdout", "hidden_holdout_alias"],
+)
+def test_adapter_rejects_normalized_or_aliased_holdout_markers(marker):
+    row = {
+        "run_id": "r",
+        "document_id": "d",
+        "page_index": 0,
+        "variant_id": "v00__x",
+        "status": "ok",
+        "profile": "p",
+        "output_path": "scans/x.png",
+        "output_sha256": "a" * 64,
+        "source_sha256": "b" * 64,
+        "target_split": marker,
+    }
+    with pytest.raises(FactoryAdapterError, match="protected"):
+        factory_rows_to_samples([row], source_id="s")
+
+
+@pytest.mark.parametrize(
+    "protection",
+    [
+        {"protected": True},
+        {"provenance": {"protected": True}},
+        {"metadata": {"dataset_role": "evaluation_only"}},
+    ],
+)
+def test_adapter_rejects_protected_factory_metadata(protection):
+    row = {
+        "run_id": "r",
+        "document_id": "d",
+        "page_index": 0,
+        "variant_id": "v00__x",
+        "status": "ok",
+        "profile": "p",
+        "output_path": "scans/x.png",
+        "output_sha256": "a" * 64,
+        "source_sha256": "b" * 64,
+        **protection,
+    }
+    with pytest.raises(FactoryAdapterError, match="protected"):
+        factory_rows_to_samples([row], source_id="s")
+
+
+@pytest.mark.parametrize(
+    "malformed",
+    [
+        {"provenance": {"target_split": ["holdout"]}},
+        {"metadata": {"protected": "maybe"}},
+        {"provenance": ["not", "a", "mapping"]},
+    ],
+)
+def test_adapter_rejects_malformed_nested_protection_metadata(malformed):
+    row = {
+        "run_id": "r",
+        "document_id": "d",
+        "page_index": 0,
+        "variant_id": "v00__x",
+        "status": "ok",
+        "profile": "p",
+        "output_path": "scans/x.png",
+        "output_sha256": "a" * 64,
+        "source_sha256": "b" * 64,
+        **malformed,
+    }
+    with pytest.raises(FactoryAdapterError, match="malformed"):
+        factory_rows_to_samples([row], source_id="s")
 
 
 def test_adapter_counts_error_rows_without_dropping_provenance(tmp_path):
@@ -268,6 +366,28 @@ def test_adapter_counts_error_rows_without_dropping_provenance(tmp_path):
     assert sample.provenance["seed"] == 777
     assert sample.provenance["output_sha256"] == "d" * 64
     assert sample.provenance["factory_run_id"] == "r"
+    assert sample.provenance["source_ref"] == "x.png"
+    assert "factory_run_dir" not in sample.provenance
+
+
+@pytest.mark.parametrize(
+    "source_ref", [r"C:\private\sample.png", "/private/sample.png"]
+)
+def test_adapter_removes_cross_platform_absolute_source_paths(source_ref):
+    row = {
+        "run_id": "r",
+        "document_id": "d",
+        "page_index": 0,
+        "variant_id": "v00__p",
+        "status": "ok",
+        "profile": "p",
+        "source_ref": source_ref,
+        "source_sha256": "b" * 64,
+        "output_sha256": "d" * 64,
+        "output_path": "scans/sample.png",
+    }
+    samples, _ = factory_rows_to_samples([row], source_id="s")
+    assert samples[0].provenance["source_ref"] == "sample.png"
 
 
 def test_factory_manifest_reader_rejects_malformed(tmp_path):
@@ -275,3 +395,103 @@ def test_factory_manifest_reader_rejects_malformed(tmp_path):
     bad.write_text("{not json}\n", encoding="utf-8")
     with pytest.raises(FactoryAdapterError):
         read_factory_manifest(bad)
+
+
+@pytest.mark.parametrize("damage", ["missing", "corrupt"])
+def test_adapter_refuses_missing_or_corrupt_factory_artifacts(tmp_path, damage):
+    run_dir, _ = _factory_run(tmp_path)
+    row = next(
+        item
+        for item in read_factory_manifest(run_dir / "manifest.jsonl")
+        if item["status"] == "ok"
+    )
+    artifact = run_dir / row["output_path"]
+    if damage == "missing":
+        artifact.unlink()
+    else:
+        artifact.write_bytes(b"corrupt")
+
+    with pytest.raises(FactoryAdapterError, match="artifact"):
+        run_dir_to_dataset_manifest(run_dir, tmp_path / "canonical.jsonl")
+
+
+def test_adapter_refuses_missing_secondary_pdf_artifact(tmp_path):
+    run_dir, _ = _factory_run(tmp_path)
+    row = next(
+        item
+        for item in read_factory_manifest(run_dir / "manifest.jsonl")
+        if item["status"] == "ok"
+    )
+    (run_dir / row["pdf_path"]).unlink()
+    with pytest.raises(FactoryAdapterError, match="artifact"):
+        run_dir_to_dataset_manifest(run_dir, tmp_path / "canonical.jsonl")
+
+
+@pytest.mark.parametrize("damage", ["escape", "checksum"])
+def test_adapter_rejects_untrusted_ground_truth_paths(tmp_path, damage):
+    run_dir, _ = _factory_run(tmp_path)
+    rows = read_factory_manifest(run_dir / "manifest.jsonl")
+    outside = tmp_path / "private.txt"
+    outside.write_text("private", encoding="utf-8")
+    if damage == "escape":
+        rows[0]["gt_path"] = str(outside)
+        rows[0]["gt_sha256"] = "f" * 64
+    else:
+        rows[0]["gt_sha256"] = "f" * 64
+    from clouda_data.factory.manifest import write_manifest_jsonl
+
+    write_manifest_jsonl(rows, run_dir / "manifest.jsonl")
+    with pytest.raises(FactoryAdapterError, match="ground-truth"):
+        run_dir_to_dataset_manifest(run_dir, tmp_path / "canonical.jsonl")
+
+
+@pytest.mark.parametrize("missing_field", ["gt_path", "gt_sha256"])
+def test_adapter_rejects_unpaired_ground_truth_provenance(tmp_path, missing_field):
+    run_dir, _ = _factory_run(tmp_path)
+    rows = read_factory_manifest(run_dir / "manifest.jsonl")
+    rows[0][missing_field] = ""
+    from clouda_data.factory.manifest import write_manifest_jsonl
+
+    write_manifest_jsonl(rows, run_dir / "manifest.jsonl")
+    with pytest.raises(FactoryAdapterError, match="ground-truth"):
+        run_dir_to_dataset_manifest(run_dir, tmp_path / "canonical.jsonl")
+
+
+def test_dataset_version_changes_with_output_content(tmp_path):
+    run_dir, _ = _factory_run(tmp_path)
+    first, _, _ = run_dir_to_dataset_manifest(run_dir, tmp_path / "first.jsonl")
+    first_header, _ = read_manifest(first)
+    rows = read_factory_manifest(run_dir / "manifest.jsonl")
+    artifact = run_dir / rows[0]["output_path"]
+    artifact.write_bytes(artifact.read_bytes() + b"content-version-change")
+    import hashlib
+
+    changed_hash = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    rows[0]["output_sha256"] = changed_hash
+    rows[0]["png_sha256"] = changed_hash
+    from clouda_data.factory.manifest import write_manifest_jsonl
+
+    write_manifest_jsonl(rows, run_dir / "manifest.jsonl")
+    second, _, _ = run_dir_to_dataset_manifest(run_dir, tmp_path / "second.jsonl")
+    second_header, _ = read_manifest(second)
+    assert first_header["dataset_version"] != second_header["dataset_version"]
+
+
+def test_dataset_version_changes_with_ground_truth_content(tmp_path):
+    run_dir, _ = _factory_run(tmp_path)
+    first, _, _ = run_dir_to_dataset_manifest(run_dir, tmp_path / "first.jsonl")
+    first_header, _ = read_manifest(first)
+    rows = read_factory_manifest(run_dir / "manifest.jsonl")
+    ground_truth = run_dir / rows[0]["gt_path"]
+    ground_truth.write_text("changed training label", encoding="utf-8")
+    import hashlib
+
+    changed_hash = hashlib.sha256(ground_truth.read_bytes()).hexdigest()
+    for row in rows:
+        row["gt_sha256"] = changed_hash
+    from clouda_data.factory.manifest import write_manifest_jsonl
+
+    write_manifest_jsonl(rows, run_dir / "manifest.jsonl")
+    second, _, _ = run_dir_to_dataset_manifest(run_dir, tmp_path / "second.jsonl")
+    second_header, _ = read_manifest(second)
+    assert first_header["dataset_version"] != second_header["dataset_version"]

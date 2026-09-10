@@ -14,6 +14,7 @@ Seed modes:
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import tempfile
 from dataclasses import dataclass
@@ -24,7 +25,7 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
-from . import __version__
+from . import SEED_MODES, __version__
 from .distort import atomic as atomic_engine
 from .distort import qc as qc_engine
 from .distort import scan_composite
@@ -37,8 +38,6 @@ from .provenance.hashing import config_hash, sha256_file
 from .provenance.integrity import atomic_target
 from .seed import derive as seed_v1
 from .seed import legacy as seed_legacy
-
-SEED_MODES = ("v1", "ocr_benchmark", "arabic_scan_factory")
 
 
 @dataclass
@@ -122,6 +121,17 @@ def plan_run(
             raise FileExistsError(
                 f"run directory has no manifest.jsonl to resume: {run_dir}"
             )
+        stored_config_path = run_dir / "run_config.json"
+        try:
+            stored_config = json.loads(stored_config_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError(
+                f"cannot verify existing run configuration: {stored_config_path}"
+            ) from exc
+        if stored_config.get("config_hash") != config_hash_full:
+            raise ValueError(
+                "resume configuration does not match the existing run configuration"
+            )
     else:
         if resume:
             raise FileNotFoundError(f"cannot resume missing run directory: {run_dir}")
@@ -157,14 +167,21 @@ def plan_run(
 
 def _expand_inputs(inputs: list[Path]) -> list[Path]:
     files: list[Path] = []
+    seen: set[str] = set()
     for item in inputs:
         item = Path(item)
         if item.is_dir():
-            files.extend(sorted(p for p in item.iterdir() if p.is_file()))
+            candidates = sorted(p for p in item.iterdir() if p.is_file())
         elif item.is_file():
-            files.append(item)
+            candidates = [item]
         else:
             raise FileNotFoundError(f"input not found: {item}")
+        for candidate in candidates:
+            resolved = candidate.resolve()
+            key = os.path.normcase(str(resolved))
+            if key not in seen:
+                seen.add(key)
+                files.append(candidate)
     return files
 
 
@@ -200,7 +217,8 @@ def _render_clean(rc: RunConfig, doc_dir: Path, source: Any, style_seed: int):
     """Render clean artifacts for one document. Returns (clean_pdf, page_pngs, layout, renderer, searchable)."""
     from .render import get_backend
 
-    backend = get_backend(rc.backend)
+    backend_options = {"max_pages": rc.max_pages} if rc.backend == "raqm" else {}
+    backend = get_backend(rc.backend, **backend_options)
     clean_dir = doc_dir / "clean"
     if isinstance(source, TextSource):
         result = backend.render(source.text, None, clean_dir, style_seed, dpi=150)
@@ -321,13 +339,13 @@ def _gt_for(
         target = gt_dir / f"{doc_id}.txt"
         if not target.exists():
             shutil.copyfile(source.path, target)
-        return str(target), sha256_file(target)
+        return target.relative_to(run_dir).as_posix(), sha256_file(target)
     sibling = source.path.with_suffix(".txt")
     if sibling.is_file():
         target = gt_dir / f"{doc_id}.txt"
         if not target.exists():
             shutil.copyfile(sibling, target)
-        return str(target), sha256_file(target)
+        return target.relative_to(run_dir).as_posix(), sha256_file(target)
     return None, None
 
 
@@ -397,7 +415,11 @@ def _process_document(
         manifest_file = run_dir / "manifest.jsonl"
         if manifest_file.exists():
             for row in read_manifest(manifest_file):
-                if row.get("document_id") == doc_id and row.get("status") == "ok":
+                if (
+                    row.get("document_id") == doc_id
+                    and row.get("status") == "ok"
+                    and _row_output_is_valid(run_dir, row)
+                ):
                     completed.add(
                         (str(row.get("variant_id")), int(row.get("page_index", -1)))
                     )
@@ -487,8 +509,7 @@ def _process_document(
                 out_png = save_page_png(
                     degraded, variant_dir / f"page_{page_index:06d}.png"
                 )
-            output_sha = ""
-            output_path = ""
+            page_pdf: Path | None = None
             if rc.export_pdf or out_png is None:
                 page_pdf = variant_dir / f"page_{page_index:06d}.pdf"
                 with tempfile.TemporaryDirectory() as tmp:
@@ -497,11 +518,13 @@ def _process_document(
                         buf, "JPEG", quality=int(profile.jpeg_quality)
                     )
                     jpeg_images_to_pdf([buf], page_pdf, dpi=int(profile.dpi_target))
-                output_sha = sha256_file(page_pdf)
-                output_path = str(page_pdf.relative_to(run_dir))
-            elif out_png is not None:
-                output_sha = sha256_file(out_png)
-                output_path = str(out_png.relative_to(run_dir))
+            # The canonical training artifact is the raster image when one is
+            # exported. Keep PDF provenance separately instead of pointing an
+            # image_path field at a PDF.
+            primary_output = out_png or page_pdf
+            assert primary_output is not None
+            output_sha = sha256_file(primary_output)
+            output_path = str(primary_output.relative_to(run_dir))
 
             rows.append(
                 {
@@ -521,6 +544,18 @@ def _process_document(
                     "seed_mode": rc.seed_mode,
                     "base_seed": rc.base_seed,
                     "transform_steps": steps_applied,
+                    "render_config": {
+                        "backend": rc.backend,
+                        "renderer": renderer,
+                        "layout": layout,
+                        "searchable": searchable,
+                        "style_seed": rc.base_seed,
+                        "dpi": 150,
+                        "max_pages": rc.max_pages,
+                    },
+                    "distortion_config": profile.as_dict(),
+                    "config_hash": rc.config_hash,
+                    "factory_version": __version__,
                     "dpi": int(profile.dpi_target),
                     "color": profile.color,
                     "jpeg_quality": int(profile.jpeg_quality),
@@ -532,10 +567,44 @@ def _process_document(
                     "qc": qc_record,
                     "created_utc": created,
                     "output_path": output_path,
+                    "png_path": (
+                        str(out_png.relative_to(run_dir)) if out_png is not None else ""
+                    ),
+                    "png_sha256": sha256_file(out_png) if out_png is not None else "",
+                    "pdf_path": (
+                        str(page_pdf.relative_to(run_dir))
+                        if page_pdf is not None
+                        else ""
+                    ),
+                    "pdf_sha256": (
+                        sha256_file(page_pdf) if page_pdf is not None else ""
+                    ),
                 }
             )
         page_index += 1
     return rows
+
+
+def _row_output_is_valid(run_dir: Path, row: dict) -> bool:
+    for path_field, hash_field, required in (
+        ("output_path", "output_sha256", True),
+        ("png_path", "png_sha256", False),
+        ("pdf_path", "pdf_sha256", False),
+    ):
+        output_path = row.get(path_field)
+        expected_hash = row.get(hash_field)
+        if not output_path and not expected_hash and not required:
+            continue
+        if not isinstance(output_path, str) or not output_path or not expected_hash:
+            return False
+        candidate = (run_dir / output_path).resolve()
+        try:
+            candidate.relative_to(run_dir.resolve())
+        except ValueError:
+            return False
+        if not candidate.is_file() or sha256_file(candidate) != expected_hash:
+            return False
+    return True
 
 
 def _pages_to_pdf(pages: list[Path], output: Path, dpi: int = 150) -> None:
@@ -607,6 +676,18 @@ def generate_run(
     manifest_file = rc.run_dir / "manifest.jsonl"
     if rc.resume and manifest_file.exists():
         previous_rows = read_manifest(manifest_file)
+        for source_path in files:
+            prior_hashes = {
+                str(row.get("source_sha256"))
+                for row in previous_rows
+                if row.get("source_ref") == str(source_path)
+                and row.get("source_sha256")
+            }
+            current_hash = sha256_file(source_path)
+            if prior_hashes and prior_hashes != {current_hash}:
+                raise ValueError(
+                    f"resume source content changed since the original run: {source_path}"
+                )
     all_rows: list[dict] = list(previous_rows)
     new_rows: list[dict] = []
     if rc.workers > 1:
@@ -625,9 +706,8 @@ def generate_run(
                 )
             )
 
-    # merge, de-duplicating against previous rows by stable identity
-    # (document, source, variant, page) — first occurrence wins, so resumed
-    # runs never duplicate ok or error rows.
+    # Merge by stable identity. Newly attempted rows replace earlier failures
+    # or stale-success rows; untouched valid successes remain unchanged.
     def _identity(row: dict) -> tuple:
         return (
             row.get("document_id"),
@@ -636,13 +716,29 @@ def generate_run(
             row.get("page_index"),
         )
 
-    seen = {_identity(r) for r in all_rows}
+    recovered_documents = {
+        (row.get("document_id"), row.get("source_ref"))
+        for row in new_rows
+        if row.get("status") == "ok"
+    }
+    all_rows = [
+        row
+        for row in all_rows
+        if not (
+            row.get("status") == "error"
+            and not row.get("variant_id")
+            and row.get("page_index") is None
+            and (row.get("document_id"), row.get("source_ref")) in recovered_documents
+        )
+    ]
+    positions = {_identity(row): index for index, row in enumerate(all_rows)}
     for row in new_rows:
         key = _identity(row)
-        if key in seen:
-            continue
-        seen.add(key)
-        all_rows.append(row)
+        if key in positions:
+            all_rows[positions[key]] = row
+        else:
+            positions[key] = len(all_rows)
+            all_rows.append(row)
 
     write_manifest_jsonl(all_rows, rc.run_dir / "manifest.jsonl")
     write_manifest_csv(all_rows, rc.run_dir / "manifest.csv")

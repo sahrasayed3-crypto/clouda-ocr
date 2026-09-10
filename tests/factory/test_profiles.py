@@ -90,15 +90,14 @@ def test_unknown_distortion_raises(book):
         book.spec("does_not_exist")
 
 
-def test_config_paths_resolve_inside_repository():
-    """The integrated package must load its configs from the canonical tree."""
+def test_config_paths_resolve_inside_package():
+    """Default factory configs must ship with the installed package."""
     from clouda_data.factory.profiles import _CONFIGS
 
     assert (_CONFIGS / "ocr_benchmark.yaml").is_file()
     assert (_CONFIGS / "render_layout.yaml").is_file()
-    assert "configs" + chr(92) + "data_factory" in str(
-        _CONFIGS
-    ) or "configs/data_factory" in str(_CONFIGS)
+    assert "clouda_data" in str(_CONFIGS)
+    assert "resources" in str(_CONFIGS)
 
 
 def test_scan_families_parameters_match_legacy_semantics():

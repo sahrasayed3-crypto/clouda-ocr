@@ -19,9 +19,9 @@ page:
   column_gutter_mm: 8.0    # space between columns in two-column layouts
 
 fonts:
-  # Logical name -> file under assets/fonts/. All must cover Arabic + Latin +
+  # Logical name -> file under clouda_data/resources/fonts/. All must cover Arabic + Latin +
   # both digit sets; verified at startup by the font coverage check.
-  dir: assets/fonts
+  dir: resources/fonts
   families:
     amiri:
       regular: Amiri-Regular.ttf

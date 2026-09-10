@@ -67,10 +67,10 @@ clouda_data/factory/
   cli.py        standalone command surface (mirrored into the canonical CLI)
 ```
 
-Configs live in `configs/data_factory/` (`ocr_benchmark.yaml` distortion
+Configs ship in `clouda_data/resources/data_factory/` (`ocr_benchmark.yaml` distortion
 catalogue, `render_layout.yaml` page-layout options). Arabic fonts
 (SIL OFL 1.1: Amiri, Scheherazade New, Noto Naskh Arabic, Cairo) live in
-`assets/fonts/`.
+`clouda_data/resources/fonts/`.
 
 ## Seed modes
 
@@ -107,7 +107,12 @@ profile, transform steps, renderer, QC record, and ground-truth reference all
 travel inside the sample's `provenance` dict. Split assignment is performed by
 the standard leakage-safe splitter (`assign_splits`) with a seed derived from
 the converted content, so identical factory content always converts to
-identical splits. Holdout data can never originate from a factory run.
+identical splits. The canonical dataset version is a digest of the factory
+configuration and generated artifact hashes, so content changes produce a
+new version. Protected markers are rejected at both conversion and training
+boundaries. Canonical conversion requires a raster output, so runs
+created with `--no-png` remain valid archival/PDF runs but are not
+training-manifest inputs.
 
 ```bash
 # Data Factory run → canonical manifest (training-ready, leakage-checked)

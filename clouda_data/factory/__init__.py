@@ -15,6 +15,7 @@ untouched locally as an archive.
 """
 
 __version__ = "0.1.0"
+SEED_MODES = ("v1", "ocr_benchmark", "arabic_scan_factory")
 
 DEFAULT_BASE_SEED = 20260831
 LEGACY_SEED_OCR_BENCHMARK = 20260825

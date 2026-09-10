@@ -168,6 +168,107 @@ def test_protected_manifest_marker_is_rejected(tmp_path: Path) -> None:
         run_experiment(load_experiment_config(config))
 
 
+def test_mixed_manifest_with_holdout_row_is_rejected(tmp_path: Path) -> None:
+    manifest = _manifest(tmp_path / "manifest.jsonl")
+    rows = [
+        json.loads(line) for line in manifest.read_text(encoding="utf-8").splitlines()
+    ]
+    rows[0]["_row_count"] = 2
+    rows.append(
+        {
+            "sample_id": "sample-protected",
+            "target_split": " Holdout ",
+            "source_id": "synthetic-test",
+            "source_path": "protected.png",
+        }
+    )
+    manifest.write_text(
+        "".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8"
+    )
+    config = _config(tmp_path / "experiment.json", manifest, tmp_path / "runs")
+    with pytest.raises(PermissionError, match="holdout"):
+        run_experiment(load_experiment_config(config))
+
+
+def test_nested_protected_row_marker_is_rejected(tmp_path: Path) -> None:
+    manifest = _manifest(tmp_path / "manifest.jsonl")
+    rows = [
+        json.loads(line) for line in manifest.read_text(encoding="utf-8").splitlines()
+    ]
+    rows[1]["provenance"] = {"protected": True}
+    manifest.write_text(
+        "".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8"
+    )
+    config = _config(tmp_path / "experiment.json", manifest, tmp_path / "runs")
+    with pytest.raises(PermissionError, match="protected"):
+        run_experiment(load_experiment_config(config))
+
+
+@pytest.mark.parametrize(
+    ("header_field", "configured_field"),
+    [("dataset_id", "other-id"), ("dataset_version", "other-version")],
+)
+def test_manifest_dataset_identity_must_match_config(
+    tmp_path: Path, header_field: str, configured_field: str
+) -> None:
+    manifest = _manifest(tmp_path / "manifest.jsonl")
+    rows = [
+        json.loads(line) for line in manifest.read_text(encoding="utf-8").splitlines()
+    ]
+    rows[0].update({"dataset_id": "synthetic-test", "dataset_version": "v1"})
+    manifest.write_text(
+        "".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8"
+    )
+    change = {
+        "dataset__dataset_id": "synthetic-test",
+        "dataset__dataset_version": "v1",
+    }
+    change[f"dataset__{header_field}"] = configured_field
+    config = _config(
+        tmp_path / "experiment.json", manifest, tmp_path / "runs", **change
+    )
+    with pytest.raises(ValueError, match=header_field):
+        run_experiment(load_experiment_config(config))
+
+
+def test_malformed_row_split_metadata_is_rejected(tmp_path: Path) -> None:
+    manifest = _manifest(tmp_path / "manifest.jsonl")
+    rows = [
+        json.loads(line) for line in manifest.read_text(encoding="utf-8").splitlines()
+    ]
+    rows[1]["target_split"] = ["train", "holdout"]
+    manifest.write_text(
+        "".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8"
+    )
+    config = _config(tmp_path / "experiment.json", manifest, tmp_path / "runs")
+    with pytest.raises(ValueError, match="split metadata"):
+        run_experiment(load_experiment_config(config))
+
+
+@pytest.mark.parametrize(
+    "nested",
+    [
+        {"provenance": {"target_split": ["holdout"]}},
+        {"metadata": {"protected": "maybe"}},
+        {"provenance": ["not", "a", "mapping"]},
+    ],
+)
+def test_malformed_nested_protection_metadata_is_rejected(
+    tmp_path: Path, nested: dict
+) -> None:
+    manifest = _manifest(tmp_path / "manifest.jsonl")
+    rows = [
+        json.loads(line) for line in manifest.read_text(encoding="utf-8").splitlines()
+    ]
+    rows[1].update(nested)
+    manifest.write_text(
+        "".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8"
+    )
+    config = _config(tmp_path / "experiment.json", manifest, tmp_path / "runs")
+    with pytest.raises(ValueError, match="protection metadata"):
+        run_experiment(load_experiment_config(config))
+
+
 def test_evaluation_cannot_target_protected_holdout(tmp_path: Path) -> None:
     config = _config(
         tmp_path / "experiment.json",

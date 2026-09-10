@@ -133,8 +133,8 @@ model:
   adapter_type: mock
   precision: float32
 dataset:
-  dataset_id: factory-e2e-dataset
-  dataset_version: v1
+  dataset_id: {header["dataset_id"]}
+  dataset_version: {header["dataset_version"]}
   manifest_path: {manifest_path.as_posix()}
   split: train
   sample_limit: 2

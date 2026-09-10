@@ -18,15 +18,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from . import __version__
-from .factory import SEED_MODES, generate_run
-from .profiles import ProfileError, load_profile_book
-from .render import available_backends
+from . import SEED_MODES, __version__
 
 DEFAULT_BASE_SEED = 20260831
 
 
 def _default_backend() -> str:
+    from .render import available_backends
+
     available = available_backends()
     return available[0] if available else "weasyprint"
 
@@ -38,6 +37,9 @@ def _split_profiles(value: str | None) -> list[str] | None:
 
 
 def command_generate(args: argparse.Namespace) -> int:
+    from .factory import generate_run
+    from .profiles import ProfileError
+
     profile_names = _split_profiles(args.profiles) or ["05_old_book_medium"]
     backend = args.backend or _default_backend()
     try:
@@ -65,6 +67,7 @@ def command_generate(args: argparse.Namespace) -> int:
 
 def command_run(args: argparse.Namespace) -> int:
     from .autorun import auto_run
+    from .profiles import ProfileError
 
     try:
         summary = auto_run(
@@ -89,6 +92,9 @@ def command_run(args: argparse.Namespace) -> int:
 
 
 def command_profiles(args: argparse.Namespace) -> int:
+    from .profiles import load_profile_book
+    from .render import available_backends
+
     book = load_profile_book()
     print(
         json.dumps(

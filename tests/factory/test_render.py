@@ -7,6 +7,8 @@ Migrated from the standalone repository; imports retargeted.
 
 from __future__ import annotations
 
+from importlib import resources
+
 import pytest
 
 from clouda_data.factory.render import available_backends, get_backend
@@ -80,8 +82,8 @@ def test_unknown_backend_raises():
         get_backend("nope")
 
 
-def test_layout_config_and_fonts_resolve_in_canonical_tree():
-    """The integrated package reads layout/fonts from the canonical repo tree."""
+def test_layout_config_and_fonts_resolve_in_package():
+    """The integrated package reads bundled layout and font resources."""
     from clouda_data.factory.render.raqm_page_backend import _FONT_ROOT, _LAYOUT_YAML
 
     assert _LAYOUT_YAML.is_file(), _LAYOUT_YAML
@@ -96,3 +98,13 @@ def test_layout_config_and_fonts_resolve_in_canonical_tree():
     }
     present = {p.name for p in _FONT_ROOT.glob("*.ttf")}
     assert families <= present
+
+
+def test_render_resources_are_installed_inside_the_package():
+    package_root = resources.files("clouda_data")
+    data_factory = package_root.joinpath("resources/data_factory")
+    assert data_factory.joinpath("render_layout.yaml").is_file()
+    assert data_factory.joinpath("ocr_benchmark.yaml").is_file()
+    fonts = package_root.joinpath("resources/fonts")
+    assert fonts.joinpath("Amiri-Regular.ttf").is_file()
+    assert fonts.joinpath("NotoNaskhArabic.ttf").is_file()

@@ -18,7 +18,7 @@ from .schema import (
 )
 from . import scan_families
 
-_CONFIGS = Path(__file__).resolve().parents[3] / "configs" / "data_factory"
+_CONFIGS = Path(__file__).resolve().parents[2] / "resources" / "data_factory"
 
 
 @dataclass

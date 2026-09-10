@@ -97,8 +97,10 @@ pdfword = [
 ]
 clouda_data = [
   "resources/*.json",
+  "resources/data_factory/*.yaml",
   "resources/distortions/*.json",
   "resources/distortions/*.yaml",
+  "resources/fonts/*.ttf",
   "resources/schemas/*.json"
 ]
 [tool.black]

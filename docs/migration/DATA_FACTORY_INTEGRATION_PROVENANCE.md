@@ -38,9 +38,9 @@ the canonical Clouda OCR repository, without rewriting Git history.
 | Seeds (v1 + legacy) | `seed/` | `clouda_data/factory/seed/` |
 | Export/manifest/provenance | `export/`, `manifest/`, `provenance/` | same, under `clouda_data/factory/` |
 | Orchestration/autorun/CLI | `factory.py`, `autorun.py`, `cli.py` | same, under `clouda_data/factory/` |
-| Distortion catalogue config | `configs/distortion_profiles/ocr_benchmark.yaml` | `configs/data_factory/ocr_benchmark.yaml` |
-| Render layout config | `configs/render_profiles/layout.yaml` | `configs/data_factory/render_layout.yaml` |
-| Arabic fonts (SIL OFL 1.1) | `assets/fonts/*.ttf` | `assets/fonts/` |
+| Distortion catalogue config | `configs/distortion_profiles/ocr_benchmark.yaml` | `clouda_data/resources/data_factory/ocr_benchmark.yaml` |
+| Render layout config | `configs/render_profiles/layout.yaml` | `clouda_data/resources/data_factory/render_layout.yaml` |
+| Arabic fonts (SIL OFL 1.1) | `assets/fonts/*.ttf` | `clouda_data/resources/fonts/` |
 | Tests + fixture | `tests/` | `tests/factory/` (retargeted imports) |
 
 ## New modules written for the integration

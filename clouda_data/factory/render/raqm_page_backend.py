@@ -34,10 +34,9 @@ except Exception as _exc:  # pragma: no cover
     _HAS_RAQM = False
     _IMPORT_ERROR = _exc
 
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-_LAYOUT_YAML = _REPO_ROOT / "configs" / "data_factory" / "render_layout.yaml"
-# Bundled Arabic fonts live in the canonical assets tree.
-_FONT_ROOT = _REPO_ROOT / "assets" / "fonts"
+_PACKAGE_ROOT = Path(__file__).resolve().parents[2]
+_LAYOUT_YAML = _PACKAGE_ROOT / "resources" / "data_factory" / "render_layout.yaml"
+_FONT_ROOT = _PACKAGE_ROOT / "resources" / "fonts"
 
 
 def _require() -> None:
@@ -95,7 +94,7 @@ class RqmPageBackend(RenderBackend):
         # canonical repository assets tree, not the working directory.
         layout_cfg.setdefault("fonts", {})
         layout_cfg["fonts"]["dir"] = str(_FONT_ROOT)
-        fontbook = v_render.FontBook(layout_cfg, _REPO_ROOT)
+        fontbook = v_render.FontBook(layout_cfg, _PACKAGE_ROOT)
         measurer = v_render.TextMeasurer()
 
         doc = _document_from_text(text or "", style_seed)

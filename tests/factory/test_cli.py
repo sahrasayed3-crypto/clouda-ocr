@@ -103,3 +103,24 @@ def test_module_main_entry_prints_version():
     result = run_cli("version")
     assert result.returncode == 0
     assert json.loads(result.stdout)["factory_version"]
+
+
+def test_factory_cli_help_imports_without_heavy_factory_dependencies():
+    script = r"""
+import builtins
+real_import = builtins.__import__
+def blocked_import(name, *args, **kwargs):
+    if name.split(".", 1)[0] in {"cv2", "numpy", "img2pdf", "pikepdf"}:
+        raise ImportError(f"blocked optional dependency: {name}")
+    return real_import(name, *args, **kwargs)
+builtins.__import__ = blocked_import
+from clouda_data.factory.cli import build_parser
+build_parser().parse_args(["--help"])
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        cwd=str(REPO_ROOT),
+    )
+    assert result.returncode == 0, result.stderr

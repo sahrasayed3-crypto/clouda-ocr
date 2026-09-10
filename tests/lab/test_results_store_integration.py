@@ -84,6 +84,42 @@ def test_stored_sample_preserves_canonical_page_metadata_and_eligibility(
     }
 
 
+def test_malformed_protection_and_nested_source_markers_fail_closed(tmp_path) -> None:
+    malformed = ProtectionInfo.from_dict({"protected": "maybe", "split": "train"})
+    assert malformed.protected is True
+    assert malformed.is_training_eligible is False
+
+    results = ResultsService(tmp_path / "results")
+    run = results.create_run(
+        model_id="model",
+        dataset_id="dataset",
+        dataset_version="v1",
+        split="train",
+        created_at="t",
+    )
+    source = build_fixture_pages(dataset_id="dataset")[0]
+    page = source.__class__(
+        **{
+            **source.to_dict(),
+            "split": "train",
+            "metadata": {
+                "canonical_manifest_row": {
+                    "sample_id": source.page_id,
+                    "target_split": "train",
+                    "protected": True,
+                }
+            },
+        }
+    )
+    results.add_page(run.run_id, page)
+
+    selection = StoredResultsAnalysisService(results).select_pages(
+        run.run_id, SelectionCriteria(split="train")
+    )
+    assert selection.sample_ids == ()
+    assert selection.excluded_protected == 1
+
+
 def test_analyze_and_compare_stored_runs_without_parallel_result_index(
     tmp_path,
 ) -> None:
@@ -257,28 +293,34 @@ def test_prediction_listing_honors_dataset_filter(tmp_path) -> None:
 def test_metric_store_rejects_a_different_value_for_the_same_identity(
     tmp_path,
 ) -> None:
-    store = ResultsStore(tmp_path / "results")
+    results = ResultsService(tmp_path / "results")
+    run = results.create_run(
+        model_id="model", dataset_id="dataset", dataset_version="v1", created_at="t"
+    )
+    store = results.store
+    page = build_fixture_pages(dataset_id="dataset")[0]
+    results.add_page(run.run_id, page)
     original = EvaluationRecord(
         record_id="metric-id",
-        run_id="run-id",
-        page_id="page-id",
+        run_id=run.run_id,
+        page_id=page.page_id,
         metric_name="cer@raw",
         value=0.25,
         computed_at="2026-09-10T00:00:00Z",
     )
     conflicting = EvaluationRecord(
         record_id="metric-id",
-        run_id="run-id",
-        page_id="page-id",
+        run_id=run.run_id,
+        page_id=page.page_id,
         metric_name="cer@raw",
         value=0.75,
         computed_at="2026-09-10T00:00:01Z",
     )
 
-    store.append_metrics("run-id", [original])
-    store.append_metrics("run-id", [original])
+    store.append_metrics(run.run_id, [original])
+    store.append_metrics(run.run_id, [original])
     with pytest.raises(ConflictingRecordError, match="metric"):
-        store.append_metrics("run-id", [conflicting])
+        store.append_metrics(run.run_id, [conflicting])
 
     wrong_run = EvaluationRecord(
         record_id="wrong-run-metric",
@@ -288,9 +330,9 @@ def test_metric_store_rejects_a_different_value_for_the_same_identity(
         value=0.5,
     )
     with pytest.raises(ValueError, match="run id"):
-        store.append_metrics("run-id", [wrong_run])
+        store.append_metrics(run.run_id, [wrong_run])
 
-    assert list(store.iter_metrics("run-id"))[0].value == 0.25
+    assert list(store.iter_metrics(run.run_id))[0].value == 0.25
 
 
 def test_run_updates_cannot_rebind_a_run_to_another_model(tmp_path) -> None:

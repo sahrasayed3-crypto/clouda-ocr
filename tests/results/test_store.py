@@ -8,6 +8,7 @@ from clouda_data.results.ground_truth import build_ground_truth_record
 from clouda_data.results.models import (
     InferenceRunStatus,
     OCRPrediction,
+    PageRecord,
 )
 from clouda_data.results.service import NewPrediction, ResultsService
 from clouda_data.results.store import (
@@ -176,15 +177,14 @@ class TestIntegrity:
             prediction_id=prediction_identity(run_id=run_id, page_id="ghost"),
             run_id=run_id,
             page_id="ghost",
-            model_id="m",
-            model_revision="r",
+            model_id="fake-model-a",
+            model_revision="1.0",
             text="x",
             text_sha256=sha256_text("x"),
+            dataset_id="fx",
         )
-        svc.store.append_predictions(run_id, [ghost])
-        report = svc.verify(run_id)
-        assert not report["ok"]
-        assert any("unknown page: ghost" in issue for issue in report["issues"])
+        with pytest.raises(ValueError, match="unknown page"):
+            svc.store.append_predictions(run_id, [ghost])
 
     def test_verify_detects_prediction_run_mismatch(self, populated) -> None:
         svc, run_id = populated
@@ -202,6 +202,42 @@ class TestIntegrity:
         )
         with pytest.raises(ValueError):
             svc.store.append_predictions(run_id, [foreign])
+
+    def test_write_boundaries_require_a_registered_matching_run(
+        self, populated
+    ) -> None:
+        svc, run_id = populated
+        page = build_fixture_pages(dataset_id="fx")[0]
+        with pytest.raises(UnknownRecordError, match="Unknown run"):
+            svc.store.append_pages("unknown-run", [page])
+        assert not svc.store.run_dir("unknown-run").exists()
+
+        wrong_page = PageRecord.from_dict({**page.to_dict(), "dataset_id": "other"})
+        with pytest.raises(ValueError, match="dataset"):
+            svc.add_page(run_id, wrong_page)
+        with pytest.raises(ValueError, match="model"):
+            svc.add_prediction(
+                run_id,
+                NewPrediction(page_id=page.page_id, text="x", model_id="other"),
+            )
+
+    def test_verify_detects_cross_record_identity_corruption(self, populated) -> None:
+        svc, run_id = populated
+        path = svc.store.predictions_path(run_id)
+        import json
+
+        rows = [
+            json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()
+        ]
+        rows[0]["model_id"] = "foreign-model"
+        path.write_text(
+            "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows),
+            encoding="utf-8",
+        )
+
+        report = svc.verify(run_id)
+        assert not report["ok"]
+        assert any("prediction model mismatch" in issue for issue in report["issues"])
 
 
 class TestIndexAndExport:
@@ -230,6 +266,21 @@ class TestIndexAndExport:
             text = path.read_text(encoding="utf-8")
             assert "F:\\" not in text
             assert str(svc.store.root) not in text
+
+    def test_export_refuses_destination_inside_source_run(self, populated) -> None:
+        svc, run_id = populated
+        nested = svc.store.run_dir(run_id) / "nested-export"
+
+        with pytest.raises(ValueError, match="overlap"):
+            svc.store.export_run_copy(run_id, nested)
+
+        assert not nested.exists()
+
+    def test_dataset_path_matches_saved_registry_record(self, tmp_path) -> None:
+        store = ResultsStore(tmp_path / "store")
+        payload = {"dataset_id": "dataset", "version": "v1"}
+
+        assert store.save_dataset(payload) == store.dataset_path("dataset", "v1")
 
 
 class TestRunLifecycle:

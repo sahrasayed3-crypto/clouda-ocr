@@ -293,12 +293,18 @@ class ResultsService:
         import hashlib
 
         page = self.store.get_page(run_id, payload.page_id)
+        run = self.store.load_run_metadata(run_id)
+        if payload.model_id != run.get("model_id"):
+            raise ValueError(f"Prediction model does not match run {run_id!r}.")
+        model_revision = payload.model_revision
+        if model_revision == "unresolved":
+            model_revision = str(run.get("model_revision", "unresolved"))
         prediction = OCRPrediction(
             prediction_id=prediction_identity(run_id=run_id, page_id=payload.page_id),
             run_id=run_id,
             page_id=payload.page_id,
             model_id=payload.model_id,
-            model_revision=payload.model_revision,
+            model_revision=model_revision,
             text=payload.text,
             text_sha256=hashlib.sha256(payload.text.encode("utf-8")).hexdigest(),
             dataset_id=dataset_id or page.dataset_id,

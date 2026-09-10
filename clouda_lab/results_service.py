@@ -8,6 +8,7 @@ from typing import Any
 from clouda_data.results.identity import sha256_text
 from clouda_data.results.service import ResultsService
 from clouda_data.results.store import UnknownRecordError
+from clouda_contracts.protection import record_is_protected
 
 from .dataset_selection import (
     SelectionCriteria,
@@ -172,6 +173,10 @@ class StoredResultsAnalysisService:
                     "model_revision": run.get("model_revision"),
                     "run_id": run_id,
                 }
+            )
+            row["protected"] = record_is_protected(row)
+            row["training_eligible"] = (
+                not row["protected"] and page.protection.is_training_eligible
             )
             rows.append(row)
         return rows

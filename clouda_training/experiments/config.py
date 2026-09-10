@@ -124,7 +124,19 @@ class ExperimentConfig:
 
     @property
     def hash(self) -> str:
-        return hashlib.sha256(self.canonical_json.encode("utf-8")).hexdigest()
+        identity = self.to_dict()
+        manifest_path = self.dataset.manifest_path
+        identity["dataset"].pop("manifest_path", None)
+        identity["dataset"]["manifest_sha256"] = (
+            hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+            if manifest_path.is_file()
+            else None
+        )
+        identity["runtime"].pop("output_root", None)
+        portable_json = json.dumps(
+            identity, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        )
+        return hashlib.sha256(portable_json.encode("utf-8")).hexdigest()
 
 
 T = TypeVar("T")

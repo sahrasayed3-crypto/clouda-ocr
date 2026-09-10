@@ -28,6 +28,8 @@ import shutil
 from pathlib import Path
 from typing import Any, Iterable, Iterator
 
+from clouda_contracts.protection import record_is_protected
+
 from .identity import (
     RESULTS_SCHEMA_VERSION,
     ArtifactRef,
@@ -84,8 +86,8 @@ class ResultsStore:
     # ------------------------------------------------------------------ paths
 
     def dataset_path(self, dataset_id: str, version: str) -> Path:
-        component = safe_component(f"{dataset_id}@{version}", what="dataset id")
-        return self._datasets_dir / (component.replace("@", "__at__") + ".json")
+        component = safe_component(f"{dataset_id}__{version}", what="dataset id")
+        return self._datasets_dir / f"{component}.json"
 
     def model_path(self, model_id: str) -> Path:
         if not model_id.strip():
@@ -116,15 +118,11 @@ class ResultsStore:
             raise PermissionError("Results store is read-only.")
         dataset_id = str(payload.get("dataset_id", ""))
         version = str(payload.get("version", "1"))
-        target = self._datasets_dir / (
-            safe_component(f"{dataset_id}__{version}", what="dataset id") + ".json"
-        )
+        target = self.dataset_path(dataset_id, version)
         return self._save_registry_record(target, payload, what="dataset")
 
     def load_dataset(self, dataset_id: str, version: str = "1") -> dict[str, Any]:
-        target = self._datasets_dir / (
-            safe_component(f"{dataset_id}__{version}", what="dataset id") + ".json"
-        )
+        target = self.dataset_path(dataset_id, version)
         if not target.exists():
             raise UnknownRecordError(f"Unknown dataset: {dataset_id}@{version}")
         import json
@@ -218,6 +216,18 @@ class ResultsStore:
     def run_exists(self, run_id: str) -> bool:
         return self.run_metadata_path(run_id).exists()
 
+    def _require_run(self, run_id: str) -> dict[str, Any]:
+        if not self.run_exists(run_id):
+            raise UnknownRecordError(f"Unknown run: {run_id}")
+        return self.load_run_metadata(run_id)
+
+    @staticmethod
+    def _split_matches(run_split: Any, record_split: Any) -> bool:
+        normalized = str(run_split or "").strip().casefold()
+        return normalized in {"", "mixed", "unassigned"} or (
+            normalized == str(record_split or "").strip().casefold()
+        )
+
     # --------------------------------------------------------------- pages
 
     def pages_path(self, run_id: str) -> Path:
@@ -226,11 +236,18 @@ class ResultsStore:
     def append_pages(self, run_id: str, pages: Iterable[PageRecord]) -> int:
         if self.read_only:
             raise PermissionError("Results store is read-only.")
+        run = self._require_run(run_id)
         existing = {
             str(row.get("page_id")): row for row in iter_jsonl(self.pages_path(run_id))
         }
         count = 0
         for page in pages:
+            if page.dataset_id != run.get("dataset_id"):
+                raise ValueError(f"Page dataset does not match run {run_id!r}.")
+            if page.dataset_version != run.get("dataset_version", "1"):
+                raise ValueError(f"Page dataset version does not match run {run_id!r}.")
+            if not self._split_matches(run.get("split"), page.split):
+                raise ValueError(f"Page split does not match run {run_id!r}.")
             payload = page.to_dict()
             prior = existing.get(page.page_id)
             if prior is not None:
@@ -289,12 +306,18 @@ class ResultsStore:
     ) -> int:
         if self.read_only:
             raise PermissionError("Results store is read-only.")
+        self._require_run(run_id)
+        page_ids = {page.page_id for page in self.iter_pages(run_id)}
         existing = {
             str(row.get("page_id")): row
             for row in iter_jsonl(self.ground_truth_path(run_id))
         }
         count = 0
         for record in records:
+            if record.page_id not in page_ids:
+                raise ValueError(
+                    f"Ground truth references unknown page {record.page_id!r}."
+                )
             payload = record.to_dict()
             prior = existing.get(record.page_id)
             if prior is not None:
@@ -336,6 +359,8 @@ class ResultsStore:
 
         if self.read_only:
             raise PermissionError("Results store is read-only.")
+        run = self._require_run(run_id)
+        page_ids = {page.page_id for page in self.iter_pages(run_id)}
         existing = {
             str(row.get("page_id")): row
             for row in iter_jsonl(self.predictions_path(run_id))
@@ -347,6 +372,20 @@ class ResultsStore:
                     f"Prediction run id {prediction.run_id!r} does not match "
                     f"bundle run {run_id!r}."
                 )
+            if prediction.page_id not in page_ids:
+                raise ValueError(
+                    f"Prediction references unknown page {prediction.page_id!r}."
+                )
+            if prediction.model_id != run.get("model_id"):
+                raise ValueError(f"Prediction model does not match run {run_id!r}.")
+            if prediction.model_revision != run.get("model_revision"):
+                raise ValueError(
+                    f"Prediction model revision does not match run {run_id!r}."
+                )
+            if prediction.dataset_id != run.get("dataset_id"):
+                raise ValueError(f"Prediction dataset does not match run {run_id!r}.")
+            if not self._split_matches(run.get("split"), prediction.split):
+                raise ValueError(f"Prediction split does not match run {run_id!r}.")
             payload = prediction.to_dict()
             prior = existing.get(prediction.page_id)
             if prior is not None:
@@ -391,6 +430,8 @@ class ResultsStore:
     def append_metrics(self, run_id: str, records: Iterable[EvaluationRecord]) -> int:
         if self.read_only:
             raise PermissionError("Results store is read-only.")
+        run = self._require_run(run_id)
+        page_ids = {page.page_id for page in self.iter_pages(run_id)}
         existing: dict[tuple[str, str, str], dict[str, Any]] = {}
         for row in iter_jsonl(self.metrics_path(run_id)):
             existing[
@@ -407,6 +448,12 @@ class ResultsStore:
                     f"Metric run id {record.run_id!r} does not match "
                     f"bundle run {run_id!r}."
                 )
+            if record.scope.value == "page" and (record.page_id or "") not in page_ids:
+                raise ValueError(f"Metric references unknown page {record.page_id!r}.")
+            if record.dataset_id and record.dataset_id != run.get("dataset_id"):
+                raise ValueError(f"Metric dataset does not match run {run_id!r}.")
+            if not self._split_matches(run.get("split"), record.split):
+                raise ValueError(f"Metric split does not match run {run_id!r}.")
             key = (record.page_id or "", record.metric_name, record.scope.value)
             if key in existing:
                 prior = dict(existing[key])
@@ -467,6 +514,7 @@ class ResultsStore:
     def append_artifacts(self, run_id: str, artifacts: Iterable[ArtifactRef]) -> int:
         if self.read_only:
             raise PermissionError("Results store is read-only.")
+        self._require_run(run_id)
         existing = {
             str(row.get("artifact_id")): row
             for row in iter_jsonl(self.artifacts_path(run_id))
@@ -514,8 +562,14 @@ class ResultsStore:
             if page_id in page_ids:
                 issues.append(f"duplicate page id: {page_id}")
             page_ids[page_id] = row
+            if row.get("dataset_id") != metadata.get("dataset_id"):
+                issues.append(f"page dataset mismatch: {page_id}")
+            if row.get("dataset_version", "1") != metadata.get("dataset_version", "1"):
+                issues.append(f"page dataset version mismatch: {page_id}")
+            if not self._split_matches(metadata.get("split"), row.get("split")):
+                issues.append(f"page split mismatch: {page_id}")
             protection = row.get("protection") or {}
-            if protection.get("protected") and protection.get("is_training_eligible"):
+            if record_is_protected(row) and protection.get("is_training_eligible"):
                 issues.append(f"protected page marked training-eligible: {page_id}")
 
         gt_seen: set[str] = set()
@@ -546,6 +600,14 @@ class ResultsStore:
                 issues.append(f"prediction references unknown page: {page_id}")
             if str(row.get("run_id")) != run_id:
                 issues.append(f"prediction run mismatch: {page_id}")
+            if row.get("model_id") != metadata.get("model_id"):
+                issues.append(f"prediction model mismatch: {page_id}")
+            if row.get("model_revision") != metadata.get("model_revision"):
+                issues.append(f"prediction model revision mismatch: {page_id}")
+            if row.get("dataset_id") != metadata.get("dataset_id"):
+                issues.append(f"prediction dataset mismatch: {page_id}")
+            if not self._split_matches(metadata.get("split"), row.get("split")):
+                issues.append(f"prediction split mismatch: {page_id}")
 
         metric_pages: set[str] = set()
         for row in iter_jsonl(self.metrics_path(run_id)):
@@ -598,6 +660,15 @@ class ResultsStore:
         if not source.exists():
             raise UnknownRecordError(f"Unknown run: {run_id}")
         target = Path(destination)
+        source_resolved = source.resolve()
+        target_resolved = target.resolve()
+        store_resolved = self.root.resolve()
+        if (
+            target_resolved == store_resolved
+            or store_resolved in target_resolved.parents
+            or target_resolved in source_resolved.parents
+        ):
+            raise ValueError("Export source and destination overlap the Results Store.")
         if target.exists():
             raise FileExistsError(f"Export destination already exists: {target}")
         target_runs = target / "runs"

@@ -20,6 +20,8 @@ from clouda_contracts.protection import (
         {"role": "evaluation_only"},
         {"purpose": "protected"},
         {"metadata": {"protected": True}},
+        {"metadata": {"canonical_manifest_row": {"protected": True}}},
+        {"metadata": {"records": [{"protected": True}]}},
         {"provenance": {"source_split": "private_holdout"}},
         {"target_split": "train", "split": "holdout"},
         {"target_split": ["train"]},

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 PROTECTED_SPLIT_NAMES = frozenset(
@@ -93,32 +93,85 @@ def mapping_is_protected(value: Any) -> bool:
 
 def record_is_protected(record: Any) -> bool:
     """Inspect a record and its canonical nested metadata blocks."""
+    return _record_is_protected(record, seen=set())
+
+
+def _record_is_protected(record: Any, *, seen: set[int]) -> bool:
     if not isinstance(record, Mapping):
         return True
-    if mapping_is_protected(record):
+    identity = id(record)
+    if identity in seen:
         return True
-    for field in NESTED_PROTECTION_FIELDS:
-        if field not in record:
-            continue
-        nested = record[field]
-        if nested is None:
-            continue
-        if mapping_is_protected(nested):
+    seen.add(identity)
+    try:
+        if mapping_is_protected(record):
             return True
+        for field in NESTED_PROTECTION_FIELDS:
+            if (
+                field in record
+                and record[field] is not None
+                and not isinstance(record[field], Mapping)
+            ):
+                return True
+        return any(
+            _nested_value_is_protected(nested, seen=seen) for nested in record.values()
+        )
+    finally:
+        seen.remove(identity)
+
+
+def _nested_value_is_protected(value: Any, *, seen: set[int]) -> bool:
+    if isinstance(value, Mapping):
+        return _record_is_protected(value, seen=seen)
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        identity = id(value)
+        if identity in seen:
+            return True
+        seen.add(identity)
+        try:
+            return any(_nested_value_is_protected(item, seen=seen) for item in value)
+        finally:
+            seen.remove(identity)
     return False
 
 
 def protection_metadata_is_malformed(record: Any) -> bool:
     """Report malformed protection fields without weakening fail-closed use."""
+    return _protection_metadata_is_malformed(record, seen=set())
+
+
+def _protection_metadata_is_malformed(record: Any, *, seen: set[int]) -> bool:
     if _mapping_is_malformed(record):
         return True
     assert isinstance(record, Mapping)
-    for field in NESTED_PROTECTION_FIELDS:
-        if field not in record or record[field] is None:
-            continue
-        if _mapping_is_malformed(record[field]):
-            return True
-    return False
+    identity = id(record)
+    if identity in seen:
+        return True
+    seen.add(identity)
+    try:
+        for field in NESTED_PROTECTION_FIELDS:
+            if (
+                field in record
+                and record[field] is not None
+                and not isinstance(record[field], Mapping)
+            ):
+                return True
+        for nested in record.values():
+            if isinstance(nested, Mapping) and _protection_metadata_is_malformed(
+                nested, seen=seen
+            ):
+                return True
+            if isinstance(nested, Sequence) and not isinstance(
+                nested, (str, bytes, bytearray)
+            ):
+                for item in nested:
+                    if isinstance(item, Mapping) and _protection_metadata_is_malformed(
+                        item, seen=seen
+                    ):
+                        return True
+        return False
+    finally:
+        seen.remove(identity)
 
 
 def is_training_split_eligible(split: Any) -> bool:

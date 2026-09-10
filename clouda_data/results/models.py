@@ -90,6 +90,16 @@ class ProtectionInfo:
         protected = raw_protected is True or (
             isinstance(raw_protected, str) and string_marks_protected(raw_protected)
         )
+        if isinstance(raw_protected, str) and normalize_marker(raw_protected) not in {
+            "true",
+            "yes",
+            "1",
+            "protected",
+            "false",
+            "no",
+            "0",
+        }:
+            protected = True
         if not isinstance(raw_protected, (bool, str)):
             protected = True
         if protected and not reasons:

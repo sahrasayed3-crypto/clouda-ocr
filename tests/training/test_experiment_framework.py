@@ -324,6 +324,23 @@ def test_mock_run_records_contract_and_is_reproducible(tmp_path: Path) -> None:
     assert verify_run_integrity(left.path)["valid"] is True
 
 
+def test_config_hash_is_portable_across_workspace_paths(tmp_path: Path) -> None:
+    left_root = tmp_path / "left"
+    right_root = tmp_path / "right"
+    left_root.mkdir()
+    right_root.mkdir()
+    left_manifest = _manifest(left_root / "manifest.jsonl")
+    right_manifest = _manifest(right_root / "manifest.jsonl")
+    left = load_experiment_config(
+        _config(left_root / "experiment.json", left_manifest, left_root / "runs")
+    )
+    right = load_experiment_config(
+        _config(right_root / "experiment.json", right_manifest, right_root / "runs")
+    )
+
+    assert left.hash == right.hash
+
+
 def test_run_integrity_detects_tampered_artifact(tmp_path: Path) -> None:
     config = load_experiment_config(
         _config(

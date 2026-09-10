@@ -765,6 +765,35 @@ def factory_manifest_cli(args: argparse.Namespace) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# Clouda Environment Doctor — diagnostic-only readiness inspection
+# ---------------------------------------------------------------------------
+
+
+def doctor_cli(args: argparse.Namespace) -> int:
+    """`doctor` command: assemble the report and emit human/JSON output."""
+    from clouda_data.doctor import collect_report, exit_code_for, render_human
+
+    try:
+        report = collect_report(
+            deep=args.deep,
+            include_factory=not args.no_factory,
+            include_render=not args.no_render,
+            include_training=not args.no_training,
+            include_git=not args.no_git,
+            include_storage=not args.no_storage,
+            warn_free_gb=args.min_free_gb if args.min_free_gb is not None else 50.0,
+        )
+    except Exception as exc:  # noqa: BLE001 - exit code 2 contract
+        print(f"doctor failed to execute: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(report.to_json())
+    else:
+        print(render_human(report, verbose=args.verbose))
+    return exit_code_for(report)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m clouda_data.pipeline.cli")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1290,6 +1319,37 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--store", type=Path, required=True)
     p.set_defaults(func=results_export_command)
     register_training_data_commands(sub)
+
+    p = sub.add_parser(
+        "doctor", help="Inspect environment readiness for Clouda subsystems."
+    )
+    p.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
+    p.add_argument(
+        "--verbose", action="store_true", help="Include technical details per check."
+    )
+    p.add_argument(
+        "--deep",
+        action="store_true",
+        help="Run tiny offline smoke checks (MockTrainer dry-run).",
+    )
+    p.add_argument(
+        "--no-factory", action="store_true", help="Skip Data Factory checks."
+    )
+    p.add_argument("--no-render", action="store_true", help="Skip renderer checks.")
+    p.add_argument(
+        "--no-training", action="store_true", help="Skip Training Framework checks."
+    )
+    p.add_argument("--no-git", action="store_true", help="Skip Git/worktree checks.")
+    p.add_argument(
+        "--no-storage", action="store_true", help="Skip storage/filesystem checks."
+    )
+    p.add_argument(
+        "--min-free-gb",
+        type=float,
+        default=None,
+        help="Override the repository-drive free-space warn threshold (GB).",
+    )
+    p.set_defaults(func=doctor_cli)
 
     return parser
 

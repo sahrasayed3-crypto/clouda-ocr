@@ -105,7 +105,5 @@ def read_cursor_from_checkpoint(checkpoint_dir: str | Path) -> ResumeCursor:
     state = read_json(Path(checkpoint_dir) / "state.json")
     payload = state.get("data_cursor")
     if payload is None:
-        raise CursorMismatchError(
-            f"No data cursor in checkpoint: {checkpoint_dir}"
-        )
+        raise CursorMismatchError(f"No data cursor in checkpoint: {checkpoint_dir}")
     return ResumeCursor.from_dict(payload)

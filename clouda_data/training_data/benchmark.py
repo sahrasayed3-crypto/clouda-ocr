@@ -56,9 +56,7 @@ def generate_manifest(root: Path, count: int) -> tuple[Path, Path]:
     png_bytes: list[bytes] = []
     for variant in range(unique_pngs):
         buffer = io.BytesIO()
-        Image.new("RGB", (4, 4), color=(variant, 100, 200)).save(
-            buffer, format="PNG"
-        )
+        Image.new("RGB", (4, 4), color=(variant, 100, 200)).save(buffer, format="PNG")
         png_bytes.append(buffer.getvalue())
 
     rows = []
@@ -182,11 +180,16 @@ def run_benchmark(count: int, workdir: Path) -> dict[str, Any]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="CPU-only loader benchmark")
     parser.add_argument(
-        "--sizes", type=int, nargs="+", default=[100, 1000],
+        "--sizes",
+        type=int,
+        nargs="+",
+        default=[100, 1000],
         help="sample counts to benchmark (default: 100 1000)",
     )
     parser.add_argument(
-        "--workdir", type=Path, default=None,
+        "--workdir",
+        type=Path,
+        default=None,
         help="working directory (default: temp dir)",
     )
     args = parser.parse_args(argv)

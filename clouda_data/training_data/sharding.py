@@ -133,9 +133,7 @@ class ShardIndex:
         )
 
 
-def _iter_rows_sorted(
-    path: Path, sample_limit: int | None
-) -> Iterator[dict[str, Any]]:
+def _iter_rows_sorted(path: Path, sample_limit: int | None) -> Iterator[dict[str, Any]]:
     from clouda_data.training_data.input_contract import iter_canonical_rows
 
     rows = []
@@ -308,9 +306,7 @@ def verify_shards(index: ShardIndex, root: str | Path) -> dict[str, Any]:
                 continue
             record = json.loads(line)
             if record.get("shard_id") != entry.shard_id:
-                raise ShardIndexError(
-                    f"Shard id mismatch in {path} line {line_number}"
-                )
+                raise ShardIndexError(f"Shard id mismatch in {path} line {line_number}")
             sample_id = str(record.get("sample_id", ""))
             if not sample_id:
                 raise ShardIndexError(f"Missing sample_id in {path}:{line_number}")

@@ -85,9 +85,7 @@ class ArtifactLoader:
             return None
         payload = load_image_bytes(self.root, ref_rel_path)
         if len(payload) > self.max_image_bytes:
-            raise ValueError(
-                f"Artifact exceeds max_image_bytes: {ref_rel_path!r}"
-            )
+            raise ValueError(f"Artifact exceeds max_image_bytes: {ref_rel_path!r}")
         return payload
 
     def image(self, ref_rel_path: str | None):

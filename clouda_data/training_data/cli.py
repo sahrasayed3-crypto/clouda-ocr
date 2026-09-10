@@ -110,7 +110,9 @@ def command_sample(args: argparse.Namespace) -> int:
         shard_index_path=index_path,
         loader_config=config,
         manifest_path=(
-            Path(args.manifest).resolve() if args.manifest else index_path.parent / "manifest.jsonl"
+            Path(args.manifest).resolve()
+            if args.manifest
+            else index_path.parent / "manifest.jsonl"
         ),
         dataset_root=Path(args.root).resolve() if args.root else index_path.parent,
     )
@@ -281,7 +283,9 @@ def register_training_data_commands(
         "--validation-mode", choices=["none", "light", "strict"], default="light"
     )
     p.add_argument(
-        "--bad-sample-policy", choices=["fail_fast", "skip_and_record"], default="skip_and_record"
+        "--bad-sample-policy",
+        choices=["fail_fast", "skip_and_record"],
+        default="skip_and_record",
     )
     p.add_argument("--manifest", type=Path, default=None)
     p.add_argument("--root", type=Path, default=None)

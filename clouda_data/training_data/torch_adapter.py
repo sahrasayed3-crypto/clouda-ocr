@@ -54,7 +54,11 @@ def make_iterable_dataset(loader: Any) -> Any:
     torch = require_torch()
 
     def _resolve_loader():
-        return loader() if callable(loader) and not hasattr(loader, "iter_samples") else loader
+        return (
+            loader()
+            if callable(loader) and not hasattr(loader, "iter_samples")
+            else loader
+        )
 
     iterable_dataset_base: Any = torch.utils.data.IterableDataset
 
@@ -70,8 +74,10 @@ def make_iterable_dataset(loader: Any) -> Any:
             info = torch.utils.data.get_worker_info()
             num_workers = info.num_workers if info else 1
             worker_id = info.id if info else 0
-            if world_size > 1 and torch.distributed.is_available() and (
-                torch.distributed.is_initialized()
+            if (
+                world_size > 1
+                and torch.distributed.is_available()
+                and (torch.distributed.is_initialized())
             ):
                 rank = torch.distributed.get_rank()
                 world_size = torch.distributed.get_world_size()
@@ -136,6 +142,4 @@ def make_dataloader(
     if batch_size is not None:
         kwargs["batch_size"] = batch_size
     kwargs.update(dataloader_kwargs)
-    return torch.utils.data.DataLoader(
-        dataset, num_workers=num_workers, **kwargs
-    )
+    return torch.utils.data.DataLoader(dataset, num_workers=num_workers, **kwargs)

@@ -81,9 +81,7 @@ def weighted_stream(
     if not schedule.weights:
         yield from samples
         return
-    seed = stable_hash(
-        f"clouda.training_data.weighted|{global_seed}|{epoch}"
-    )
+    seed = stable_hash(f"clouda.training_data.weighted|{global_seed}|{epoch}")
     rng = StableRandom(seed)
     for sample in samples:
         stratum = stratum_of(sample)

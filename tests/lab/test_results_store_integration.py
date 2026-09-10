@@ -89,6 +89,13 @@ def test_malformed_protection_and_nested_source_markers_fail_closed(tmp_path) ->
     assert malformed.protected is True
     assert malformed.is_training_eligible is False
 
+    source_page = build_fixture_pages(dataset_id="dataset")[0]
+    for malformed_value in (["holdout"], "holdout", None, {"reasons": "protected"}):
+        payload = source_page.to_dict()
+        payload["split"] = "train"
+        payload["protection"] = malformed_value
+        assert PageRecord.from_dict(payload).is_training_eligible is False
+
     results = ResultsService(tmp_path / "results")
     run = results.create_run(
         model_id="model",
@@ -306,6 +313,8 @@ def test_metric_store_rejects_a_different_value_for_the_same_identity(
         page_id=page.page_id,
         metric_name="cer@raw",
         value=0.25,
+        dataset_id="dataset",
+        split=page.split,
         computed_at="2026-09-10T00:00:00Z",
     )
     conflicting = EvaluationRecord(
@@ -314,6 +323,8 @@ def test_metric_store_rejects_a_different_value_for_the_same_identity(
         page_id=page.page_id,
         metric_name="cer@raw",
         value=0.75,
+        dataset_id="dataset",
+        split=page.split,
         computed_at="2026-09-10T00:00:01Z",
     )
 

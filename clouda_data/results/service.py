@@ -67,12 +67,14 @@ class ResultsService:
         from .models import BenchmarkDataset, Provenance
         from .store import ConflictingRecordError, UnknownRecordError
 
+        requested_splits = list(splits)
+        requested_tags = list(tags)
         requested = {
             "name": name,
             "description": description,
             "manifest_sha256": manifest_sha256,
-            "splits": list(splits),
-            "tags": list(tags),
+            "splits": requested_splits,
+            "tags": requested_tags,
             "metadata": dict(metadata or {}),
         }
         try:
@@ -99,8 +101,8 @@ class ResultsService:
             name=name,
             description=description,
             manifest_sha256=manifest_sha256,
-            splits=tuple(requested["splits"]),
-            tags=tuple(requested["tags"]),
+            splits=tuple(requested_splits),
+            tags=tuple(requested_tags),
             metadata=dict(metadata or {}),
             provenance=Provenance(source_format="results-service.manual"),
         )

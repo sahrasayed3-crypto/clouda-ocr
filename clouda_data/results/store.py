@@ -307,17 +307,24 @@ class ResultsStore:
         if self.read_only:
             raise PermissionError("Results store is read-only.")
         self._require_run(run_id)
-        page_ids = {page.page_id for page in self.iter_pages(run_id)}
+        pages_by_id = {page.page_id: page for page in self.iter_pages(run_id)}
         existing = {
             str(row.get("page_id")): row
             for row in iter_jsonl(self.ground_truth_path(run_id))
         }
         count = 0
         for record in records:
-            if record.page_id not in page_ids:
+            page = pages_by_id.get(record.page_id)
+            if page is None:
                 raise ValueError(
                     f"Ground truth references unknown page {record.page_id!r}."
                 )
+            if record.dataset_id != page.dataset_id:
+                raise ValueError("Ground truth dataset does not match its page.")
+            if record.split != page.split:
+                raise ValueError("Ground truth split does not match its page.")
+            if record.protection.to_dict() != page.protection.to_dict():
+                raise ValueError("Ground truth protection does not match its page.")
             payload = record.to_dict()
             prior = existing.get(record.page_id)
             if prior is not None:
@@ -360,7 +367,7 @@ class ResultsStore:
         if self.read_only:
             raise PermissionError("Results store is read-only.")
         run = self._require_run(run_id)
-        page_ids = {page.page_id for page in self.iter_pages(run_id)}
+        pages_by_id = {page.page_id: page for page in self.iter_pages(run_id)}
         existing = {
             str(row.get("page_id")): row
             for row in iter_jsonl(self.predictions_path(run_id))
@@ -372,7 +379,8 @@ class ResultsStore:
                     f"Prediction run id {prediction.run_id!r} does not match "
                     f"bundle run {run_id!r}."
                 )
-            if prediction.page_id not in page_ids:
+            page = pages_by_id.get(prediction.page_id)
+            if page is None:
                 raise ValueError(
                     f"Prediction references unknown page {prediction.page_id!r}."
                 )
@@ -384,6 +392,10 @@ class ResultsStore:
                 )
             if prediction.dataset_id != run.get("dataset_id"):
                 raise ValueError(f"Prediction dataset does not match run {run_id!r}.")
+            if prediction.dataset_id != page.dataset_id:
+                raise ValueError("Prediction dataset does not match its page.")
+            if prediction.split != page.split:
+                raise ValueError("Prediction split does not match its page.")
             if not self._split_matches(run.get("split"), prediction.split):
                 raise ValueError(f"Prediction split does not match run {run_id!r}.")
             payload = prediction.to_dict()
@@ -431,7 +443,7 @@ class ResultsStore:
         if self.read_only:
             raise PermissionError("Results store is read-only.")
         run = self._require_run(run_id)
-        page_ids = {page.page_id for page in self.iter_pages(run_id)}
+        pages_by_id = {page.page_id: page for page in self.iter_pages(run_id)}
         existing: dict[tuple[str, str, str], dict[str, Any]] = {}
         for row in iter_jsonl(self.metrics_path(run_id)):
             existing[
@@ -448,10 +460,15 @@ class ResultsStore:
                     f"Metric run id {record.run_id!r} does not match "
                     f"bundle run {run_id!r}."
                 )
-            if record.scope.value == "page" and (record.page_id or "") not in page_ids:
+            page = pages_by_id.get(record.page_id or "")
+            if record.scope.value == "page" and page is None:
                 raise ValueError(f"Metric references unknown page {record.page_id!r}.")
-            if record.dataset_id and record.dataset_id != run.get("dataset_id"):
+            if record.dataset_id != run.get("dataset_id"):
                 raise ValueError(f"Metric dataset does not match run {run_id!r}.")
+            if page is not None and record.dataset_id != page.dataset_id:
+                raise ValueError("Metric dataset does not match its page.")
+            if page is not None and record.split != page.split:
+                raise ValueError("Metric split does not match its page.")
             if not self._split_matches(run.get("split"), record.split):
                 raise ValueError(f"Metric split does not match run {run_id!r}.")
             key = (record.page_id or "", record.metric_name, record.scope.value)
@@ -583,6 +600,14 @@ class ResultsStore:
                 issues.append(f"ground truth hash mismatch: {page_id}")
             if page_id not in page_ids:
                 issues.append(f"ground truth references unknown page: {page_id}")
+            else:
+                page = page_ids[page_id]
+                if row.get("dataset_id") != page.get("dataset_id"):
+                    issues.append(f"ground truth dataset mismatch: {page_id}")
+                if row.get("split") != page.get("split"):
+                    issues.append(f"ground truth split mismatch: {page_id}")
+                if row.get("protection") != page.get("protection"):
+                    issues.append(f"ground truth protection mismatch: {page_id}")
 
         prediction_pages: set[str] = set()
         seen_predictions: set[tuple[str, str]] = set()
@@ -598,6 +623,12 @@ class ResultsStore:
                 issues.append(f"prediction text hash mismatch: {page_id}")
             if page_id not in page_ids:
                 issues.append(f"prediction references unknown page: {page_id}")
+            else:
+                page = page_ids[page_id]
+                if row.get("dataset_id") != page.get("dataset_id"):
+                    issues.append(f"prediction page dataset mismatch: {page_id}")
+                if row.get("split") != page.get("split"):
+                    issues.append(f"prediction page split mismatch: {page_id}")
             if str(row.get("run_id")) != run_id:
                 issues.append(f"prediction run mismatch: {page_id}")
             if row.get("model_id") != metadata.get("model_id"):
@@ -611,12 +642,23 @@ class ResultsStore:
 
         metric_pages: set[str] = set()
         for row in iter_jsonl(self.metrics_path(run_id)):
+            page_id = str(row.get("page_id") or "")
+            if str(row.get("run_id")) != run_id:
+                issues.append(f"metric run mismatch: {page_id or 'run-summary'}")
+            if row.get("dataset_id") != metadata.get("dataset_id"):
+                issues.append(f"metric dataset mismatch: {page_id or 'run-summary'}")
             if row.get("scope") == "page":
-                metric_pages.add(str(row.get("page_id")))
-                if str(row.get("page_id")) not in page_ids:
-                    issues.append(
-                        f"metric references unknown page: {row.get('page_id')}"
-                    )
+                metric_pages.add(page_id)
+                if page_id not in page_ids:
+                    issues.append(f"metric references unknown page: {page_id}")
+                else:
+                    page = page_ids[page_id]
+                    if row.get("dataset_id") != page.get("dataset_id"):
+                        issues.append(f"metric page dataset mismatch: {page_id}")
+                    if row.get("split") != page.get("split"):
+                        issues.append(f"metric page split mismatch: {page_id}")
+            elif not self._split_matches(metadata.get("split"), row.get("split")):
+                issues.append("metric run-summary split mismatch")
 
         missing_gt = sorted(set(page_ids) - gt_seen)
         if missing_gt:

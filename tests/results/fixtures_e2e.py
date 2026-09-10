@@ -90,7 +90,7 @@ def build_fixture_pages(dataset_id: str = "fx-arabic-demo") -> list[PageRecord]:
                 ground_truth_uri=f"dataset://ground_truth/{spec['page_id']}.txt",
                 ground_truth_sha256=sha256_text(spec["raw_text"]),
                 profile=spec["profile"],
-                distortions=(
+                distortions=tuple(
                     [{"distortion": "gaussian_blur", "severity": "medium"}]
                     if spec["profile"] != "clean"
                     else []

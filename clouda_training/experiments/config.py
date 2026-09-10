@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, TypeVar, cast, get_type_hints
 
 import yaml
+from clouda_contracts.checksums import sha256_file
 
 
 class ConfigError(ValueError):
@@ -128,9 +129,7 @@ class ExperimentConfig:
         manifest_path = self.dataset.manifest_path
         identity["dataset"].pop("manifest_path", None)
         identity["dataset"]["manifest_sha256"] = (
-            hashlib.sha256(manifest_path.read_bytes()).hexdigest()
-            if manifest_path.is_file()
-            else None
+            sha256_file(manifest_path) if manifest_path.is_file() else None
         )
         identity["runtime"].pop("output_root", None)
         portable_json = json.dumps(

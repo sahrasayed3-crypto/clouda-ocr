@@ -324,7 +324,9 @@ def test_mock_run_records_contract_and_is_reproducible(tmp_path: Path) -> None:
     assert verify_run_integrity(left.path)["valid"] is True
 
 
-def test_config_hash_is_portable_across_workspace_paths(tmp_path: Path) -> None:
+def test_config_hash_is_portable_across_workspace_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     left_root = tmp_path / "left"
     right_root = tmp_path / "right"
     left_root.mkdir()
@@ -338,6 +340,10 @@ def test_config_hash_is_portable_across_workspace_paths(tmp_path: Path) -> None:
         _config(right_root / "experiment.json", right_manifest, right_root / "runs")
     )
 
+    def refuse_read_bytes(_path: Path) -> bytes:
+        raise AssertionError("config hashing must stream manifest bytes")
+
+    monkeypatch.setattr(Path, "read_bytes", refuse_read_bytes)
     assert left.hash == right.hash
 
 

@@ -6,6 +6,7 @@ import pytest
 
 from clouda_data.results.ground_truth import build_ground_truth_record
 from clouda_data.results.models import (
+    EvaluationRecord,
     InferenceRunStatus,
     OCRPrediction,
     PageRecord,
@@ -221,6 +222,32 @@ class TestIntegrity:
                 NewPrediction(page_id=page.page_id, text="x", model_id="other"),
             )
 
+        ground_truth = svc.get_ground_truth(run_id, page.page_id)
+        wrong_ground_truth = ground_truth.__class__.from_dict(
+            {**ground_truth.to_dict(), "dataset_id": "other"}
+        )
+        with pytest.raises(ValueError, match="Ground truth dataset"):
+            svc.store.append_ground_truth(run_id, [wrong_ground_truth])
+
+        prediction = svc.get_predictions(run_id, page.page_id)[0]
+        wrong_prediction = OCRPrediction.from_dict(
+            {**prediction.to_dict(), "split": "validation"}
+        )
+        with pytest.raises(ValueError, match="Prediction split"):
+            svc.store.append_predictions(run_id, [wrong_prediction])
+
+        wrong_metric = EvaluationRecord(
+            record_id="wrong-split",
+            run_id=run_id,
+            page_id=page.page_id,
+            metric_name="cer@raw",
+            value=0.5,
+            dataset_id="fx",
+            split="validation",
+        )
+        with pytest.raises(ValueError, match="Metric split"):
+            svc.store.append_metrics(run_id, [wrong_metric])
+
     def test_verify_detects_cross_record_identity_corruption(self, populated) -> None:
         svc, run_id = populated
         path = svc.store.predictions_path(run_id)
@@ -235,9 +262,35 @@ class TestIntegrity:
             encoding="utf-8",
         )
 
+        gt_path = svc.store.ground_truth_path(run_id)
+        ground_truth = [
+            json.loads(line)
+            for line in gt_path.read_text(encoding="utf-8").splitlines()
+        ]
+        ground_truth[0]["dataset_id"] = "foreign-dataset"
+        gt_path.write_text(
+            "".join(json.dumps(row, sort_keys=True) + "\n" for row in ground_truth),
+            encoding="utf-8",
+        )
+
+        metrics_path = svc.store.metrics_path(run_id)
+        metrics = [
+            json.loads(line)
+            for line in metrics_path.read_text(encoding="utf-8").splitlines()
+        ]
+        metrics[0]["split"] = "foreign-split"
+        metrics_path.write_text(
+            "".join(json.dumps(row, sort_keys=True) + "\n" for row in metrics),
+            encoding="utf-8",
+        )
+
         report = svc.verify(run_id)
         assert not report["ok"]
         assert any("prediction model mismatch" in issue for issue in report["issues"])
+        assert any(
+            "ground truth dataset mismatch" in issue for issue in report["issues"]
+        )
+        assert any("metric page split mismatch" in issue for issue in report["issues"])
 
 
 class TestIndexAndExport:

@@ -81,11 +81,26 @@ class ProtectionInfo:
         }
 
     @classmethod
-    def from_dict(cls, value: dict[str, Any]) -> "ProtectionInfo":
+    def from_dict(cls, value: Any) -> "ProtectionInfo":
+        if not isinstance(value, dict):
+            return cls(
+                protected=True,
+                reasons=("malformed_protection_metadata",),
+                split="unassigned",
+            )
         split = value.get("split", "unassigned")
+        malformed = False
         if not isinstance(split, str):
             split = "unassigned"
-        reasons = tuple(str(reason) for reason in value.get("reasons", ()))
+            malformed = True
+        raw_reasons = value.get("reasons", ())
+        if isinstance(raw_reasons, (list, tuple)) and all(
+            isinstance(reason, str) for reason in raw_reasons
+        ):
+            reasons = tuple(raw_reasons)
+        else:
+            reasons = ()
+            malformed = True
         raw_protected = value.get("protected", False)
         protected = raw_protected is True or (
             isinstance(raw_protected, str) and string_marks_protected(raw_protected)
@@ -102,6 +117,9 @@ class ProtectionInfo:
             protected = True
         if not isinstance(raw_protected, (bool, str)):
             protected = True
+        if malformed:
+            protected = True
+            reasons = (*reasons, "malformed_protection_metadata")
         if protected and not reasons:
             reasons = ("canonical_protection_policy",)
         return cls(protected=protected, reasons=reasons, split=split)
@@ -438,10 +456,8 @@ class PageRecord:
             if isinstance(value, dict):
                 kwargs[key] = ArtifactRef.from_dict(value)
         protection = kwargs.get("protection")
-        if isinstance(protection, dict):
+        if not isinstance(protection, ProtectionInfo):
             kwargs["protection"] = ProtectionInfo.from_dict(protection)
-        elif not isinstance(protection, ProtectionInfo):
-            kwargs["protection"] = ProtectionInfo()
         provenance = kwargs.get("provenance")
         if isinstance(provenance, dict):
             kwargs["provenance"] = Provenance.from_dict(provenance)
@@ -534,13 +550,8 @@ class GroundTruthRecord:
         if isinstance(provenance, dict):
             kwargs["provenance"] = Provenance.from_dict(provenance)
         protection = kwargs.get("protection")
-        if isinstance(protection, dict):
+        if not isinstance(protection, ProtectionInfo):
             kwargs["protection"] = ProtectionInfo.from_dict(protection)
-        elif not isinstance(protection, ProtectionInfo):
-            kwargs["protection"] = ProtectionInfo(
-                protected=bool(kwargs.get("protected", False)),
-                split=str(kwargs.get("split", "unassigned")),
-            )
         return cls(**kwargs)
 
 

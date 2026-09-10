@@ -308,15 +308,33 @@ def families_to_clusters(
     from clouda_data.quality.models import DuplicateCluster
 
     by_id = {sample.sample_id: sample for sample in samples}
+    # Cross-source sample_id collisions: the same sample_id can exist under
+    # several source_ids, so family member lists built from sample_id alone
+    # collapse distinct rows. Reconstruct distinct row members from the
+    # classification output (updated samples carry duplicate_of / states).
     clusters: list[DuplicateCluster] = []
     seen: set[tuple[str, ...]] = set()
     for family in report.families:
         canonical_id = str(family.get("canonical_sample_id", ""))
-        members = sorted(
-            mid
-            for mid in [*family.get("member_sample_ids", []), canonical_id]
-            if mid and mid in by_id
-        )
+        criteria = set(family.get("criteria", ()))
+        if "sample_id" in criteria and len(by_id) != len(samples):
+            # Ambiguous id space: group rows by (source_id, sample_id) for
+            # this family instead of raw sample ids.
+            id_rows = [sample for sample in samples if sample.sample_id == canonical_id]
+            members = sorted(
+                {f"{sample.source_id}:{sample.sample_id}" for sample in id_rows}
+            )
+        else:
+            members = sorted(
+                {
+                    mid
+                    for mid in [
+                        *family.get("member_sample_ids", []),
+                        canonical_id,
+                    ]
+                    if mid and mid in by_id
+                }
+            )
         if len(members) < 2 or tuple(members) in seen:
             continue
         seen.add(tuple(members))

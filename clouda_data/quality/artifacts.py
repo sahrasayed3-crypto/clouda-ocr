@@ -96,7 +96,7 @@ def _issue(
         code=code,
         severity=severity,
         sample_ids=(sample.sample_id,),
-        canonical_key=f"{code}:{sample.sample_id}",
+        canonical_key=f"{code}:{sample.source_id}:{sample.sample_id}",
         message=message,
         evidence=dict(evidence or {}),
     )

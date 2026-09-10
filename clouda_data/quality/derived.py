@@ -32,6 +32,33 @@ class DerivedManifestValidationError(RuntimeError):
     """Raised when a derived manifest fails post-write re-validation."""
 
 
+def _reject_self_overwrite(source_path: Path, output_path: Path) -> None:
+    """Refuse output paths that would clobber the source manifest (R4-H1).
+
+    Windows is case-insensitive, so a case-variant stem with a different
+    suffix-extension collision (``m.jsonl`` vs ``m.JSONL``) is also rejected.
+    """
+
+    try:
+        source_resolved = source_path.resolve()
+        output_resolved = output_path.resolve()
+    except OSError as exc:  # pragma: no cover - unusual filesystem state
+        raise ValueError(f"Cannot resolve output path safely: {exc}") from exc
+    if output_resolved == source_resolved:
+        raise ValueError(
+            "Refusing to write the derived manifest over the source manifest: "
+            f"{output_resolved}. Choose a different --output path."
+        )
+    if output_resolved.parent == source_resolved.parent and (
+        output_resolved.stem == source_resolved.stem
+    ):
+        raise ValueError(
+            "Refusing to write the derived manifest next to the source with "
+            "the same stem (case-insensitive collision risk): "
+            f"{output_resolved}. Choose a different --output path."
+        )
+
+
 def _sha256_text(text: str) -> str:
     import hashlib
 
@@ -60,6 +87,11 @@ def write_clean_manifest(
 
     source_path = Path(source_manifest_path)
     source_sha_before = _hash_file(source_path)
+
+    output = Path(output_path)
+    # R4-H1 fix: refuse any output that would overwrite the source manifest
+    # (or a case-variant of it) BEFORE any write happens.
+    _reject_self_overwrite(source_path, output)
 
     excluded_ids = {decision.sample_id for decision in exclusions}
     quarantine_set = set(quarantine_ids)

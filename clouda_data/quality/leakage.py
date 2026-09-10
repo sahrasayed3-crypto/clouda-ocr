@@ -80,13 +80,79 @@ def _split_value(sample: DatasetSample) -> str:
     return ""
 
 
+def _obfuscated_marker(value: str) -> bool:
+    """Detection of protection markers under obfuscation (R2-H1/M1).
+
+    Applies NFKC normalization, strips control/invisible format characters,
+    and additionally transliterates confusable non-Latin letters (Cyrillic
+    etc.) down to Latin before the canonical marker check, defeating
+    homoglyph and zero-width evasions (e.g. cyrillic 'о' in 'holdout',
+    U+200B inserts). Only used defensively for partition assignment; never
+    rewrites data.
+    """
+
+    import unicodedata
+
+    normalized = unicodedata.normalize("NFKC", str(value))
+    stripped = "".join(
+        char for char in normalized if unicodedata.category(char) not in {"Cc", "Cf"}
+    )
+    # Confusable-script fold: map known homoglyph letters to their Latin
+    # equivalents before the canonical marker check. Non-letters and ASCII
+    # pass through unchanged. Unknown non-ASCII letters map to a wildcard
+    # 'x' only if the rest of the string already looks like a marker word.
+    transliterated = "".join(_CONFUSABLE_LATIN.get(char, char) for char in stripped)
+    if string_marks_protected(transliterated):
+        return True
+    if any(ord(char) > 127 and char.isalpha() for char in stripped):
+        wildcarded = "".join(
+            "x" if ord(char) > 127 and char.isalpha() else char for char in stripped
+        )
+        return string_marks_protected(wildcarded)
+    return False
+
+
+# Common homoglyph letters that appear in protection-marker words.
+_CONFUSABLE_LATIN = {
+    "о": "o",  # cyrillic small o
+    "О": "O",  # cyrillic capital O
+    "ｏ": "o",  # fullwidth o
+    "ο": "o",  # greek omicron
+    "Ο": "O",  # greek capital omicron
+}
+
+
+def _provenance_values_obfuscated(sample: DatasetSample) -> bool:
+    """Scan provenance/metadata VALUES for protection markers under any key.
+
+    Canonical policy scans canonical keys; this closes the R2-H1 gap where
+    a holdout row hides its split under a non-canonical key such as
+    ``provenance.data_split``. Fail-closed: any marker found -> protected.
+    """
+
+    for block_name in ("provenance", "metadata", "protection"):
+        block = getattr(sample, block_name, None)
+        if not isinstance(block, dict):
+            continue
+        for value in block.values():
+            if isinstance(value, str) and _obfuscated_marker(value):
+                return True
+            if isinstance(value, dict):
+                for nested in value.values():
+                    if isinstance(nested, str) and _obfuscated_marker(nested):
+                        return True
+    return False
+
+
 def effective_partition(sample: DatasetSample) -> str:
     """Fail-closed partition for one sample.
 
     Precedence: (1) ``record_is_protected`` quarantines regardless of split;
-    (2) assigned ``target_split`` via canonical eligibility helpers;
-    (3) free-form ``source_split`` through ``string_marks_protected``;
-    (4) otherwise UNPARTITIONED.
+    (2) malformed protection metadata quarantines (fail-closed);
+    (3) assigned ``target_split`` via canonical eligibility helpers;
+    (4) free-form ``source_split`` through ``string_marks_protected``;
+    (5) provenance/metadata value scan for obfuscated markers (R2-H1);
+    (6) otherwise UNPARTITIONED.
     """
 
     if record_is_protected(sample.to_dict()):
@@ -108,10 +174,15 @@ def effective_partition(sample: DatasetSample) -> str:
         value = normalize_marker(sample.source_split)
         if string_marks_protected(value):
             return PARTITION_PROTECTED
+        if _obfuscated_marker(sample.source_split):
+            return PARTITION_PROTECTED
         if is_training_split_eligible(value):
             return PARTITION_TRAIN
         if value in EVAL_SPLITS:
             return PARTITION_EVAL
+
+    if _provenance_values_obfuscated(sample):
+        return PARTITION_PROTECTED
 
     return PARTITION_UNPARTITIONED
 

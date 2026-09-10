@@ -67,6 +67,9 @@ from clouda_data.lifecycle import (
 from clouda_data.factory.adapters import (
     run_dir_to_dataset_manifest,
 )
+from clouda_data.training_data.cli import (
+    register_training_data_commands,
+)
 from clouda_data.factory.cli import (
     command_profiles as factory_profiles_command,
     command_seeds as factory_seeds_command,
@@ -1286,6 +1289,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("output", type=Path)
     p.add_argument("--store", type=Path, required=True)
     p.set_defaults(func=results_export_command)
+    register_training_data_commands(sub)
 
     return parser
 

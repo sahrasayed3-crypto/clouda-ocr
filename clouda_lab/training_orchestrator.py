@@ -22,6 +22,18 @@ from typing import Any, Mapping
 import yaml
 
 from clouda_contracts.checksums import sha256_file
+from clouda_data.training_data.loader import (
+    StreamingTrainingDataLoader,
+    loader_config_hash,
+)
+from clouda_data.training_data.models import (
+    BatchConfig,
+    ShuffleConfig,
+    ShuffleMode,
+    TrainingDataConfig,
+    ValidationMode,
+)
+from clouda_data.training_data.sharding import build_shards
 from clouda_training.experiments import (
     ConfigError,
     ExperimentRegistry,
@@ -92,7 +104,12 @@ class TrainingOrchestrator:
 
     # -- lifecycle (mock/dry-run only) --------------------------------------
 
-    def start_dry_run(self, config_path: str | Path) -> dict[str, Any]:
+    def start_dry_run(
+        self,
+        config_path: str | Path,
+        *,
+        training_data: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Run a validated experiment config in dry-run (mock) mode."""
         config = load_experiment_config(Path(config_path))
         if not config.runtime.dry_run:
@@ -100,13 +117,52 @@ class TrainingOrchestrator:
                 "Orchestrator only permits dry_run configs; real training "
                 "adapters remain disabled"
             )
-        handle = run_experiment(config)
+        loader = (
+            self.create_training_data_loader(training_data)
+            if training_data is not None
+            else None
+        )
+        handle = run_experiment(config, data_loader=loader)
         return handle.to_dict()
 
-    def resume(self, run_id: str) -> dict[str, Any]:
+    def resume(
+        self,
+        run_id: str,
+        *,
+        training_data: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Resume passthrough — the framework enforces its own integrity checks."""
-        handle = resume_run(run_id, self.runs_root)
+        loader = (
+            self.create_training_data_loader(training_data)
+            if training_data is not None
+            else None
+        )
+        handle = resume_run(run_id, self.runs_root, data_loader=loader)
         return handle.to_dict()
+
+    def create_training_data_loader(
+        self, descriptor: Mapping[str, Any]
+    ) -> StreamingTrainingDataLoader:
+        """Construct the canonical runtime loader from prepared local paths."""
+        if descriptor.get("schema_version") != "clouda.training_data.prepared.v1":
+            raise ValueError("Unsupported prepared training-data descriptor")
+        config = TrainingDataConfig(
+            dataset_id=str(descriptor["dataset_id"]),
+            dataset_version=str(descriptor["dataset_version"]),
+            global_seed=int(descriptor["global_seed"]),
+            shuffle=ShuffleConfig(mode=ShuffleMode.NONE),
+            batch=BatchConfig(batch_size=int(descriptor["batch_size"])),
+            validation_mode=ValidationMode.NONE,
+        )
+        loader = StreamingTrainingDataLoader(
+            shard_index_path=Path(str(descriptor["shard_index_path"])),
+            loader_config=config,
+            manifest_path=Path(str(descriptor["manifest_path"])),
+            dataset_root=Path(str(descriptor["dataset_root"])),
+        )
+        if loader.config_hash != descriptor.get("loader_config_hash"):
+            raise ValueError("Prepared training-data loader config hash mismatch")
+        return loader
 
     def validate_experiment(self, config_path: str | Path) -> dict[str, Any]:
         config = load_experiment_config(Path(config_path))
@@ -179,7 +235,14 @@ class TrainingOrchestrator:
         out_dir = Path(output_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         derived_manifest = out_dir / f"{selection.selection_id}.manifest.jsonl"
-        header = write_selection_manifest(selection, str(derived_manifest))
+        derived_dataset_id = f"lab_selection_{selection.selection_id}"
+        derived_dataset_version = selection.selection_id
+        header = write_selection_manifest(
+            selection,
+            str(derived_manifest),
+            dataset_id=derived_dataset_id,
+            dataset_version=derived_dataset_version,
+        )
         validation = validate_derived_manifest_for_training(str(derived_manifest))
 
         if history is not None:
@@ -194,10 +257,8 @@ class TrainingOrchestrator:
 
         config = _build_experiment_config(
             experiment_name=experiment_name,
-            dataset_id=str(
-                header.get("dataset_id", f"lab_selection_{selection.selection_id}")
-            ),
-            dataset_version=selection.selection_id,
+            dataset_id=derived_dataset_id,
+            dataset_version=derived_dataset_version,
             manifest_path=derived_manifest,
             split=str(selection.criteria.get("split") or "train"),
             seed=resolved_seed,
@@ -205,6 +266,43 @@ class TrainingOrchestrator:
             output_root=self.runs_root.resolve(),
             overrides=config_overrides,
         )
+        batch_size = int(config["training"].get("batch_size", 8))
+        loader_config = TrainingDataConfig(
+            dataset_id=derived_dataset_id,
+            dataset_version=derived_dataset_version,
+            global_seed=resolved_seed,
+            shuffle=ShuffleConfig(mode=ShuffleMode.NONE),
+            batch=BatchConfig(batch_size=batch_size),
+            validation_mode=ValidationMode.NONE,
+        )
+        training_data_dir = out_dir / f"{selection.selection_id}.training-data"
+        shard_index = build_shards(
+            derived_manifest,
+            training_data_dir,
+            loader_config.shard,
+            dataset_id=derived_dataset_id,
+            dataset_version=derived_dataset_version,
+        )
+        source_path = Path(selection.source_manifest)
+        dataset_root = (
+            source_path.parent.resolve()
+            if source_path.is_file()
+            else derived_manifest.parent.resolve()
+        )
+        training_data = {
+            "schema_version": "clouda.training_data.prepared.v1",
+            "dataset_id": derived_dataset_id,
+            "dataset_version": derived_dataset_version,
+            "manifest_path": str(derived_manifest.resolve()),
+            "manifest_sha256": sha256_file(derived_manifest),
+            "shard_index_path": str((training_data_dir / "shard_index.json").resolve()),
+            "shard_index_sha256": sha256_file(training_data_dir / "shard_index.json"),
+            "shard_ids": [entry.shard_id for entry in shard_index.shards],
+            "dataset_root": str(dataset_root),
+            "global_seed": resolved_seed,
+            "batch_size": batch_size,
+            "loader_config_hash": loader_config_hash(loader_config),
+        }
         config_path = out_dir / f"{selection.selection_id}.experiment.yaml"
         config_path.write_text(
             yaml.safe_dump(config, allow_unicode=True, sort_keys=True),
@@ -219,6 +317,7 @@ class TrainingOrchestrator:
             "validation": validation,
             "experiment_config": config,
             "experiment_config_path": str(config_path),
+            "training_data": training_data,
             "dry_run_requested": dry_run,
         }
 

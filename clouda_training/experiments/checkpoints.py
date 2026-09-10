@@ -85,7 +85,12 @@ class CheckpointManager:
         self.config = config
 
     def save(
-        self, *, step: int, epoch: float, metrics: dict[str, float]
+        self,
+        *,
+        step: int,
+        epoch: float,
+        metrics: dict[str, float],
+        state: dict[str, Any] | None = None,
     ) -> CheckpointInfo:
         final = self.root / f"step-{step:08d}"
         if final.exists():
@@ -94,7 +99,9 @@ class CheckpointManager:
         if staging.exists():
             shutil.rmtree(staging)
         staging.mkdir()
-        atomic_write_json(staging / "state.json", {"step": step, "epoch": epoch})
+        state_payload = dict(state or {})
+        state_payload.update({"step": step, "epoch": epoch})
+        atomic_write_json(staging / "state.json", state_payload)
         digest = sha256_file(staging / "state.json")
         payload = {
             "schema_version": 1,

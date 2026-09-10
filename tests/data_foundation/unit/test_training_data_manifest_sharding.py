@@ -130,6 +130,38 @@ class TestCanonicalManifestInput:
                 manifest, dataset_id=DATASET_ID, dataset_version=DATASET_VERSION
             )
 
+    def test_ambiguous_row_without_explicit_training_split_is_rejected(self, tmp_path):
+        row = make_sample_row(0)
+        del row["target_split"]
+        manifest = tmp_path / "ambiguous.jsonl"
+        write_manifest(
+            manifest,
+            [row],
+            metadata={"dataset_id": DATASET_ID, "dataset_version": DATASET_VERSION},
+        )
+        with pytest.raises(ManifestInputError, match="explicit training split"):
+            validate_canonical_manifest(
+                manifest, dataset_id=DATASET_ID, dataset_version=DATASET_VERSION
+            )
+
+    def test_validation_streams_rows_without_materializing_manifest(
+        self, synthetic_dataset, monkeypatch
+    ):
+        import clouda_data.training_data.input_contract as input_contract
+
+        manifest, _root = synthetic_dataset
+
+        def materialization_forbidden(*_args, **_kwargs):
+            raise AssertionError("loader validation must stream canonical rows")
+
+        monkeypatch.setattr(
+            input_contract, "read_manifest", materialization_forbidden, raising=False
+        )
+        identity = validate_canonical_manifest(
+            manifest, dataset_id=DATASET_ID, dataset_version=DATASET_VERSION
+        )
+        assert identity.row_count == 24
+
 
 # ---------------------------------------------------------------------------
 # Holdout / protected-data safety (fail closed)
@@ -286,6 +318,20 @@ class TestSharding:
         with pytest.raises(ShardIndexError, match="missing"):
             verify_shards(index, tmp_path / "gone")
 
+    def test_verify_streams_shard_bytes(self, synthetic_dataset, tmp_path, monkeypatch):
+        manifest, _root = synthetic_dataset
+        output = tmp_path / "stream-verify"
+        index = shard_dataset(manifest, output, samples_per_shard=12)
+        original = type(output).read_bytes
+
+        def guarded_read_bytes(path):
+            if path.parent.name == "shards":
+                raise AssertionError("verify_shards must stream shard content")
+            return original(path)
+
+        monkeypatch.setattr(type(output), "read_bytes", guarded_read_bytes)
+        assert verify_shards(index, output)["ok"] is True
+
 
 # ---------------------------------------------------------------------------
 # Shard index
@@ -331,3 +377,9 @@ class TestShardIndex:
 
         with pytest.raises(ShardIndexError, match="schema"):
             ShardIndex.from_dict({"schema_version": "bogus.v0", "shards": []})
+
+    def test_shard_index_rejects_path_traversal(self, shard_index):
+        payload = shard_index.to_dict()
+        payload["shards"][0]["path"] = "../../outside.jsonl"
+        with pytest.raises(ShardIndexError, match="path"):
+            type(shard_index).from_dict(payload)

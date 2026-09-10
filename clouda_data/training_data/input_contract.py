@@ -23,13 +23,12 @@ from typing import Any, Iterator
 from clouda_data.pretraining.manifest import (
     MANIFEST_SCHEMA_VERSION,
     iter_manifest,
-    read_manifest,
 )
-
-# Reuse the canonical policy engine — do not re-implement holdout rules.
-from clouda_training.experiments.dataset import (
-    _marker,
-    validate_training_dataset,
+from clouda_contracts.protection import (
+    is_training_split_eligible,
+    normalize_marker,
+    protection_metadata_is_malformed,
+    record_is_protected,
 )
 
 SYSTEM = "clouda.training_data.input.v1"
@@ -107,31 +106,31 @@ def validate_canonical_manifest(
     if not manifest_path.is_file():
         raise FileNotFoundError(f"Canonical manifest not found: {manifest_path}")
 
-    # Delegate to the Training Experiment Framework's dataset validation:
-    # this enforces dataset_id/dataset_version agreement, protected split
-    # names, protected markers (including nested provenance/metadata) and
-    # split row presence. It raises PermissionError/ValueError on violations.
-    # PermissionError is re-raised as ProtectedManifestError so callers can
-    # distinguish policy rejections from malformed input.
-    try:
-        validate_training_dataset(
-            _dataset_section(manifest_path, dataset_id, dataset_version, split)
+    if not is_training_split_eligible(split):
+        raise ProtectedManifestError(
+            f"Training Data Loader only accepts the explicit train split: {split!r}"
         )
-    except PermissionError as exc:
-        raise ProtectedManifestError(str(exc)) from exc
 
-    header, rows = read_manifest(manifest_path)
+    stream = iter_manifest(manifest_path)
+    try:
+        header = next(stream)
+    except StopIteration as exc:
+        raise ManifestInputError("Canonical manifest is empty") from exc
     if header.get("_schema_version") != MANIFEST_SCHEMA_VERSION:
         raise ManifestInputError(
             f"Unsupported manifest schema version: {header.get('_schema_version')!r}"
         )
+    if protection_metadata_is_malformed(header):
+        raise ManifestInputError("Manifest header has malformed protection metadata")
+    if record_is_protected(header):
+        raise ProtectedManifestError("Manifest header is marked protected")
     header_id = _require_str(header, "dataset_id", "manifest header")
     header_version = _require_str(header, "dataset_version", "manifest header")
     if header_id != dataset_id.strip() or header_version != dataset_version.strip():
         raise ManifestInputError(
-            "Dataset identity mismatch: manifest declares "
-            f"{header_id!r}/{header_version!r}, config expects "
-            f"{dataset_id!r}/{dataset_version!r}"
+            "Manifest dataset identity does not match configured value: "
+            f"manifest={header_id!r}/{header_version!r}, "
+            f"configured={dataset_id!r}/{dataset_version!r}"
         )
     recorded_hash = header.get("manifest_sha256")
     if recorded_hash is not None and str(recorded_hash).strip():
@@ -140,8 +139,24 @@ def validate_canonical_manifest(
             raise ManifestInputError("Header manifest_sha256 is not a SHA-256 digest")
 
     seen_ids: set[str] = set()
-    for index, row in enumerate(rows):
+    row_count = 0
+    for index, row in enumerate(stream):
         context = f"manifest row {index}"
+        if "_schema_version" in row and "sample_id" not in row:
+            raise ManifestInputError("Manifest contains more than one header")
+        for field in ("target_split", "split", "source_split"):
+            if (
+                field in row
+                and row[field] is not None
+                and not isinstance(row[field], str)
+            ):
+                raise ManifestInputError(
+                    f"{context}: malformed split metadata in {field}"
+                )
+        if protection_metadata_is_malformed(row):
+            raise ManifestInputError(f"{context}: malformed protection metadata")
+        if record_is_protected(row):
+            raise ProtectedManifestError(f"{context}: protected data cannot train")
         sample_id = _require_str(row, "sample_id", context)
         if sample_id in seen_ids:
             raise ManifestInputError(f"Duplicate sample_id in manifest: {sample_id}")
@@ -156,14 +171,36 @@ def validate_canonical_manifest(
         provenance = row.get("provenance")
         if provenance is not None and not isinstance(provenance, dict):
             raise ManifestInputError(f"{context}: provenance must be an object")
+        for field, expected in (
+            ("dataset_id", header_id),
+            ("dataset_version", header_version),
+        ):
+            recorded_identity = row.get(field)
+            if (
+                recorded_identity is not None
+                and str(recorded_identity).strip() != expected
+            ):
+                raise ManifestInputError(
+                    f"{context}: {field} does not match manifest header"
+                )
         _require_training_eligibility(row, context)
+        row_count += 1
+
+    recorded_count = header.get("_row_count")
+    if not isinstance(recorded_count, int) or recorded_count != row_count:
+        raise ManifestInputError(
+            "Manifest row count mismatch: "
+            f"header={recorded_count!r}, actual={row_count}"
+        )
+    if row_count == 0:
+        raise ManifestInputError("Canonical manifest contains no training rows")
 
     digest = sha256_file(manifest_path)
     return ManifestIdentity(
         dataset_id=dataset_id,
         dataset_version=dataset_version,
         manifest_sha256=digest,
-        row_count=len(rows),
+        row_count=row_count,
         split=split,
         header=header,
     )
@@ -178,13 +215,23 @@ def _require_training_eligibility(row: dict[str, Any], context: str) -> None:
             raise ManifestInputError(
                 f"{context}: field {field!r} must be a string when present"
             )
+    explicit_split = row.get("target_split", row.get("split"))
+    if not is_training_split_eligible(explicit_split):
+        raise ManifestInputError(
+            f"{context}: explicit training split is required, got {explicit_split!r}"
+        )
+    eligibility = row.get("training_eligible")
+    if eligibility is not None and eligibility is not True:
+        raise ManifestInputError(
+            f"{context}: training_eligible must be true when present"
+        )
     status = row.get("validation_status")
-    if isinstance(status, str) and _marker(status) == "error":
+    if isinstance(status, str) and normalize_marker(status) == "error":
         raise ManifestInputError(
             f"{context}: validation_status=error is not training-eligible"
         )
     duplicate_state = row.get("duplicate_state")
-    if isinstance(duplicate_state, str) and _marker(duplicate_state) in {
+    if isinstance(duplicate_state, str) and normalize_marker(duplicate_state) in {
         "duplicate",
         "conflicting_duplicate",
     }:
@@ -206,22 +253,3 @@ def iter_canonical_rows(path: str | Path) -> Iterator[dict[str, Any]]:
         if "_schema_version" in payload and "sample_id" not in payload:
             continue
         yield payload
-
-
-def _dataset_section(
-    manifest_path: Path, dataset_id: str, dataset_version: str, split: str
-) -> Any:
-    """Build a minimal DatasetSection stand-in for the policy engine.
-
-    Avoids importing the full ExperimentConfig stack; the policy engine only
-    reads dataset_id/dataset_version/manifest_path/split attributes.
-    """
-
-    from types import SimpleNamespace
-
-    return SimpleNamespace(
-        dataset_id=dataset_id,
-        dataset_version=dataset_version,
-        manifest_path=manifest_path,
-        split=split,
-    )

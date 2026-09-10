@@ -4,6 +4,7 @@ resume and traceability tests for the training data loader."""
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -64,6 +65,45 @@ class TestStreaming:
         ids = _ids(loader)
         assert len(ids) == 600
         assert len(set(ids)) == 600
+
+    def test_buffered_shuffle_streams_shard_lines(
+        self, index_path, synthetic_dataset, monkeypatch
+    ):
+        manifest, root = synthetic_dataset
+        loader = make_loader(
+            index_path,
+            manifest,
+            root,
+            shuffle=ShuffleConfig(mode=ShuffleMode.BUFFERED, buffer_size=3),
+        )
+        loader.open()
+        original_open = Path.open
+
+        class GuardedShardFile:
+            def __init__(self, handle):
+                self._handle = handle
+
+            def __enter__(self):
+                self._handle.__enter__()
+                return self
+
+            def __exit__(self, *args):
+                return self._handle.__exit__(*args)
+
+            def __iter__(self):
+                return iter(self._handle)
+
+            def readlines(self, *args, **kwargs):
+                raise AssertionError("buffered shuffle must not call readlines")
+
+        def guarded_open(path, *args, **kwargs):
+            handle = original_open(path, *args, **kwargs)
+            if path.parent.name == "shards":
+                return GuardedShardFile(handle)
+            return handle
+
+        monkeypatch.setattr(Path, "open", guarded_open)
+        assert len(_ids(loader, epoch=0)) == 24
 
 
 # ---------------------------------------------------------------------------

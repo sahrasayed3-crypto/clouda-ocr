@@ -187,6 +187,7 @@ def _execute(
     start_step: int,
     fail_at_step: int | None,
     interrupt_at_step: int | None,
+    data_loader: Any | None = None,
 ) -> RunHandle:
     _status(run_path, RunStatus.RUNNING, start_step=start_step)
     seed_details = apply_seed(
@@ -202,6 +203,7 @@ def _execute(
         manager,
         fail_at_step=fail_at_step,
         interrupt_at_step=interrupt_at_step,
+        data_loader=data_loader,
     )
     try:
         result = trainer.train(start_step=start_step)
@@ -249,6 +251,7 @@ def run_experiment(
     *,
     fail_at_step: int | None = None,
     interrupt_at_step: int | None = None,
+    data_loader: Any | None = None,
 ) -> RunHandle:
     identity = validate_training_dataset(config.dataset)
     if not config.runtime.dry_run or config.model.adapter_type not in {
@@ -304,6 +307,8 @@ def run_experiment(
         "resume_source": config.checkpoint.resume_from,
         "tags": list(config.experiment.tags),
     }
+    if data_loader is not None:
+        metadata["training_data"] = _training_data_identity(data_loader)
     _status(run_path, RunStatus.CREATED, start_timestamp=started)
     atomic_write_json(run_path / "metadata.json", metadata)
     try:
@@ -328,6 +333,7 @@ def run_experiment(
         start_step=0,
         fail_at_step=fail_at_step,
         interrupt_at_step=interrupt_at_step,
+        data_loader=data_loader,
     )
 
 
@@ -339,7 +345,9 @@ def load_run(run_id: str, runs_root: str | Path) -> RunHandle:
     return RunHandle(run_id, matches[0], status)
 
 
-def resume_run(run_id: str, runs_root: str | Path) -> RunHandle:
+def resume_run(
+    run_id: str, runs_root: str | Path, *, data_loader: Any | None = None
+) -> RunHandle:
     run = load_run(run_id, runs_root)
     payload = yaml.safe_load(
         (run.path / "resolved_config.yaml").read_text(encoding="utf-8")
@@ -354,6 +362,21 @@ def resume_run(run_id: str, runs_root: str | Path) -> RunHandle:
     if run.status not in {RunStatus.INTERRUPTED, RunStatus.FAILED}:
         raise ValueError(f"Run status {run.status.value} is not resumable")
     metadata = read_json(run.path / "metadata.json")
+    recorded_training_data = metadata.get("training_data")
+    if recorded_training_data is not None:
+        if data_loader is None:
+            raise ValueError(
+                "Training-data checkpoint requires a compatible data loader to resume"
+            )
+        current_training_data = _training_data_identity(data_loader)
+        if current_training_data != recorded_training_data:
+            raise ValueError(
+                "Incompatible training-data identity for resume: "
+                f"{current_training_data!r}"
+            )
+        from clouda_data.training_data.checkpoint_bridge import LoaderCheckpointHook
+
+        LoaderCheckpointHook(data_loader).restore_from_checkpoint(checkpoint.path)
     metadata["resume_source"] = str(checkpoint.path)
     atomic_write_json(run.path / "metadata.json", metadata)
     return _execute(
@@ -362,7 +385,21 @@ def resume_run(run_id: str, runs_root: str | Path) -> RunHandle:
         start_step=checkpoint.step,
         fail_at_step=None,
         interrupt_at_step=None,
+        data_loader=data_loader,
     )
+
+
+def _training_data_identity(data_loader: Any) -> dict[str, Any]:
+    identity = data_loader.open()
+    return {
+        "schema_version": "clouda.training_data.run_lineage.v1",
+        "dataset_id": identity.dataset_id,
+        "dataset_version": identity.dataset_version,
+        "manifest_sha256": identity.manifest_sha256,
+        "loader_config_hash": data_loader.config_hash,
+        "shard_index_sha256": sha256_file(data_loader.index_path),
+        "shard_ids": [entry.shard_id for entry in data_loader.index.shards],
+    }
 
 
 def list_runs(

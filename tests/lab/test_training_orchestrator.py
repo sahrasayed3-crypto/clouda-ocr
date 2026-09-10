@@ -13,7 +13,12 @@ from clouda_lab.models import RunAnalysis
 from clouda_lab.run_pipeline import analyze_run
 from clouda_lab.selection_history import SelectionHistory
 from clouda_lab.training_orchestrator import TrainingOrchestrator
-from clouda_training.experiments import ConfigError, RunStatus
+from clouda_training.experiments import (
+    ConfigError,
+    RunStatus,
+    load_experiment_config,
+    run_experiment,
+)
 
 SCHEMA = "clouda.pretraining.manifest.v1"
 
@@ -137,6 +142,85 @@ class TestSelectionToExperiment:
                 output_dir=tmp_path / "lab",
                 experiment_name="empty",
             )
+
+    def test_pipeline_prepares_canonical_training_data_loader(
+        self, base_manifest: Path, tmp_path: Path
+    ):
+        orchestrator = TrainingOrchestrator(runs_root=tmp_path / "runs")
+        result = orchestrator.create_training_experiment_from_selection(
+            manifest_path=str(base_manifest),
+            criteria=SelectionCriteria(limit=4),
+            seed=17,
+            output_dir=tmp_path / "lab",
+            experiment_name="loader_ready",
+        )
+
+        header = result["manifest_header"]
+        assert (
+            header["dataset_id"]
+            == f"lab_selection_{result['selection']['selection_id']}"
+        )
+        assert header["dataset_version"] == result["selection"]["selection_id"]
+        loader = orchestrator.create_training_data_loader(result["training_data"])
+        assert list(loader.iter_sample_ids(epoch=0)) == sorted(
+            result["selection"]["sample_ids"]
+        )
+
+    def test_loader_cursor_is_sealed_in_framework_checkpoint(
+        self, base_manifest: Path, tmp_path: Path
+    ):
+        orchestrator = TrainingOrchestrator(runs_root=tmp_path / "runs")
+        prepared = orchestrator.create_training_experiment_from_selection(
+            manifest_path=str(base_manifest),
+            criteria=SelectionCriteria(limit=4),
+            output_dir=tmp_path / "lab",
+            experiment_name="loader_checkpoint",
+        )
+        handle = orchestrator.start_dry_run(
+            prepared["experiment_config_path"],
+            training_data=prepared["training_data"],
+        )
+        checkpoint = Path(orchestrator.get_checkpoints(handle["run_id"])[-1]["path"])
+        state = json.loads((checkpoint / "state.json").read_text(encoding="utf-8"))
+        assert state["data_cursor"]["yielded_count"] > 0
+        metadata = json.loads(
+            (Path(handle["path"]) / "metadata.json").read_text(encoding="utf-8")
+        )
+        assert metadata["training_data"]["loader_config_hash"]
+
+    def test_loader_aware_framework_resume_continues_from_sealed_cursor(
+        self, base_manifest: Path, tmp_path: Path
+    ):
+        orchestrator = TrainingOrchestrator(runs_root=tmp_path / "runs")
+        prepared = orchestrator.create_training_experiment_from_selection(
+            manifest_path=str(base_manifest),
+            criteria=SelectionCriteria(limit=4),
+            output_dir=tmp_path / "lab",
+            experiment_name="loader_resume",
+        )
+        config = load_experiment_config(Path(prepared["experiment_config_path"]))
+        loader = orchestrator.create_training_data_loader(prepared["training_data"])
+        with pytest.raises(KeyboardInterrupt):
+            run_experiment(config, interrupt_at_step=3, data_loader=loader)
+
+        run_path = next((tmp_path / "runs" / "loader_resume").iterdir())
+        first_state = json.loads(
+            (run_path / "checkpoints" / "step-00000002" / "state.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert first_state["data_cursor"]["yielded_count"] == 8
+
+        resumed = orchestrator.resume(
+            run_path.name, training_data=prepared["training_data"]
+        )
+        assert resumed["status"] == RunStatus.COMPLETED.value
+        final_state = json.loads(
+            (run_path / "checkpoints" / "step-00000004" / "state.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert final_state["data_cursor"]["yielded_count"] == 16
 
 
 class TestOrchestratorDryRun:

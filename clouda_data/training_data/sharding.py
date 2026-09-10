@@ -119,7 +119,7 @@ class ShardIndex:
                 sample_count=int(item["sample_count"]),
                 approx_bytes=int(item.get("approx_bytes", 0)),
                 sha256=str(item["sha256"]),
-                path=str(item["path"]),
+                path=_validated_shard_path(item["path"]),
             )
             for item in payload["shards"]
         )
@@ -133,23 +133,31 @@ class ShardIndex:
         )
 
 
+def _validated_shard_path(value: Any) -> str:
+    path = str(value)
+    candidate = Path(path)
+    if (
+        not path
+        or path in {".", ".."}
+        or candidate.is_absolute()
+        or candidate.name != path
+        or "/" in path
+        or "\\" in path
+    ):
+        raise ShardIndexError(f"Unsafe shard path: {path!r}")
+    return path
+
+
 def _iter_rows_sorted(path: Path, sample_limit: int | None) -> Iterator[dict[str, Any]]:
     from clouda_data.training_data.input_contract import iter_canonical_rows
 
-    rows = []
-    for row in iter_canonical_rows(path):
-        rows.append(row)
-        if sample_limit is not None and len(rows) >= sample_limit:
+    # Canonical manifests are deterministically ordered by write_manifest.
+    # Preserve that byte-identified order while keeping memory independent of
+    # total dataset size.
+    for index, row in enumerate(iter_canonical_rows(path)):
+        if sample_limit is not None and index >= sample_limit:
             break
-    # Canonical deterministic order: stable_sample_id coordinates.
-    rows.sort(
-        key=lambda row: (
-            str(row.get("source_id", "")),
-            str(row.get("source_path", "")),
-            str(row.get("sample_id", "")),
-        )
-    )
-    yield from rows
+        yield row
 
 
 def _shard_row_payload(row: dict[str, Any], shard_id: str, position: int) -> str:
@@ -294,26 +302,36 @@ def verify_shards(index: ShardIndex, root: str | Path) -> dict[str, Any]:
         path = root_path / entry.path
         if not path.is_file():
             raise ShardIndexError(f"Shard file missing: {path}")
-        payload_bytes = path.read_bytes()
-        digest = hashlib.sha256(payload_bytes).hexdigest()
-        if digest != entry.sha256:
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for payload_block in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(payload_block)
+        if digest.hexdigest() != entry.sha256:
             raise ShardIndexError(f"Shard hash mismatch: {path}")
         count = 0
-        for line_number, line in enumerate(
-            payload_bytes.decode("utf-8").splitlines(), start=1
-        ):
-            if not line.strip():
-                continue
-            record = json.loads(line)
-            if record.get("shard_id") != entry.shard_id:
-                raise ShardIndexError(f"Shard id mismatch in {path} line {line_number}")
-            sample_id = str(record.get("sample_id", ""))
-            if not sample_id:
-                raise ShardIndexError(f"Missing sample_id in {path}:{line_number}")
-            if sample_id in seen_ids:
-                raise ShardIndexError(f"Duplicate sample across shards: {sample_id}")
-            seen_ids.add(sample_id)
-            count += 1
+        with path.open("rb") as handle:
+            for line_number, payload_line in enumerate(handle, start=1):
+                if not payload_line.strip():
+                    continue
+                try:
+                    record = json.loads(payload_line.decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                    raise ShardIndexError(
+                        f"Malformed shard record in {path} line {line_number}"
+                    ) from exc
+                if record.get("shard_id") != entry.shard_id:
+                    raise ShardIndexError(
+                        f"Shard id mismatch in {path} line {line_number}"
+                    )
+                sample_id = str(record.get("sample_id", ""))
+                if not sample_id:
+                    raise ShardIndexError(f"Missing sample_id in {path}:{line_number}")
+                if sample_id in seen_ids:
+                    raise ShardIndexError(
+                        f"Duplicate sample across shards: {sample_id}"
+                    )
+                seen_ids.add(sample_id)
+                count += 1
         if count != entry.sample_count:
             raise ShardIndexError(
                 f"Shard sample count mismatch for {entry.shard_id}: "

@@ -190,9 +190,6 @@ class StreamingTrainingDataLoader:
     ) -> Iterator[SampleReference]:
         entry = next(e for e in self.index.shards if e.shard_id == shard_id)
         path = self.index_path.parent / "shards" / entry.path
-        with path.open("r", encoding="utf-8") as handle:
-            lines = handle.readlines()
-
         seed = derive_loader_seed(
             self.config.global_seed,
             epoch=epoch,
@@ -203,36 +200,41 @@ class StreamingTrainingDataLoader:
             config_hash=self.config_hash,
         )
         shuffle = self.config.shuffle
-        if shuffle.mode.value == "buffered":
-            stream = ((i, lines[i]) for i in range(len(lines)))
-            pairs = list(bounded_shuffle_stream(stream, shuffle.buffer_size, seed))
-        elif shuffle.mode.value == "shard_order":
-            order = permute_indices(len(lines), seed)
-            pairs = [(i, lines[i]) for i in order]
-        else:
-            pairs = list(enumerate(lines))
+        with path.open("r", encoding="utf-8") as handle:
+            if shuffle.mode.value == "buffered":
+                pairs = bounded_shuffle_stream(
+                    enumerate(handle), shuffle.buffer_size, seed
+                )
+            elif shuffle.mode.value == "shard_order":
+                # Exact within-shard permutation is intentionally bounded by
+                # the configured shard size. Buffered mode remains fully lazy.
+                lines = handle.readlines()
+                order = permute_indices(len(lines), seed)
+                pairs = ((i, lines[i]) for i in order)
+            else:
+                pairs = enumerate(handle)
 
-        for position, line in pairs:
-            if not line.strip():
-                continue
-            record = json.loads(line)
-            row = record.get("row", {})
-            sample_id = str(record.get("sample_id", ""))
-            if not sample_id:
-                continue
-            ref = SampleReference(
-                sample_id=sample_id,
-                shard_id=shard_id,
-                position=position,
-                image_path=row.get("image_path"),
-                text=row.get("text"),
-                row=row,
-            )
-            self.stats.samples_read += 1
-            if not self._validate_sample(ref):
-                self.stats.samples_skipped += 1
-                continue
-            yield ref
+            for position, line in pairs:
+                if not line.strip():
+                    continue
+                record = json.loads(line)
+                row = record.get("row", {})
+                sample_id = str(record.get("sample_id", ""))
+                if not sample_id:
+                    continue
+                ref = SampleReference(
+                    sample_id=sample_id,
+                    shard_id=shard_id,
+                    position=position,
+                    image_path=row.get("image_path"),
+                    text=row.get("text"),
+                    row=row,
+                )
+                self.stats.samples_read += 1
+                if not self._validate_sample(ref):
+                    self.stats.samples_skipped += 1
+                    continue
+                yield ref
 
     def _validate_sample(self, ref: SampleReference) -> bool:
         mode = self.config.validation_mode

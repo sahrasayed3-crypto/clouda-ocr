@@ -422,6 +422,8 @@ def write_selection_manifest(
     output_path: str,
     *,
     lineage: Sequence[dict[str, Any]] = (),
+    dataset_id: str | None = None,
+    dataset_version: str | None = None,
 ) -> dict[str, Any]:
     """Write the derived subset manifest; returns its header.
 
@@ -429,6 +431,8 @@ def write_selection_manifest(
     seed, timestamp, and lineage so the subset is fully auditable.
     """
     header = {
+        "dataset_id": dataset_id or f"lab_selection_{result.selection_id}",
+        "dataset_version": dataset_version or result.selection_id,
         "manifest_role": "lab_selection",
         "selection_schema_version": SELECTION_SCHEMA_VERSION,
         "selection_id": result.selection_id,

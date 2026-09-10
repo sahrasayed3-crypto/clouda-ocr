@@ -67,6 +67,9 @@ from clouda_data.lifecycle import (
 from clouda_data.factory.adapters import (
     run_dir_to_dataset_manifest,
 )
+from clouda_data.training_data.cli import (
+    register_training_data_commands,
+)
 from clouda_data.factory.cli import (
     command_profiles as factory_profiles_command,
     command_seeds as factory_seeds_command,
@@ -1205,6 +1208,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="source id recorded in the canonical manifest",
     )
     p.set_defaults(func=factory_manifest_cli)
+
+    register_training_data_commands(sub)
 
     return parser
 

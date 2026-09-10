@@ -64,6 +64,11 @@ samples/generated/benchmark_report_*.json
 samples/generated/benchmark_report_*.md
 benchmarks/results/
 training_data/
+# Source package exception: clouda_data.training_data is code, not data output.
+!clouda_data/training_data/
+!clouda_data/training_data/**
+clouda_data/training_data/__pycache__/
+clouda_data/training_data/**/*.py[cod]
 datasets/
 !clouda_data/datasets/
 !clouda_data/datasets/**

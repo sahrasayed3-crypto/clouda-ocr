@@ -72,6 +72,16 @@ from clouda_data.factory.cli import (
     command_seeds as factory_seeds_command,
     command_verify as factory_verify_command,
 )
+from clouda_data.results.cli import (
+    command_export as results_export_command,
+    command_ingest as results_ingest_command,
+    command_ingest_runs as results_ingest_runs_command,
+    command_list_models as results_list_models_command,
+    command_list_runs as results_list_runs_command,
+    command_show_page as results_show_page_command,
+    command_verify as results_verify_command,
+    command_worst_pages as results_worst_pages_command,
+)
 
 
 def _project_root() -> Path:
@@ -1205,6 +1215,77 @@ def build_parser() -> argparse.ArgumentParser:
         help="source id recorded in the canonical manifest",
     )
     p.set_defaults(func=factory_manifest_cli)
+
+    # Clouda Results Store ---------------------------------------------------
+    p = sub.add_parser(
+        "results-ingest",
+        help="Ingest the Arabic OCR benchmark manifest into a Results Store.",
+    )
+    p.add_argument("manifest", type=Path)
+    p.add_argument("--store", type=Path, required=True)
+    p.add_argument("--dataset-id", default="clouda-ocr-arabic-177")
+    p.add_argument("--dataset-version", default="v1")
+    p.add_argument("--model-id", default=None)
+    p.add_argument("--model-revision", default=None)
+    p.add_argument(
+        "--private-root-note",
+        default=None,
+        help="machine-local root kept under source_private (never portable)",
+    )
+    p.set_defaults(func=results_ingest_command)
+
+    p = sub.add_parser(
+        "results-ingest-runs",
+        help="Ingest benchmark leaderboard rows as runs and model records.",
+    )
+    p.add_argument("results_csv", type=Path)
+    p.add_argument("--store", type=Path, required=True)
+    p.add_argument("--dataset-id", default="clouda-ocr-arabic-177")
+    p.add_argument("--dataset-version", default="v1")
+    p.set_defaults(func=results_ingest_runs_command)
+
+    p = sub.add_parser(
+        "results-verify", help="Verify Results Store bundle integrity for one run."
+    )
+    p.add_argument("run_id")
+    p.add_argument("--store", type=Path, required=True)
+    p.set_defaults(func=results_verify_command)
+
+    p = sub.add_parser("results-list-runs", help="List Results Store runs.")
+    p.add_argument("--store", type=Path, required=True)
+    p.add_argument("--model", default=None)
+    p.add_argument("--dataset", default=None)
+    p.add_argument("--status", default=None)
+    p.set_defaults(func=results_list_runs_command)
+
+    p = sub.add_parser("results-list-models", help="List Results Store models.")
+    p.add_argument("--store", type=Path, required=True)
+    p.set_defaults(func=results_list_models_command)
+
+    p = sub.add_parser(
+        "results-show-page", help="Show one page, its ground truth, and predictions."
+    )
+    p.add_argument("run_id")
+    p.add_argument("page_id")
+    p.add_argument("--store", type=Path, required=True)
+    p.set_defaults(func=results_show_page_command)
+
+    p = sub.add_parser(
+        "results-worst-pages", help="List worst pages by metric (descending)."
+    )
+    p.add_argument("run_id")
+    p.add_argument("--store", type=Path, required=True)
+    p.add_argument("--metric", default="cer@comparison_arabic_fold_digits")
+    p.add_argument("--limit", type=int, default=10)
+    p.set_defaults(func=results_worst_pages_command)
+
+    p = sub.add_parser(
+        "results-export", help="Export a run bundle directory (portable copy)."
+    )
+    p.add_argument("run_id")
+    p.add_argument("output", type=Path)
+    p.add_argument("--store", type=Path, required=True)
+    p.set_defaults(func=results_export_command)
 
     return parser
 

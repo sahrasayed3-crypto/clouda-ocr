@@ -166,6 +166,19 @@ Adapters exist only for formats verified in the repository:
 - **Distortion engine**: `profile`, `distortions`, `distortion_seed` on pages.
 - **Web UI**: `ResultsService` read-only instance + `ArtifactResolver`.
 
+`clouda_lab.StoredResultsAnalysisService` is the canonical integration
+adapter. It builds Lab analysis inputs from Results Store page, ground-truth,
+prediction, model, and run queries; supports stored-run analysis/comparison;
+exposes Results Store-backed selection rows; and emits explainable active-
+learning recommendations only for explicitly training-eligible pages. The Lab
+does not maintain a second result index or persistence schema.
+
+Protected-data semantics come from `clouda_contracts.protection` and are shared
+by Data Factory adapters, this store, Lab selection, and the Training
+Experiment Framework. Only an explicit `train` split is training eligible;
+unknown, validation, test, malformed, ambiguous, protected-role, and holdout-
+aliased records fail closed.
+
 ## Known limitations
 
 - Metrics currently reuse CER/WER/exact-match only; additional foundation

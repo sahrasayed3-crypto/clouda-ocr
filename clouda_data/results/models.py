@@ -15,18 +15,18 @@ from dataclasses import dataclass, field, fields
 from enum import StrEnum
 from typing import Any
 
-from .identity import RESULTS_SCHEMA_VERSION, ArtifactRef, utc_now, validate_sha256
-
-PROTECTED_SPLIT_MARKERS = frozenset(
-    {
-        "holdout",
-        "protected_holdout",
-        "benchmark_holdout",
-        "private_holdout",
-    }
+from clouda_contracts.protection import (
+    PROTECTED_SPLIT_NAMES,
+    is_training_split_eligible,
+    normalize_marker,
+    record_is_protected,
+    string_marks_protected,
 )
 
-TRAINING_ELIGIBLE_SPLITS = frozenset({"train", "validation", "test", "unassigned"})
+from .identity import RESULTS_SCHEMA_VERSION, ArtifactRef, utc_now, validate_sha256
+
+PROTECTED_SPLIT_MARKERS = PROTECTED_SPLIT_NAMES
+TRAINING_ELIGIBLE_SPLITS = frozenset({"train"})
 
 
 class InferenceRunStatus(StrEnum):
@@ -56,6 +56,13 @@ class ProtectionInfo:
     split: str = "unassigned"
 
     def __post_init__(self) -> None:
+        detected = record_is_protected(
+            {"protected": self.protected, "split": self.split}
+        ) or any(string_marks_protected(reason) for reason in self.reasons)
+        if detected and self.protected is not True:
+            object.__setattr__(self, "protected", True)
+            if not self.reasons:
+                object.__setattr__(self, "reasons", ("canonical_protection_policy",))
         if self.protected and not self.reasons:
             raise ValueError("Protected pages must record at least one reason.")
 
@@ -63,10 +70,7 @@ class ProtectionInfo:
     def is_training_eligible(self) -> bool:
         if self.protected:
             return False
-        split = self.split.strip().lower() or "unassigned"
-        if split in PROTECTED_SPLIT_MARKERS:
-            return False
-        return split in TRAINING_ELIGIBLE_SPLITS
+        return is_training_split_eligible(self.split)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -78,15 +82,32 @@ class ProtectionInfo:
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> "ProtectionInfo":
-        split = str(value.get("split", "unassigned"))
+        split = value.get("split", "unassigned")
+        if not isinstance(split, str):
+            split = "unassigned"
         reasons = tuple(str(reason) for reason in value.get("reasons", ()))
-        protected = bool(value.get("protected", False))
-        marker_hits = sorted(({split} | set(reasons)) & PROTECTED_SPLIT_MARKERS)
-        if marker_hits and not protected:
+        raw_protected = value.get("protected", False)
+        protected = raw_protected is True or (
+            isinstance(raw_protected, str) and string_marks_protected(raw_protected)
+        )
+        if not isinstance(raw_protected, (bool, str)):
             protected = True
-            extra = tuple(f"protected_split_marker:{marker}" for marker in marker_hits)
-            reasons = reasons + extra
+        if protected and not reasons:
+            reasons = ("canonical_protection_policy",)
         return cls(protected=protected, reasons=reasons, split=split)
+
+
+def _align_protection_split(protection: ProtectionInfo, split: str) -> ProtectionInfo:
+    if normalize_marker(protection.split) == normalize_marker(split):
+        return protection
+    if normalize_marker(protection.split) in {"", "unassigned"}:
+        return ProtectionInfo(
+            protected=protection.protected,
+            reasons=protection.reasons,
+            split=split,
+        )
+    reasons = tuple(protection.reasons) + ("ambiguous_split_metadata",)
+    return ProtectionInfo(protected=True, reasons=reasons, split=split)
 
 
 @dataclass(frozen=True)
@@ -330,6 +351,11 @@ class PageRecord:
             object.__setattr__(
                 self, "protection", ProtectionInfo.from_dict(self.protection)
             )
+        object.__setattr__(
+            self,
+            "protection",
+            _align_protection_split(self.protection, self.split),
+        )
         if isinstance(self.provenance, dict):
             object.__setattr__(
                 self, "provenance", Provenance.from_dict(self.provenance)
@@ -338,16 +364,20 @@ class PageRecord:
             value = getattr(self, key)
             if isinstance(value, dict):
                 object.__setattr__(self, key, ArtifactRef.from_dict(value))
-        # Fail-closed: a protected split marker must mark the page protected
-        # even when the caller forgot to pass an explicit ProtectionInfo.
-        split = self.split.strip().lower()
-        if split in PROTECTED_SPLIT_MARKERS and not self.protection.protected:
+        protection_payload: dict[str, Any] = {
+            "split": self.split,
+            "metadata": self.metadata,
+            "protection": self.protection.to_dict(),
+        }
+        if self.provenance is not None:
+            protection_payload["provenance"] = self.provenance.to_dict()
+        if record_is_protected(protection_payload) and not self.protection.protected:
             object.__setattr__(
                 self,
                 "protection",
                 ProtectionInfo(
                     protected=True,
-                    reasons=(f"protected_split:{split}",),
+                    reasons=("canonical_protection_policy",),
                     split=self.split,
                 ),
             )
@@ -436,15 +466,33 @@ class GroundTruthRecord:
         object.__setattr__(
             self, "raw_text_sha256", validate_sha256(self.raw_text_sha256)
         )
-        # Fail-closed: protected split marker marks the record protected.
-        split = self.split.strip().lower()
-        if split in PROTECTED_SPLIT_MARKERS and not self.protection.protected:
+        if isinstance(self.protection, dict):
+            object.__setattr__(
+                self, "protection", ProtectionInfo.from_dict(self.protection)
+            )
+        object.__setattr__(
+            self,
+            "protection",
+            _align_protection_split(self.protection, self.split),
+        )
+        if isinstance(self.provenance, dict):
+            object.__setattr__(
+                self, "provenance", Provenance.from_dict(self.provenance)
+            )
+        protection_payload: dict[str, Any] = {
+            "split": self.split,
+            "metadata": self.metadata,
+            "protection": self.protection.to_dict(),
+        }
+        if self.provenance is not None:
+            protection_payload["provenance"] = self.provenance.to_dict()
+        if record_is_protected(protection_payload) and not self.protection.protected:
             object.__setattr__(
                 self,
                 "protection",
                 ProtectionInfo(
                     protected=True,
-                    reasons=(f"protected_split:{split}",),
+                    reasons=("canonical_protection_policy",),
                     split=self.split,
                 ),
             )

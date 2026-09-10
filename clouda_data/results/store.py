@@ -23,6 +23,7 @@ Properties:
 from __future__ import annotations
 
 import re
+import json
 import shutil
 from pathlib import Path
 from typing import Any, Iterable, Iterator
@@ -87,12 +88,28 @@ class ResultsStore:
         return self._datasets_dir / (component.replace("@", "__at__") + ".json")
 
     def model_path(self, model_id: str) -> Path:
-        return self._models_dir / f"{safe_component(model_id, what='model id')}.json"
+        if not model_id.strip():
+            raise ValueError("Model id cannot be blank.")
+        digest = sha256_text(f"clouda-results-model:{model_id}")[:32]
+        return self._models_dir / f"model_{digest}.json"
 
     def run_dir(self, run_id: str) -> Path:
         return self._runs_dir / safe_component(run_id, what="run id")
 
     # ------------------------------------------------------------- datasets
+
+    @staticmethod
+    def _save_registry_record(
+        target: Path, payload: dict[str, Any], *, what: str
+    ) -> Path:
+        if target.exists():
+            existing = json.loads(target.read_text(encoding="utf-8"))
+            if existing != payload:
+                raise ConflictingRecordError(
+                    f"Conflicting {what} record for {target.stem!r}."
+                )
+            return target
+        return atomic_write_json(target, payload)
 
     def save_dataset(self, payload: dict[str, Any]) -> Path:
         if self.read_only:
@@ -102,7 +119,7 @@ class ResultsStore:
         target = self._datasets_dir / (
             safe_component(f"{dataset_id}__{version}", what="dataset id") + ".json"
         )
-        return atomic_write_json(target, payload)
+        return self._save_registry_record(target, payload, what="dataset")
 
     def load_dataset(self, dataset_id: str, version: str = "1") -> dict[str, Any]:
         target = self._datasets_dir / (
@@ -129,7 +146,7 @@ class ResultsStore:
             raise PermissionError("Results store is read-only.")
         model_id = str(payload.get("model_id", ""))
         target = self.model_path(model_id)
-        return atomic_write_json(target, payload)
+        return self._save_registry_record(target, payload, what="model")
 
     def load_model(self, model_id: str) -> dict[str, Any]:
         target = self.model_path(model_id)
@@ -155,9 +172,30 @@ class ResultsStore:
     def save_run_metadata(self, payload: dict[str, Any]) -> Path:
         if self.read_only:
             raise PermissionError("Results store is read-only.")
-        return atomic_write_json(
-            self.run_metadata_path(str(payload["run_id"])), payload
-        )
+        target = self.run_metadata_path(str(payload["run_id"]))
+        if target.exists():
+            existing = json.loads(target.read_text(encoding="utf-8"))
+            immutable_fields = (
+                "run_id",
+                "model_id",
+                "model_revision",
+                "dataset_id",
+                "dataset_version",
+                "split",
+                "manifest_sha256",
+                "config_hash",
+                "training_lineage",
+            )
+            changed = [
+                field
+                for field in immutable_fields
+                if existing.get(field) != payload.get(field)
+            ]
+            if changed:
+                raise ConflictingRecordError(
+                    "Cannot change immutable run identity fields: " + ", ".join(changed)
+                )
+        return atomic_write_json(target, payload)
 
     def load_run_metadata(self, run_id: str) -> dict[str, Any]:
         target = self.run_metadata_path(run_id)
@@ -353,24 +391,36 @@ class ResultsStore:
     def append_metrics(self, run_id: str, records: Iterable[EvaluationRecord]) -> int:
         if self.read_only:
             raise PermissionError("Results store is read-only.")
-        existing: set[tuple[str, str, str]] = set()
-        rows: list[dict[str, Any]] = []
+        existing: dict[tuple[str, str, str], dict[str, Any]] = {}
         for row in iter_jsonl(self.metrics_path(run_id)):
-            rows.append(row)
-            existing.add(
+            existing[
                 (
                     str(row.get("page_id") or ""),
                     str(row.get("metric_name")),
                     str(row.get("scope")),
                 )
-            )
+            ] = row
         count = 0
         for record in records:
+            if record.run_id != run_id:
+                raise ValueError(
+                    f"Metric run id {record.run_id!r} does not match "
+                    f"bundle run {run_id!r}."
+                )
             key = (record.page_id or "", record.metric_name, record.scope.value)
             if key in existing:
+                prior = dict(existing[key])
+                payload = record.to_dict()
+                prior.pop("computed_at", None)
+                payload.pop("computed_at", None)
+                if prior != payload:
+                    raise ConflictingRecordError(
+                        f"Conflicting metric record for {key!r} in run {run_id!r}."
+                    )
                 continue
-            append_jsonl(self.metrics_path(run_id), record.to_dict())
-            existing.add(key)
+            payload = record.to_dict()
+            append_jsonl(self.metrics_path(run_id), payload)
+            existing[key] = payload
             count += 1
         return count
 
@@ -548,9 +598,9 @@ class ResultsStore:
         if not source.exists():
             raise UnknownRecordError(f"Unknown run: {run_id}")
         target = Path(destination)
-        target_runs = target / "runs"
         if target.exists():
-            shutil.rmtree(target)
+            raise FileExistsError(f"Export destination already exists: {target}")
+        target_runs = target / "runs"
         target_runs.mkdir(parents=True, exist_ok=True)
         shutil.copytree(source, target_runs / safe_component(run_id, what="run id"))
         return target

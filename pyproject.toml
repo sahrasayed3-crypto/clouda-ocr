@@ -78,6 +78,7 @@ security = [
 
 [project.scripts]
 clouda-data = "clouda_data.pipeline.cli:main"
+clouda-lab = "clouda_lab.cli:main"
 clouda-training = "clouda_training.cli:main"
 
 [tool.setuptools.packages.find]
@@ -86,6 +87,7 @@ include = [
   "pdfword*",
   "clouda_contracts*",
   "clouda_data*",
+  "clouda_lab*",
   "clouda_models*",
   "clouda_training*"
 ]

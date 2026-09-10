@@ -32,6 +32,7 @@ from .batch_analysis import analyze_batch
 from .dataset_selection import (
     SelectionCriteria,
     SelectionResult,
+    select_rows,
     select_samples,
     write_selection_manifest,
 )
@@ -54,6 +55,7 @@ from .models import (  # noqa: F401  (re-exported contracts)
     TrainingBatchRecommendation,
 )
 from .selection_history import SelectionHistory
+from .results_service import StoredResultsAnalysisService
 from .training_orchestrator import TrainingOrchestrator
 
 __all__ = [
@@ -73,6 +75,7 @@ __all__ = [
     "SelectionCriteria",
     "SelectionHistory",
     "SelectionResult",
+    "StoredResultsAnalysisService",
     "TrainingBatchRecommendation",
     "TrainingOrchestrator",
     "analyze_batch",
@@ -81,6 +84,7 @@ __all__ = [
     "rank_hard_examples",
     "recommend_next_batch",
     "select_hard_examples",
+    "select_rows",
     "select_samples",
     "write_selection_manifest",
 ]

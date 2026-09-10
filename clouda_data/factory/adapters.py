@@ -34,6 +34,11 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
+from clouda_contracts.protection import (
+    protection_metadata_is_malformed,
+    record_is_protected,
+)
+
 from ..pretraining.hashing import sha256_file, sha256_text
 from ..pretraining.schema import (
     DatasetSample,
@@ -49,60 +54,7 @@ class FactoryAdapterError(ValueError):
     """Raised when a factory manifest cannot be converted safely."""
 
 
-_PROTECTED_SPLIT_MARKERS = {
-    "holdout",
-    "protected_holdout",
-    "benchmark_holdout",
-    "private_holdout",
-}
-_PROTECTED_ROLES = {
-    "holdout",
-    "protected_holdout",
-    "benchmark",
-    "evaluation_only",
-}
 _TRAINING_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".webp"}
-
-
-def _normalized_marker(value: Any, *, field: str) -> str:
-    if value is None:
-        return ""
-    if not isinstance(value, str):
-        raise FactoryAdapterError(f"Factory row has malformed {field} metadata")
-    return value.strip().casefold()
-
-
-def _mapping_is_protected(mapping: Any, *, nested: bool = False) -> bool:
-    if not isinstance(mapping, dict):
-        if nested:
-            raise FactoryAdapterError("Factory row has malformed protection metadata")
-        return False
-    protected = mapping.get("protected")
-    if "protected" in mapping and not (
-        isinstance(protected, bool)
-        or (
-            isinstance(protected, str)
-            and protected.strip().casefold()
-            in {"true", "yes", "1", "protected", "false", "no", "0"}
-        )
-    ):
-        raise FactoryAdapterError("Factory row has malformed protection metadata")
-    if protected is True or (
-        isinstance(protected, str)
-        and protected.strip().casefold() in {"true", "yes", "1", "protected"}
-    ):
-        return True
-    for field in ("target_split", "split", "source_split"):
-        if field in mapping:
-            marker = _normalized_marker(mapping[field], field=field)
-            if marker in _PROTECTED_SPLIT_MARKERS or "holdout" in marker:
-                return True
-    for field in ("dataset_role", "role", "purpose"):
-        if field in mapping:
-            marker = _normalized_marker(mapping[field], field=field)
-            if marker in _PROTECTED_ROLES or "holdout" in marker:
-                return True
-    return False
 
 
 def _portable_source_ref(value: Any) -> str:
@@ -184,11 +136,9 @@ def factory_rows_to_samples(
             skipped += 1
             continue
         profile = str(row.get("profile", ""))
-        if _mapping_is_protected(row) or any(
-            _mapping_is_protected(row[field], nested=True)
-            for field in ("provenance", "metadata")
-            if field in row and row[field] is not None
-        ):
+        if protection_metadata_is_malformed(row):
+            raise FactoryAdapterError("Factory row has malformed protection metadata")
+        if record_is_protected(row):
             raise FactoryAdapterError(
                 "Factory row references protected data and cannot be converted"
             )

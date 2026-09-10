@@ -345,6 +345,7 @@ def analyze_sample(sample: OCRSample) -> ErrorAnalysis:
         error_type_rates=_rates(counts, len(reference)),
         substitutions=_substitution_pairs(char_records),
         metadata={
+            **dict(sample.metadata),
             "normalized_char_errors": [r.to_dict() for r in normalized_records],
             "word_error_count": len(word_errors),
             "char_error_count": len(char_errors),

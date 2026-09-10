@@ -338,21 +338,21 @@ def _percentile_value(sorted_values: list[float], pct: float) -> float:
     )
 
 
-def select_samples(
-    manifest_path: str,
+def select_rows(
+    rows: Sequence[dict[str, Any]],
     criteria: SelectionCriteria,
     *,
+    source_manifest: str,
+    source_manifest_sha256: str,
     seed: int = 20260723,
     scores: dict[str, float] | None = None,
 ) -> SelectionResult:
-    """Select rows from a canonical manifest according to ``criteria``.
+    """Select canonical rows supplied by a trusted data-access layer.
 
     Protected rows are never returned and never count toward sampling limits;
     they are tallied in ``excluded_protected``.
     """
-    _header, rows = read_manifest(manifest_path)
-    manifest_sha = sha256_file(manifest_path)
-    safe_rows, protected_count = filter_protected_rows(rows)
+    safe_rows, protected_count = filter_protected_rows(list(rows))
 
     matched: list[dict[str, Any]] = []
     if criteria.sample_ids is not None:
@@ -373,7 +373,7 @@ def select_samples(
     created = _utc_now()
     selection_material = json.dumps(
         {
-            "manifest_sha256": manifest_sha,
+            "manifest_sha256": source_manifest_sha256,
             "criteria": criteria.to_dict(),
             "seed": seed,
             "sample_ids": selected_ids,
@@ -392,9 +392,28 @@ def select_samples(
         seed=seed,
         created_utc=created,
         selection_id=selection_id,
-        source_manifest=str(manifest_path),
-        source_manifest_sha256=manifest_sha,
+        source_manifest=source_manifest,
+        source_manifest_sha256=source_manifest_sha256,
         rows=tuple(sampled),
+    )
+
+
+def select_samples(
+    manifest_path: str,
+    criteria: SelectionCriteria,
+    *,
+    seed: int = 20260723,
+    scores: dict[str, float] | None = None,
+) -> SelectionResult:
+    """Select rows from a canonical manifest according to ``criteria``."""
+    _header, rows = read_manifest(manifest_path)
+    return select_rows(
+        rows,
+        criteria,
+        source_manifest=str(manifest_path),
+        source_manifest_sha256=sha256_file(manifest_path),
+        seed=seed,
+        scores=scores,
     )
 
 
@@ -455,6 +474,7 @@ __all__ = [
     "SELECTION_SCHEMA_VERSION",
     "SelectionCriteria",
     "SelectionResult",
+    "select_rows",
     "select_samples",
     "validate_derived_manifest_for_training",
     "write_selection_manifest",

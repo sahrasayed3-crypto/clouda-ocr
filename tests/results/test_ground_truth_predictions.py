@@ -88,10 +88,11 @@ class TestProtection:
     def test_all_protected_markers(self, split: str) -> None:
         assert ProtectionInfo(split=split).is_training_eligible is False
 
-    def test_train_is_eligible(self) -> None:
+    def test_only_explicit_train_split_is_eligible(self) -> None:
         assert ProtectionInfo(split="train").is_training_eligible is True
-        assert ProtectionInfo(split="validation").is_training_eligible is True
-        assert ProtectionInfo(split="test").is_training_eligible is True
+        assert ProtectionInfo(split="validation").is_training_eligible is False
+        assert ProtectionInfo(split="test").is_training_eligible is False
+        assert ProtectionInfo(split="unassigned").is_training_eligible is False
 
     def test_protected_requires_reason(self) -> None:
         with pytest.raises(ValueError):

@@ -144,6 +144,31 @@ class TrainingOrchestrator:
         selection: SelectionResult = select_samples(
             manifest_path, criteria, seed=seed, scores=scores
         )
+        return self.create_training_experiment_from_result(
+            selection=selection,
+            seed=seed,
+            output_dir=output_dir,
+            experiment_name=experiment_name,
+            config_overrides=config_overrides,
+            dry_run=dry_run,
+            history=history,
+        )
+
+    def create_training_experiment_from_result(
+        self,
+        *,
+        selection: SelectionResult,
+        output_dir: str | Path,
+        experiment_name: str,
+        seed: int | None = None,
+        config_overrides: Mapping[str, Any] | None = None,
+        dry_run: bool = True,
+        history: SelectionHistory | None = None,
+    ) -> dict[str, Any]:
+        """Create an experiment directly from an existing canonical selection."""
+        if seed is not None and seed != selection.seed:
+            raise ValueError("Experiment seed must match the selection seed")
+        resolved_seed = selection.seed
         if not selection.sample_ids:
             raise ValueError(
                 "Selection produced no rows; refusing to create an experiment"
@@ -174,8 +199,8 @@ class TrainingOrchestrator:
             ),
             dataset_version=selection.selection_id,
             manifest_path=derived_manifest,
-            split=str((criteria.split or "train")),
-            seed=seed,
+            split=str(selection.criteria.get("split") or "train"),
+            seed=resolved_seed,
             dry_run=dry_run,
             output_root=self.runs_root.resolve(),
             overrides=config_overrides,

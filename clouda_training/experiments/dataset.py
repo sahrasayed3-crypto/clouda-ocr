@@ -3,18 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from clouda_contracts.checksums import sha256_file
+from clouda_contracts.protection import (
+    PROTECTED_SPLIT_NAMES,
+    normalize_marker,
+    protection_metadata_is_malformed,
+    record_is_protected,
+)
 from clouda_data.pretraining.manifest import read_manifest
-from clouda_data.pretraining.schema import SplitName
 
 from .config import DatasetSection
-
-PROTECTED_SPLIT_NAMES = {
-    SplitName.HOLDOUT.value,
-    "protected_holdout",
-    "benchmark_holdout",
-    "private_holdout",
-}
-PROTECTED_ROLES = {"holdout", "protected_holdout", "benchmark", "evaluation_only"}
 
 
 @dataclass(frozen=True)
@@ -23,63 +20,6 @@ class DatasetIdentity:
     row_count: int
     source_ids: tuple[str, ...]
     source_licenses: tuple[str, ...]
-
-
-def _marker(value: object) -> str:
-    return value.strip().casefold() if isinstance(value, str) else ""
-
-
-def _mapping_is_protected(value: object, *, nested: bool = False) -> bool:
-    if not isinstance(value, dict):
-        if nested:
-            raise ValueError("Dataset row has malformed protection metadata")
-        return False
-    protected = value.get("protected")
-    if "protected" in value and not (
-        isinstance(protected, bool)
-        or (
-            isinstance(protected, str)
-            and protected.strip().casefold()
-            in {"true", "yes", "1", "protected", "false", "no", "0"}
-        )
-    ):
-        raise ValueError("Dataset row has malformed protection metadata")
-    if protected is True or (
-        isinstance(protected, str)
-        and protected.strip().casefold() in {"true", "yes", "1", "protected"}
-    ):
-        return True
-    for field in ("target_split", "split", "source_split"):
-        if (
-            field in value
-            and value[field] is not None
-            and not isinstance(value[field], str)
-        ):
-            raise ValueError("Dataset row has malformed protection metadata")
-        marker = _marker(value.get(field))
-        if marker in PROTECTED_SPLIT_NAMES or "holdout" in marker:
-            return True
-    for field in ("dataset_role", "role", "purpose"):
-        if (
-            field in value
-            and value[field] is not None
-            and not isinstance(value[field], str)
-        ):
-            raise ValueError("Dataset row has malformed protection metadata")
-        marker = _marker(value.get(field))
-        if marker in PROTECTED_ROLES or "holdout" in marker:
-            return True
-    return False
-
-
-def _row_is_protected(row: dict) -> bool:
-    if _mapping_is_protected(row):
-        return True
-    return any(
-        _mapping_is_protected(row[field], nested=True)
-        for field in ("provenance", "metadata")
-        if field in row and row[field] is not None
-    )
 
 
 def validate_training_dataset(dataset: DatasetSection) -> DatasetIdentity:
@@ -110,23 +50,28 @@ def validate_training_dataset(dataset: DatasetSection) -> DatasetIdentity:
                 and not isinstance(row[field], str)
             ):
                 raise ValueError(f"Dataset row has malformed split metadata in {field}")
-    if _mapping_is_protected(header):
+    if protection_metadata_is_malformed(header) or any(
+        protection_metadata_is_malformed(row) for row in rows
+    ):
+        raise ValueError("Dataset row has malformed protection metadata")
+    if record_is_protected(header):
         raise PermissionError(
             "Dataset manifest is marked as protected and cannot train"
         )
-    if any(_row_is_protected(row) for row in rows):
+    if any(record_is_protected(row) for row in rows):
         raise PermissionError(
             "Dataset manifest contains protected holdout rows and cannot train"
         )
     selected = [
         row
         for row in rows
-        if _marker(row.get("target_split", row.get("split", split))) == split
+        if normalize_marker(row.get("target_split", row.get("split", split))) == split
     ]
     if not selected:
         raise ValueError(f"Dataset manifest contains no rows for split {split!r}")
     selected_splits = {
-        _marker(row.get("target_split", row.get("split", split))) for row in selected
+        normalize_marker(row.get("target_split", row.get("split", split)))
+        for row in selected
     }
     if selected_splits & PROTECTED_SPLIT_NAMES:
         raise PermissionError("Protected holdout rows cannot be used for training")

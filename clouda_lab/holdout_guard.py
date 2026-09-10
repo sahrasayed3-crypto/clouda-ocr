@@ -25,87 +25,22 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from clouda_training.experiments.dataset import (  # canonical constants
+from clouda_contracts.protection import (
     PROTECTED_ROLES,
     PROTECTED_SPLIT_NAMES,
+    mapping_is_protected,
+    record_is_protected,
 )
-
-_PROTECTION_FIELDS = (
-    "protected",
-    "target_split",
-    "split",
-    "source_split",
-    "dataset_role",
-    "role",
-    "purpose",
-    "evaluation_only",
-    "benchmark",
-)
-
-_TRUE_STRINGS = frozenset({"true", "yes", "1", "protected"})
-_MARKER_SUBSTRINGS = ("holdout", "protected", "evaluation_only", "benchmark")
-
-
-def _marker(value: Any) -> str:
-    return value.strip().casefold() if isinstance(value, str) else ""
-
-
-def _string_marks_protected(value: Any) -> bool:
-    if not isinstance(value, str):
-        return False
-    normalized = value.strip().casefold()
-    if (
-        normalized in _TRUE_STRINGS
-        or normalized in PROTECTED_SPLIT_NAMES
-        or normalized in PROTECTED_ROLES
-    ):
-        return True
-    return any(marker in normalized for marker in _MARKER_SUBSTRINGS)
-
-
-def _mapping_is_protected_strict(mapping: Any) -> bool:
-    """Framework-equivalent protection check plus malformed-type rejection."""
-    if not isinstance(mapping, Mapping):
-        return False
-    for field in _PROTECTION_FIELDS:
-        if field not in mapping:
-            continue
-        value = mapping[field]
-        if isinstance(value, bool):
-            if value is True:
-                return True
-            continue  # False is clean
-        if isinstance(value, str):
-            if _string_marks_protected(value):
-                return True
-            continue
-        # Non-str/bool value in a protection-relevant field: malformed,
-        # fail closed (numbers/lists/dicts/None-typed junk are not trusted).
-        if value is not None:
-            return True
-    return False
 
 
 def row_is_protected(row: Mapping[str, Any]) -> bool:
     """Fail-closed protection check for one manifest row."""
-    if _mapping_is_protected_strict(row):
-        return True
-    for nested_field in ("provenance", "metadata"):
-        nested = row.get(nested_field)
-        if nested is None:
-            continue
-        if not isinstance(nested, Mapping):
-            # A malformed nested block on a manifest row is treated as
-            # potentially hiding protection markers: fail closed.
-            return True
-        if _mapping_is_protected_strict(nested):
-            return True
-    return False
+    return record_is_protected(row)
 
 
 def header_is_protected(header: Mapping[str, Any]) -> bool:
     """Protection check for a manifest header (same rules as rows)."""
-    return _mapping_is_protected_strict(header)
+    return mapping_is_protected(header)
 
 
 def filter_protected_rows(

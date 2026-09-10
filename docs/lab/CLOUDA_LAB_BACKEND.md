@@ -185,6 +185,22 @@ API/UI: `evaluate_sample`, `evaluate_batch`/`evaluate_file`,
 plus `export_*` helpers (JSON/JSONL/CSV). It owns no metric logic — it
 composes the engines above.
 
+## Results Store integration
+
+`StoredResultsAnalysisService` composes `ResultsService` with
+`EvaluationService`. Its public methods query stored page/GT/prediction
+evidence, analyze individual pages or complete runs, compare two stored runs,
+produce selection candidates with canonical identity/protection metadata, and
+return explainable next-batch rows containing scores, failure buckets,
+rationale, selection state, source/dataset metadata, and training eligibility.
+
+This adapter is deliberately one-way: `clouda_data.results` owns persistence
+and identity, while `clouda_lab` owns derived analysis and policy. Lab's
+`OCRSample` and analysis dataclasses are transient service DTOs, not another
+result store. Model ids are logical identifiers and may contain provider-style
+slashes; the Results Store maps them to deterministic hashed filenames so they
+never become filesystem paths.
+
 ## Training Orchestrator (facade)
 
 `TrainingOrchestrator` wraps `clouda_training.experiments` and adds nothing
@@ -201,6 +217,9 @@ parallel:
   manifest with provenance header, records usage history, resolves a
   framework-shaped experiment config (mock adapter, `dry_run: true`),
   and can immediately run it in dry-run mode.
+  `create_training_experiment_from_result(...)` accepts an already computed
+  `SelectionResult`, so a Results Store-backed Lab selection flows into the
+  same guarded manifest/config pipeline without re-reading a parallel source.
 
 Real training remains disabled end-to-end: the facade refuses
 non-dry-run configs before the framework's own fail-closed check

@@ -65,6 +65,33 @@ class ResultsService:
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         from .models import BenchmarkDataset, Provenance
+        from .store import ConflictingRecordError, UnknownRecordError
+
+        requested = {
+            "name": name,
+            "description": description,
+            "manifest_sha256": manifest_sha256,
+            "splits": list(splits),
+            "tags": list(tags),
+            "metadata": dict(metadata or {}),
+        }
+        try:
+            existing = self.store.load_dataset(dataset_id, version)
+        except UnknownRecordError:
+            existing = None
+        if existing is not None:
+            comparable = {
+                key: existing.get(key, [] if key in {"splits", "tags"} else None)
+                for key in requested
+            }
+            comparable["name"] = existing.get("name", "")
+            comparable["description"] = existing.get("description", "")
+            comparable["metadata"] = existing.get("metadata", {})
+            if comparable != requested:
+                raise ConflictingRecordError(
+                    f"Conflicting dataset record for {dataset_id!r}@{version!r}."
+                )
+            return existing
 
         dataset = BenchmarkDataset(
             dataset_id=dataset_id,
@@ -72,8 +99,8 @@ class ResultsService:
             name=name,
             description=description,
             manifest_sha256=manifest_sha256,
-            splits=tuple(splits),
-            tags=tuple(tags),
+            splits=tuple(requested["splits"]),
+            tags=tuple(requested["tags"]),
             metadata=dict(metadata or {}),
             provenance=Provenance(source_format="results-service.manual"),
         )
@@ -90,13 +117,31 @@ class ResultsService:
 
     def register_model(self, record: Any) -> dict[str, Any]:
         from .models import ModelRecord
+        from .store import ConflictingRecordError, UnknownRecordError
 
         if isinstance(record, ModelRecord):
             model = record
         else:
             model = ModelRecord(**record)
-        self.store.save_model(model.to_dict())
-        return model.to_dict()
+        requested = model.to_dict()
+        try:
+            existing = self.store.load_model(model.model_id)
+        except UnknownRecordError:
+            existing = None
+        if existing is not None:
+            existing_identity = {
+                k: v for k, v in existing.items() if k != "registered_at"
+            }
+            requested_identity = {
+                k: v for k, v in requested.items() if k != "registered_at"
+            }
+            if existing_identity != requested_identity:
+                raise ConflictingRecordError(
+                    f"Conflicting model record for {model.model_id!r}."
+                )
+            return existing
+        self.store.save_model(requested)
+        return requested
 
     def list_models(self) -> list[dict[str, Any]]:
         return list(self.store.list_models())
@@ -284,7 +329,16 @@ class ResultsService:
         dataset_id: str | None = None,
         split: str | None = None,
     ) -> list[OCRPrediction]:
-        return list(self.store.iter_predictions(run_id, model_id=model_id, split=split))
+        predictions = list(
+            self.store.iter_predictions(run_id, model_id=model_id, split=split)
+        )
+        if dataset_id is not None:
+            predictions = [
+                prediction
+                for prediction in predictions
+                if prediction.dataset_id == dataset_id
+            ]
+        return predictions
 
     # ------------------------------------------------------------ metrics
 

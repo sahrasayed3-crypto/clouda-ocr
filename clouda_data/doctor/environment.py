@@ -2,7 +2,7 @@
 
 Import-resolution is the load-bearing safety check for multi-worktree
 development: the canonical packages (``clouda_data``, ``clouda_training``,
-``clouda_contracts``, ``clouda_models``) may be imported from this worktree's
+``clouda_contracts``, ``clouda_models``, ``clouda_lab``) may be imported from this worktree's
 sources, from an editable install pointing at another worktree, or from a
 stale site-packages copy. The Doctor reports the drift; it never rewrites the
 environment.
@@ -12,10 +12,12 @@ from __future__ import annotations
 
 import importlib
 import importlib.metadata
+import io
 import platform
 import re
 import sys
 import tomllib
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +28,7 @@ CANONICAL_PACKAGES = (
     "clouda_training",
     "clouda_contracts",
     "clouda_models",
+    "clouda_lab",
 )
 
 # distribution name (pyproject/extras) -> import name, only where they differ.
@@ -49,6 +52,9 @@ EXTRA_GROUPS: dict[str, tuple[str, ...]] = {
     "factory": ("numpy", "opencv-python-headless", "img2pdf", "pikepdf"),
     "factory-render": ("WeasyPrint",),
     "training": ("PyYAML", "jsonschema"),
+    "results": (),
+    "lab": ("PyYAML",),
+    "training-data": ("Pillow",),
     "server": (
         "fastapi",
         "firebase-admin",
@@ -80,7 +86,8 @@ def installed_version(dist_name: str) -> str | None:
 
 def _importable(import_name: str) -> bool:
     try:
-        importlib.import_module(import_name)
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            importlib.import_module(import_name)
         return True
     except Exception:
         return False

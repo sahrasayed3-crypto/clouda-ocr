@@ -785,7 +785,7 @@ def doctor_cli(args: argparse.Namespace) -> int:
             warn_free_gb=args.min_free_gb if args.min_free_gb is not None else 50.0,
         )
     except Exception as exc:  # noqa: BLE001 - exit code 2 contract
-        print(f"doctor failed to execute: {type(exc).__name__}: {exc}", file=sys.stderr)
+        print(f"doctor failed to execute: {type(exc).__name__}", file=sys.stderr)
         return 2
     if args.json:
         print(report.to_json())

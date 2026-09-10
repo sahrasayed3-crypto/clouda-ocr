@@ -400,7 +400,11 @@ def check_raqm() -> DoctorSection:
 
 def _module_importable(name: str) -> bool:
     try:
-        importlib.import_module(name)
+        with (
+            contextlib.redirect_stdout(io.StringIO()),
+            contextlib.redirect_stderr(io.StringIO()),
+        ):
+            importlib.import_module(name)
         return True
     except Exception:  # noqa: BLE001
         return False

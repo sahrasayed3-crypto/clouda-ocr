@@ -23,6 +23,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from .security import redact_text, redact_value
+
 DOCTOR_SCHEMA_VERSION = "clouda.ocr.doctor.v1"
 
 
@@ -60,10 +62,12 @@ class DoctorCheck:
             "name": self.name,
             "subsystem": self.subsystem,
             "status": self.status.value,
-            "message": self.message,
+            "message": redact_text(self.message),
             "required": self.required,
-            "details": dict(self.details),
-            "remediation": self.remediation,
+            "details": redact_value(dict(self.details)),
+            "remediation": (
+                redact_text(self.remediation) if self.remediation is not None else None
+            ),
         }
 
 

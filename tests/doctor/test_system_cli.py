@@ -160,6 +160,27 @@ def test_secret_values_never_in_any_output(monkeypatch, clean_worktree_root):
         assert "top-secret-worker-token" not in text
 
 
+def test_check_exception_payloads_are_redacted_from_all_output(monkeypatch):
+    secret = "sk-live-check-exception-secret"
+    monkeypatch.setenv("OPENROUTER_API_KEY", secret)
+    check = DoctorCheck(
+        id="secret.failure",
+        name="Secret failure",
+        subsystem="security",
+        status=DoctorStatus.FAIL,
+        message=f"provider rejected {secret}",
+        details={"error": {"message": secret}},
+        remediation=f"remove {secret}",
+    )
+    report = DoctorReport(
+        sections=[DoctorSection(id="security", name="Security", checks=[check])]
+    )
+
+    for text in (render_human(report, verbose=True), report.to_json()):
+        assert secret not in text
+        assert "<redacted>" in text
+
+
 def test_exception_messages_do_not_leak_values():
     """The doctor never str()s environment values anywhere."""
     import inspect
@@ -170,6 +191,32 @@ def test_exception_messages_do_not_leak_values():
     # The value is read once to check set-ness; it is never stored or printed.
     assert "print(" not in source
     assert "str(raw)" not in source
+
+
+def test_doctor_cli_redacts_secret_from_top_level_exception(monkeypatch, capsys):
+    import argparse
+    import clouda_data.doctor as doctor_package
+    from clouda_data.pipeline.cli import doctor_cli
+
+    secret = "sk-doctor-exception-secret"
+
+    def fail_report(**_kwargs):
+        raise RuntimeError(f"provider rejected {secret}")
+
+    monkeypatch.setattr(doctor_package, "collect_report", fail_report)
+    args = argparse.Namespace(
+        deep=False,
+        no_factory=True,
+        no_render=True,
+        no_training=True,
+        no_git=True,
+        no_storage=True,
+        min_free_gb=None,
+        json=False,
+        verbose=False,
+    )
+    assert doctor_cli(args) == 2
+    assert secret not in capsys.readouterr().err
 
 
 # ---------------------------------------------------------------------------

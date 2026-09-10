@@ -49,6 +49,13 @@ training = [
   "PyYAML==6.0.2",
   "jsonschema==4.23.0"
 ]
+results = []
+lab = [
+  "PyYAML==6.0.2"
+]
+training-data = [
+  "Pillow>=10.4.0"
+]
 models = [
   "requests>=2.32.0"
 ]

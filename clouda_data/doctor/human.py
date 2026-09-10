@@ -23,19 +23,20 @@ def render_human(report: DoctorReport, *, verbose: bool = False) -> str:
     for section in report.sections:
         lines.append(section.name)
         for check in section.checks:
+            payload = check.to_dict()
             mark = _STATUS_MARKS[check.status]
-            lines.append(f"  {mark} {check.message}")
+            lines.append(f"  {mark} {payload['message']}")
             if verbose:
-                if check.details:
-                    for key, value in check.details.items():
+                if payload["details"]:
+                    for key, value in payload["details"].items():
                         lines.append(f"        {key}: {value}")
-                if check.remediation:
-                    lines.append(f"        fix: {check.remediation}")
+                if payload["remediation"]:
+                    lines.append(f"        fix: {payload['remediation']}")
             elif (
                 check.status in (DoctorStatus.WARN, DoctorStatus.FAIL)
-                and check.remediation
+                and payload["remediation"]
             ):
-                lines.append(f"        fix: {check.remediation}")
+                lines.append(f"        fix: {payload['remediation']}")
         lines.append("")
     lines.append(f"Overall: {report.readiness_label()}")
     if report.failed_required_checks():

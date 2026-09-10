@@ -149,6 +149,23 @@ def test_import_resolution_stale_site_packages(
     assert check.details["actual_import_roots"] == [str(site_packages)]
 
 
+def test_import_resolution_detects_lab_from_another_worktree(
+    clean_worktree_root, tmp_path, monkeypatch
+):
+    other_tree = tmp_path / "OTHER_LAB_WORKTREE"
+
+    def fake_import(name, *a, **k):
+        root = other_tree if name == "clouda_lab" else clean_worktree_root
+        if name in env.CANONICAL_PACKAGES or name == "clouda_lab":
+            return _fake_module(name, str(root / name / "__init__.py"))
+        return __import__(name)
+
+    monkeypatch.setattr(env.importlib, "import_module", fake_import)
+    check = check_import_resolution(clean_worktree_root)[0]
+    assert check.status is env.DoctorStatus.FAIL
+    assert str(other_tree) in check.details["actual_import_roots"]
+
+
 # ---------------------------------------------------------------------------
 # Phase 5 — dependency groups
 # ---------------------------------------------------------------------------
@@ -201,6 +218,17 @@ def test_build_dependency_sections_uses_pyproject_extras(clean_worktree_root):
     assert "dependencies-training" in by_id
     names = [c.details["distribution"] for c in by_id["dependencies-training"].checks]
     assert names == ["PyYAML", "custom-extra-pkg"]
+
+
+def test_current_dependency_model_has_backend_groups(clean_worktree_root):
+    data = env._load_pyproject(clean_worktree_root)
+    section_ids = {section.id for section in env.build_dependency_sections(data)}
+    assert {
+        "dependencies-results",
+        "dependencies-lab",
+        "dependencies-training-data",
+        "dependencies-training",
+    } <= section_ids
 
 
 def test_python_version_fail_when_outside_range(monkeypatch):

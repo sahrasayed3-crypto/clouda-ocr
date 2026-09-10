@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Mapping
 from typing import Any
 
 # Names discovered by scanning os.environ/getenv usage across the canonical
@@ -78,11 +79,34 @@ _SECRET_NAME_PATTERN = re.compile(
     r"(?i)key|token|secret|password|passwd|credential|auth|api[-_]?key|"
     r"service[-_]?account|session"
 )
+_SECRET_ENV_NAMES = {"REDIS_URL"}
 
 
 def is_secret_var(name: str) -> bool:
     """True when a variable name pattern-matches a credential class."""
-    return bool(_SECRET_NAME_PATTERN.search(name))
+    return name in _SECRET_ENV_NAMES or bool(_SECRET_NAME_PATTERN.search(name))
+
+
+def redact_text(text: str, environment: Mapping[str, str] | None = None) -> str:
+    """Replace configured secret values without exposing them to callers."""
+    env = os.environ if environment is None else environment
+    redacted = text
+    for name, raw in env.items():
+        if not is_secret_var(name) or not isinstance(raw, str) or len(raw) < 4:
+            continue
+        redacted = redacted.replace(raw, "<redacted>")
+    return redacted
+
+
+def redact_value(value: Any) -> Any:
+    """Recursively sanitize a JSON-compatible diagnostic payload."""
+    if isinstance(value, str):
+        return redact_text(value)
+    if isinstance(value, dict):
+        return {key: redact_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [redact_value(item) for item in value]
+    return value
 
 
 def build_env_report(environment: dict[str, str] | None = None) -> list[dict[str, Any]]:

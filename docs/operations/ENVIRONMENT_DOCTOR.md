@@ -27,12 +27,13 @@ repo-drive free-space WARN threshold).
 ## Modes
 
 - **Default (lightweight):** interpreter facts, import/worktree resolution,
-  dependency groups, Data Factory imports + packaged resources, renderer
+  dependency groups, Results Store, Lab and Training Data readiness, Data
+  Factory imports + packaged resources, renderer
   availability (including native-library reality), Training Framework
   imports + output-root writability, GPU presence, storage, Git state.
   No renders, no training, no network, no large I/O.
-- **Deep (`--deep`):** additionally runs one tiny **offline**
-  `MockTrainer` dry-run in a temporary directory (forced
+- **Deep (`--deep`):** additionally runs tiny **offline** Results/Lab/Training
+  Data and `MockTrainer` dry-runs in a temporary directory (forced
   `runtime.dry_run=true`, `runtime.offline=true`), then deletes the
   directory. No model downloads, no real training, CPU-only, seconds fast.
 
@@ -92,7 +93,7 @@ hint, e.g. `pip install -e ".[factory]"` — the Doctor **never installs**.
 ## Import / worktree drift detection
 
 For each canonical package (`clouda_data`, `clouda_training`,
-`clouda_contracts`, `clouda_models`) the Doctor resolves the real
+`clouda_contracts`, `clouda_models`, `clouda_lab`) the Doctor resolves the real
 import source (`module.__file__`) and compares the set of roots against the
 active repository/worktree (`CLOUDA_PROJECT_ROOT` or the directory holding
 `pyproject.toml`):
@@ -171,7 +172,7 @@ explicit `--fix` mode would be a separate, reviewed change.
   byte-identical rendering to a reference machine.
 - GPU "READY" does not verify specific kernel/CUDA-version compatibility.
 - Storage thresholds are local guidance, not validated training minimums.
-- Results Store / Clouda Lab are reported NOT PRESENT on this branch base;
-  their checks will activate when those subsystems land.
+- Results Store, Clouda Lab, and Training Data readiness proves imports and
+  local smoke behavior, not production-scale throughput.
 - The doctor inspects the *active interpreter's* environment — run it with
   the same interpreter/venv you intend to use for the workload.

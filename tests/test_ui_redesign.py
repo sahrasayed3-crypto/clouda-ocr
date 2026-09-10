@@ -18,6 +18,8 @@ from pdfword.ui_components import (
 )
 from pdfword.ui_status import UiSystemStatus, fetch_system_status, parse_health_payload
 
+APP_PATH = Path(__file__).resolve().parents[1] / "app.py"
+
 
 @pytest.mark.parametrize(
     ("status", "label", "tone"),
@@ -309,7 +311,7 @@ def _offline_app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AppTest:
     monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "ui-navigation.sqlite3"))
     monkeypatch.setenv("SERVER_BASE_URL", "http://127.0.0.1:59999")
     monkeypatch.setenv("WORKER_API_KEY", "test-only-worker-key")
-    return AppTest.from_file("app.py", default_timeout=20)
+    return AppTest.from_file(APP_PATH, default_timeout=20)
 
 
 def _navigation(app: AppTest):
@@ -766,7 +768,7 @@ def test_streamlit_conversion_page_smoke(
     monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "ui.sqlite3"))
     monkeypatch.setenv("SERVER_BASE_URL", "http://127.0.0.1:59999")
     monkeypatch.setenv("WORKER_API_KEY", "test-only-worker-key")
-    app = AppTest.from_file("app.py", default_timeout=20)
+    app = AppTest.from_file(APP_PATH, default_timeout=20)
     app.run()
     assert not app.exception
     assert len(app.file_uploader) == 0

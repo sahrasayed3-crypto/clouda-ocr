@@ -80,6 +80,7 @@ security = [
 clouda-data = "clouda_data.pipeline.cli:main"
 clouda-lab = "clouda_lab.cli:main"
 clouda-training = "clouda_training.cli:main"
+clouda-quality = "clouda_data.quality.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

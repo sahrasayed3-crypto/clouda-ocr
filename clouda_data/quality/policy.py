@@ -27,6 +27,7 @@ from clouda_data.pretraining.schema import (
     ValidationStatus,
     sort_key,
 )
+from clouda_data.quality.leakage import effective_partition as _effective_partition
 from clouda_data.quality.models import ExclusionDecision
 
 EXCLUSION_REPORT_SCHEMA_VERSION = "clouda.pretraining.exclusion.v1"
@@ -198,6 +199,40 @@ def decide_exclusions(
                         "kept_sample_id": keep_id,
                     },
                 )
+
+    # Leakage findings: for CRITICAL cross-partition findings, exclude the
+    # TRAIN-side members (evaluation/protected members are always kept).
+    for issue in issues:
+        severity = getattr(issue, "severity", None)
+        severity_value = getattr(severity, "value", severity)
+        if severity_value != "critical":
+            continue
+        code = getattr(issue, "code", "")
+        if not str(code).startswith("LEAK_"):
+            continue
+        member_ids = tuple(getattr(issue, "sample_ids", ()) or ())
+        if len(member_ids) < 2:
+            continue
+        parts = {
+            mid: _effective_partition(by_id[mid])
+            for mid in member_ids
+            if mid in by_id
+        }
+        train_members = sorted(
+            mid for mid, part in parts.items() if part == "TRAIN"
+        )
+        for mid in train_members:
+            if mid in excluded or mid in quarantined:
+                continue
+            excluded[mid] = ExclusionDecision(
+                sample_id=mid,
+                reason_code=str(code),
+                reason_source="quality_gate",
+                evidence={
+                    "leakage": True,
+                    "partitions": sorted(set(parts.values())),
+                },
+            )
 
     decisions = sorted(
         list(excluded.values()) + list(quarantined.values()),

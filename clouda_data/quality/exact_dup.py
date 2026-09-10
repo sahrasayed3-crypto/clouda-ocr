@@ -291,3 +291,47 @@ def classify_exact_duplicates(
     _apply_confirmed_near_pairs(ordered, updated, confirmed_near_pairs, report)
 
     return sorted(updated, key=sort_key), report
+
+
+def families_to_clusters(
+    samples: list[DatasetSample],
+    report: ExactDupReport,
+) -> list[Any]:
+    """Convert duplicate families into DuplicateCluster models.
+
+    Deterministic: clusters sorted by cluster_id, members sorted. Cluster id
+    is ``CLU_`` + sha256 of the sorted member ids (stable across runs).
+    """
+
+    import hashlib
+
+    from clouda_data.quality.models import DuplicateCluster
+
+    by_id = {sample.sample_id: sample for sample in samples}
+    clusters: list[DuplicateCluster] = []
+    seen: set[tuple[str, ...]] = set()
+    for family in report.families:
+        canonical_id = str(family.get("canonical_sample_id", ""))
+        members = sorted(
+            mid
+            for mid in [*family.get("member_sample_ids", []), canonical_id]
+            if mid and mid in by_id
+        )
+        if len(members) < 2 or tuple(members) in seen:
+            continue
+        seen.add(tuple(members))
+        digest = hashlib.sha256("\\x00".join(members).encode("utf-8")).hexdigest()
+        level = (
+            "CONFIRMED_NEAR_DUPLICATE"
+            if family.get("kind") == "near_image"
+            else "LIKELY_DUPLICATE"
+        )
+        clusters.append(
+            DuplicateCluster(
+                cluster_id=f"CLU_{digest[:12]}",
+                member_ids=tuple(members),
+                level=level,
+                evidence={"kind": str(family.get("kind", "exact"))},
+            )
+        )
+    return sorted(clusters, key=lambda cluster: cluster.cluster_id)

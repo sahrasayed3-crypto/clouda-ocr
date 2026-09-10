@@ -214,13 +214,9 @@ def decide_exclusions(
         if len(member_ids) < 2:
             continue
         parts = {
-            mid: _effective_partition(by_id[mid])
-            for mid in member_ids
-            if mid in by_id
+            mid: _effective_partition(by_id[mid]) for mid in member_ids if mid in by_id
         }
-        train_members = sorted(
-            mid for mid, part in parts.items() if part == "TRAIN"
-        )
+        train_members = sorted(mid for mid, part in parts.items() if part == "TRAIN")
         for mid in train_members:
             if mid in excluded or mid in quarantined:
                 continue

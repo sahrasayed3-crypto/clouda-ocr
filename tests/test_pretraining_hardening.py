@@ -6,6 +6,7 @@ import json
 import math
 import os
 from pathlib import Path
+from typing import Any
 
 import pytest
 from PIL import Image
@@ -57,7 +58,7 @@ def _png(path: Path, color: tuple[int, int, int] = (30, 60, 90)) -> None:
 
 
 def _sample(sample_id: str, **changes: object) -> DatasetSample:
-    values: dict[str, object] = {
+    values: dict[str, Any] = {
         "sample_id": sample_id,
         "source_id": "src",
         "source_path": f"{sample_id}.png",

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from clouda_data.results.identity import (
@@ -43,7 +45,7 @@ class TestPageIdentity:
 
 class TestRunIdentity:
     def test_deterministic_across_processes(self) -> None:
-        kwargs = dict(
+        kwargs: dict[str, Any] = dict(
             model_id="m",
             model_revision="1.0",
             dataset_id="ds",

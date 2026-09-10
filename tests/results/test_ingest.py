@@ -42,6 +42,7 @@ class TestBenchmarkManifestAdapter:
     def test_portable_uris_only(self) -> None:
         pages = benchmark_manifest_to_pages(BENCHMARK_MANIFEST)
         for page in pages:
+            assert page.image_artifact is not None
             uri = page.image_artifact.uri
             assert uri.startswith("dataset://")
             assert not Path(uri).is_absolute()
@@ -59,6 +60,7 @@ class TestBenchmarkManifestAdapter:
     def test_provenance_survives(self) -> None:
         pages = benchmark_manifest_to_pages(BENCHMARK_MANIFEST)
         provenance = pages[0].provenance
+        assert provenance is not None
         assert provenance.source_format == "benchmarks.ocr_arabic.benchmark_manifest.v1"
         assert provenance.source_sha256 is None or len(provenance.source_sha256) == 64
         assert provenance.adapter_version == "clouda.results.ingest.v1"

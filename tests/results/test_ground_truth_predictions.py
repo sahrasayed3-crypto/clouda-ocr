@@ -153,7 +153,7 @@ class TestPredictions:
                 model_revision="rev",
                 text="t",
                 text_sha256="0" * 64,
-                metrics={"cer": "high"},
+                metrics={"cer": "high"},  # type: ignore[dict-item]
             )
 
 

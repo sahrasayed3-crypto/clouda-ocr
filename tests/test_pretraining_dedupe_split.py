@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -28,7 +29,7 @@ from clouda_data.pretraining.validation import (
 
 
 def _sample(sample_id: str, **kwargs: object) -> DatasetSample:
-    base = {
+    base: dict[str, Any] = {
         "sample_id": sample_id,
         "source_id": "src",
         "source_path": f"{sample_id}.png",
@@ -82,8 +83,10 @@ def test_validation_bad_sample_does_not_abort_dataset(tmp_path: Path):
     updated, report = apply_validation(
         samples, tmp_path, thresholds=ValidationThresholds(require_image=False)
     )
-    assert report["counts"]["error"] == 1
-    assert report["counts"]["ok"] == 2
+    counts = report["counts"]
+    assert isinstance(counts, dict)
+    assert counts["error"] == 1
+    assert counts["ok"] == 2
     assert len(updated) == 3
     assert updated[1].exclusion_reason == "path_escape"
 

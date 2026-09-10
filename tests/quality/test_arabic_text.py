@@ -12,16 +12,39 @@ from clouda_data.pretraining.normalize import (
 text_dup = pytest.importorskip("clouda_data.quality.text_dup")
 
 
+def _identity_policy() -> NormalizationPolicy:
+    """Tier-1 identity policy (DEDUPE_TEXT_POLICY semantics)."""
+
+    return NormalizationPolicy(
+        unicode_form="NFKC",
+        presentation_forms="compose",
+        strip_bom=True,
+        normalize_line_endings=True,
+        preserve_line_breaks=True,
+        collapse_whitespace=True,
+        remove_zero_width=True,
+        remove_control_characters=True,
+        remove_tatweel=True,
+        remove_diacritics=True,
+        fold_alef=True,
+        fold_ya=True,
+        fold_digits=False,
+    )
+
+
 class TestArabicTextNormalization:
     def test_diacritics_removed(self) -> None:
-        policy = NormalizationPolicy()
-        result = normalize_text("مُحَمَّد", policy)
+        result = normalize_text("مُحَمَّد", _identity_policy())
         assert "ُ" not in result.value
         assert "َ" not in result.value
 
+    def test_diacritics_preserved_by_default_policy(self) -> None:
+        # The DEFAULT policy is non-destructive: folding is opt-in.
+        result = normalize_text("مُحَمَّد", NormalizationPolicy())
+        assert "ُ" in result.value
+
     def test_alef_variants_folded(self) -> None:
-        policy = NormalizationPolicy()
-        result = normalize_text("أحمد إبراهيم آمنة", policy)
+        result = normalize_text("أحمد إبراهيم آمنة", _identity_policy())
         assert "أ" not in result.value
         assert "إ" not in result.value
         assert "آ" not in result.value

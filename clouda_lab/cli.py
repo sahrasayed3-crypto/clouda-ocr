@@ -199,11 +199,20 @@ def _cmd_distortion_experiment(args: argparse.Namespace) -> int:
             for pair in args.run_images.split(","):
                 sample_id, _, path = pair.partition("=")
                 images[sample_id] = path
-        result = run_distortion_experiment(plan, source_images=images, output_dir=args.output)
-        print(json.dumps({"experiment_id": result["experiment_id"],
-                          "rows": len(result["rows"]),
-                          "output_dir": result["output_dir"]},
-                         ensure_ascii=False, indent=2))
+        result = run_distortion_experiment(
+            plan, source_images=images, output_dir=args.output
+        )
+        print(
+            json.dumps(
+                {
+                    "experiment_id": result["experiment_id"],
+                    "rows": len(result["rows"]),
+                    "output_dir": result["output_dir"],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
     else:
         print(json.dumps(plan, ensure_ascii=False, indent=2))
     return 0

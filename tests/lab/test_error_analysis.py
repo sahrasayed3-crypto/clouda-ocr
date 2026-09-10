@@ -99,7 +99,8 @@ class TestArabicClassification:
         analysis = analyze_sample(_sample("s1", "مَكتب", "مكتب"))
         assert analysis.error_type_counts.get("diacritic", 0) == 2
         char_deletions = [
-            r for r in analysis.char_records
+            r
+            for r in analysis.char_records
             if r.operation == "deletion" and r.error_type == "diacritic"
         ]
         assert len(char_deletions) == 1
@@ -137,7 +138,9 @@ class TestArabicClassification:
         assert classify_word_error("كتاب", "قلم") == "word_substitution"
 
     def test_missing_word_summary(self):
-        analysis = analyze_sample(_sample("s1", "مرحبا بالعالم الجميل", "مرحبا بالعالم"))
+        analysis = analyze_sample(
+            _sample("s1", "مرحبا بالعالم الجميل", "مرحبا بالعالم")
+        )
         assert analysis.error_type_counts.get("missing_word", 0) == 1
 
     def test_unknown_fallback(self):
@@ -165,7 +168,9 @@ class TestSummaryOutput:
         assert analysis.error_type_counts.get("hamza_alef_variant") == 1
         total = analysis.character_count
         for label, count in analysis.error_type_counts.items():
-            assert analysis.error_type_rates[label] == pytest.approx(count / total, abs=1e-6)
+            assert analysis.error_type_rates[label] == pytest.approx(
+                count / total, abs=1e-6
+            )
 
     def test_substitution_pairs_counted(self):
         analysis = analyze_sample(_sample("s1", "أأأ", "ااا"))
@@ -182,13 +187,36 @@ class TestSummaryOutput:
 class TestBatch:
     def _batch(self):
         return [
-            _sample("p1", "مرحبا بالعالم", "مرحبا بالعالم", model_id="m1",
-                    metadata={"profile": "clean", "split": "test", "document_type": "book"}),
-            _sample("p2", "مرحبا بالعالم الجميل", "مرحبا بالعالم", model_id="m1",
-                    metadata={"profile": "bad_scan_heavy", "split": "test",
-                              "distortion": "gaussian_blur", "document_type": "book"}),
-            _sample("p3", "الرقم ٢٠٢٤ كبير", "الرقم 2024 كبير", model_id="m2",
-                    metadata={"profile": "clean", "split": "train", "document_type": "form"}),
+            _sample(
+                "p1",
+                "مرحبا بالعالم",
+                "مرحبا بالعالم",
+                model_id="m1",
+                metadata={"profile": "clean", "split": "test", "document_type": "book"},
+            ),
+            _sample(
+                "p2",
+                "مرحبا بالعالم الجميل",
+                "مرحبا بالعالم",
+                model_id="m1",
+                metadata={
+                    "profile": "bad_scan_heavy",
+                    "split": "test",
+                    "distortion": "gaussian_blur",
+                    "document_type": "book",
+                },
+            ),
+            _sample(
+                "p3",
+                "الرقم ٢٠٢٤ كبير",
+                "الرقم 2024 كبير",
+                model_id="m2",
+                metadata={
+                    "profile": "clean",
+                    "split": "train",
+                    "document_type": "form",
+                },
+            ),
         ]
 
     def test_aggregation_by_model(self):
@@ -231,7 +259,9 @@ class TestBatch:
         report = analyze_batch(self._batch())
         out_json = tmp_path / "batch.json"
         out_csv = tmp_path / "batch.csv"
-        out_json.write_text(json.dumps(report.to_dict(), ensure_ascii=False), encoding="utf-8")
+        out_json.write_text(
+            json.dumps(report.to_dict(), ensure_ascii=False), encoding="utf-8"
+        )
         export_batch_csv(report, out_csv)
         assert json.loads(out_json.read_text(encoding="utf-8"))["total_samples"] == 3
         assert "cer_mean" in out_csv.read_text(encoding="utf-8")

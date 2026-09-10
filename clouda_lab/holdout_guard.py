@@ -54,7 +54,11 @@ def _string_marks_protected(value: Any) -> bool:
     if not isinstance(value, str):
         return False
     normalized = value.strip().casefold()
-    if normalized in _TRUE_STRINGS or normalized in PROTECTED_SPLIT_NAMES or normalized in PROTECTED_ROLES:
+    if (
+        normalized in _TRUE_STRINGS
+        or normalized in PROTECTED_SPLIT_NAMES
+        or normalized in PROTECTED_ROLES
+    ):
         return True
     return any(marker in normalized for marker in _MARKER_SUBSTRINGS)
 

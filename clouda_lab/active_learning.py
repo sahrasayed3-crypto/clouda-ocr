@@ -44,10 +44,14 @@ def _group_key(sample: Mapping[str, Any], dimension: str) -> str:
 
 
 def _balance_counts(
-    selected: Sequence[str], samples_by_id: Mapping[str, Mapping[str, Any]], dimension: str
+    selected: Sequence[str],
+    samples_by_id: Mapping[str, Mapping[str, Any]],
+    dimension: str,
 ) -> dict[str, int]:
     counter = Counter(
-        _group_key(samples_by_id[sid], dimension) for sid in selected if sid in samples_by_id
+        _group_key(samples_by_id[sid], dimension)
+        for sid in selected
+        if sid in samples_by_id
     )
     return dict(sorted(counter.items()))
 
@@ -88,7 +92,10 @@ def recommend_next_batch(
     elif strategy == "deterministic_random":
         ordered = sorted(
             candidates,
-            key=lambda s: (_hash_rank(str(s.get("sample_id")), seed), str(s.get("sample_id"))),
+            key=lambda s: (
+                _hash_rank(str(s.get("sample_id")), seed),
+                str(s.get("sample_id")),
+            ),
         )
         for sample in ordered[:batch_size]:
             sid = str(sample.get("sample_id"))
@@ -115,7 +122,11 @@ def recommend_next_batch(
         category_of: dict[str, str] = {}
         for sample in candidates:
             counts = sample.get("error_type_counts") or {}
-            top = max(counts.items(), key=lambda kv: (kv[1], kv[0]))[0] if counts else "none"
+            top = (
+                max(counts.items(), key=lambda kv: (kv[1], kv[0]))[0]
+                if counts
+                else "none"
+            )
             category_of[str(sample.get("sample_id"))] = str(top)
         seen_categories: set[str] = set()
         for item in ranked:
@@ -126,7 +137,9 @@ def recommend_next_batch(
             if category not in seen_categories:
                 seen_categories.add(category)
                 selected.append(sid)
-                rationale[sid] = f"first representative of error category '{category}' (rank {item.rank})"
+                rationale[sid] = (
+                    f"first representative of error category '{category}' (rank {item.rank})"
+                )
         for item in ranked:
             if len(selected) >= batch_size:
                 break
@@ -157,9 +170,7 @@ def recommend_next_batch(
     selections = tuple(rank_map[sid] for sid in selected if sid in rank_map)
     if strategy == "deterministic_random":
         selections = tuple(
-            HardExampleScore(
-                sample_id=sid, score=0.0, signals={}, weights={}, rank=0
-            )
+            HardExampleScore(sample_id=sid, score=0.0, signals={}, weights={}, rank=0)
             for sid in selected
         )
 

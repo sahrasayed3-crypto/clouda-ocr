@@ -11,7 +11,6 @@ Bucket assignment is deterministic: a sample may match multiple buckets
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
 from .models import FailureBucket
@@ -75,22 +74,16 @@ def bucket_sample(
         return share >= resolved["dominant_share"]
 
     if cer >= resolved["high_cer"]:
-        buckets.append(
-            FailureBucket("high_cer", "", {"cer": cer})
-        )
+        buckets.append(FailureBucket("high_cer", "", {"cer": cer}))
     if wer >= resolved["high_wer"]:
-        buckets.append(
-            FailureBucket("high_wer", "", {"wer": wer})
-        )
+        buckets.append(FailureBucket("high_wer", "", {"wer": wer}))
     if dominant("whitespace"):
         buckets.append(
             FailureBucket(
                 "whitespace_heavy", "", {"whitespace": counts.get("whitespace", 0)}
             )
         )
-    if dominant(
-        "arabic_digit", "latin_digit", "digit_system_confusion", "digit_word"
-    ):
+    if dominant("arabic_digit", "latin_digit", "digit_system_confusion", "digit_word"):
         buckets.append(
             FailureBucket(
                 "digit_heavy",
@@ -110,35 +103,69 @@ def bucket_sample(
         )
     if dominant("punctuation"):
         buckets.append(
-            FailureBucket("punctuation_heavy", "", {"punctuation": counts.get("punctuation", 0)})
+            FailureBucket(
+                "punctuation_heavy", "", {"punctuation": counts.get("punctuation", 0)}
+            )
         )
     if dominant("diacritic", "diacritics_heavy"):
         buckets.append(
-            FailureBucket("diacritics_heavy", "", {"diacritic": counts.get("diacritic", 0)})
+            FailureBucket(
+                "diacritics_heavy", "", {"diacritic": counts.get("diacritic", 0)}
+            )
         )
-    if dominant("missing_arabic_character", "missing_latin_character", "missing_character", "missing_word"):
+    if dominant(
+        "missing_arabic_character",
+        "missing_latin_character",
+        "missing_character",
+        "missing_word",
+    ):
         buckets.append(
             FailureBucket(
                 "deletion_heavy",
                 "",
-                {"deletions": sum(counts.get(c, 0) for c in (
-                    "missing_arabic_character", "missing_latin_character",
-                    "missing_character", "missing_word"))},
+                {
+                    "deletions": sum(
+                        counts.get(c, 0)
+                        for c in (
+                            "missing_arabic_character",
+                            "missing_latin_character",
+                            "missing_character",
+                            "missing_word",
+                        )
+                    )
+                },
             )
         )
-    if dominant("extra_arabic_character", "extra_latin_character", "extra_character", "extra_word"):
+    if dominant(
+        "extra_arabic_character",
+        "extra_latin_character",
+        "extra_character",
+        "extra_word",
+    ):
         buckets.append(
             FailureBucket(
                 "insertion_heavy",
                 "",
-                {"insertions": sum(counts.get(c, 0) for c in (
-                    "extra_arabic_character", "extra_latin_character",
-                    "extra_character", "extra_word"))},
+                {
+                    "insertions": sum(
+                        counts.get(c, 0)
+                        for c in (
+                            "extra_arabic_character",
+                            "extra_latin_character",
+                            "extra_character",
+                            "extra_word",
+                        )
+                    )
+                },
             )
         )
     if dominant(
-        "character_substitution", "hamza_alef_variant", "ya_alef_maqsura",
-        "ta_marbuta_ha", "arabic_latin_script", "word_substitution",
+        "character_substitution",
+        "hamza_alef_variant",
+        "ya_alef_maqsura",
+        "ta_marbuta_ha",
+        "arabic_latin_script",
+        "word_substitution",
     ):
         buckets.append(
             FailureBucket("severe_substitution", "", {"substitution_share": True})
@@ -147,11 +174,19 @@ def bucket_sample(
     distortion = _distortion_values(meta)
     if distortion & _BLUR_DISTORTIONS:
         buckets.append(
-            FailureBucket("distorted_blur", "", {"distortion": sorted(distortion & _BLUR_DISTORTIONS)})
+            FailureBucket(
+                "distorted_blur",
+                "",
+                {"distortion": sorted(distortion & _BLUR_DISTORTIONS)},
+            )
         )
     if distortion & _SKEW_DISTORTIONS:
         buckets.append(
-            FailureBucket("distorted_skew", "", {"distortion": sorted(distortion & _SKEW_DISTORTIONS)})
+            FailureBucket(
+                "distorted_skew",
+                "",
+                {"distortion": sorted(distortion & _SKEW_DISTORTIONS)},
+            )
         )
     if distortion & _COMPRESSION_DISTORTIONS:
         buckets.append(
@@ -164,12 +199,23 @@ def bucket_sample(
 
     text_blob = json_text(meta)
     if "mixed" in text_blob or meta.get("language") in ("ar+en", "ar-en", "mixed"):
-        buckets.append(FailureBucket("mixed_arabic_english", "", {"language": meta.get("language", "mixed")}))
+        buckets.append(
+            FailureBucket(
+                "mixed_arabic_english", "", {"language": meta.get("language", "mixed")}
+            )
+        )
     if meta.get("small_text") is True or meta.get("text_size") == "small":
         buckets.append(FailureBucket("small_text", "", {"small_text": True}))
-    if str(meta.get("document_type", "")).casefold() in {"table", "form", "invoice", "receipt"}:
+    if str(meta.get("document_type", "")).casefold() in {
+        "table",
+        "form",
+        "invoice",
+        "receipt",
+    }:
         buckets.append(
-            FailureBucket("table_form", "", {"document_type": meta.get("document_type")})
+            FailureBucket(
+                "table_form", "", {"document_type": meta.get("document_type")}
+            )
         )
 
     if not buckets:
@@ -195,7 +241,9 @@ def _distortion_values(meta: Mapping[str, Any]) -> set[str]:
     profile = meta.get("profile")
     if isinstance(profile, str):
         values.add(f"profile:{profile}")
-    return {v.replace("profile:", "") if v.startswith("profile:") else v for v in values}
+    return {
+        v.replace("profile:", "") if v.startswith("profile:") else v for v in values
+    }
 
 
 def json_text(meta: Mapping[str, Any]) -> str:

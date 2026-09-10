@@ -48,14 +48,20 @@ class SampleMetrics:
 def _resolve_id(source: Any) -> str:
     if isinstance(source, str):
         return source
-    return str(getattr(source, "model_id", "") or getattr(source, "run_id", "") or "unspecified")
+    return str(
+        getattr(source, "model_id", "")
+        or getattr(source, "run_id", "")
+        or "unspecified"
+    )
 
 
 def _metrics_map(samples: Sequence[SampleMetrics]) -> dict[str, SampleMetrics]:
     result: dict[str, SampleMetrics] = {}
     for sample in samples:
         if sample.sample_id in result:
-            raise ValueError(f"Duplicate sample_id in metrics input: {sample.sample_id}")
+            raise ValueError(
+                f"Duplicate sample_id in metrics input: {sample.sample_id}"
+            )
         result[sample.sample_id] = sample
     return result
 
@@ -112,13 +118,9 @@ def compare_failure(
             classification = REGRESSED
         else:
             classification = UNCHANGED
-        if (
-            base.cer < resolved["failure_cer"] <= cand.cer
-        ):
+        if base.cer < resolved["failure_cer"] <= cand.cer:
             classification = NEWLY_FAILED
-        elif (
-            base.cer >= resolved["failure_cer"] > cand.cer
-        ):
+        elif base.cer >= resolved["failure_cer"] > cand.cer:
             classification = RECOVERED
 
         error_deltas: dict[str, int] = {}

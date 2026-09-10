@@ -8,21 +8,29 @@ from pathlib import Path
 import pytest
 import yaml
 
-from clouda_lab.dataset_selection import SelectionCriteria, select_samples, write_selection_manifest
+from clouda_lab.dataset_selection import SelectionCriteria
 from clouda_lab.models import RunAnalysis
 from clouda_lab.run_pipeline import analyze_run
 from clouda_lab.selection_history import SelectionHistory
 from clouda_lab.training_orchestrator import TrainingOrchestrator
-from clouda_training.experiments import ConfigError, RunStatus, list_runs, load_run
-
+from clouda_training.experiments import ConfigError, RunStatus
 
 SCHEMA = "clouda.pretraining.manifest.v1"
 
 
 def _write_manifest(path: Path, rows: list[dict]) -> Path:
-    lines = [json.dumps({"_schema_version": SCHEMA, "_row_count": len(rows),
-                         "dataset_role": "training", "dataset_id": "lab-fixture",
-                         "dataset_version": "v1"}, sort_keys=True)]
+    lines = [
+        json.dumps(
+            {
+                "_schema_version": SCHEMA,
+                "_row_count": len(rows),
+                "dataset_role": "training",
+                "dataset_id": "lab-fixture",
+                "dataset_version": "v1",
+            },
+            sort_keys=True,
+        )
+    ]
     lines.extend(json.dumps(row, sort_keys=True) for row in rows)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
@@ -48,7 +56,9 @@ def base_manifest(tmp_path: Path) -> Path:
 
 
 class TestSelectionToExperiment:
-    def test_pipeline_creates_manifest_and_config(self, base_manifest: Path, tmp_path: Path):
+    def test_pipeline_creates_manifest_and_config(
+        self, base_manifest: Path, tmp_path: Path
+    ):
         orchestrator = TrainingOrchestrator(runs_root=tmp_path / "runs")
         result = orchestrator.create_training_experiment_from_selection(
             manifest_path=str(base_manifest),
@@ -157,7 +167,10 @@ class TestOrchestratorDryRun:
             criteria=SelectionCriteria(limit=2),
             output_dir=tmp_path / "lab",
             experiment_name="no_real_training",
-            config_overrides={"model.adapter_type": "real_gpu", "runtime.dry_run": False},
+            config_overrides={
+                "model.adapter_type": "real_gpu",
+                "runtime.dry_run": False,
+            },
         )
         with pytest.raises(Exception):
             orchestrator.start_dry_run(result["experiment_config_path"])
@@ -176,7 +189,6 @@ class TestOrchestratorDryRun:
         assert "metric_differences" in comparison
         # resume passthrough: the framework rejects completed runs, proving
         # the orchestrator forwards without swallowing framework rules.
-        from clouda_training.experiments import runs as runs_module
 
         with pytest.raises(ValueError, match="not resumable"):
             orchestrator.resume(handle_a["run_id"])
@@ -187,10 +199,19 @@ class TestOrchestratorDryRun:
             "schema_version": 1,
             "experiment": {"name": "not_dry"},
             "model": {"model_id": "mock/x", "adapter_type": "mock"},
-            "dataset": {"dataset_id": "d", "dataset_version": "v",
-                        "manifest_path": "missing.jsonl", "split": "train"},
-            "runtime": {"device": "cpu", "output_root": str(tmp_path / "runs"),
-                        "dry_run": False, "offline": True, "deterministic": True},
+            "dataset": {
+                "dataset_id": "d",
+                "dataset_version": "v",
+                "manifest_path": "missing.jsonl",
+                "split": "train",
+            },
+            "runtime": {
+                "device": "cpu",
+                "output_root": str(tmp_path / "runs"),
+                "dry_run": False,
+                "offline": True,
+                "deterministic": True,
+            },
         }
         path = tmp_path / "not_dry.yaml"
         path.write_text(yaml.safe_dump(config), encoding="utf-8")
@@ -213,27 +234,55 @@ class TestPostRunPipeline:
         run_id = handle["run_id"]
 
         baseline = [
-            SampleMetrics(sample_id="s-001", cer=0.50, wer=0.60, ncer=0.45,
-                          error_types={"whitespace": 2}),
+            SampleMetrics(
+                sample_id="s-001",
+                cer=0.50,
+                wer=0.60,
+                ncer=0.45,
+                error_types={"whitespace": 2},
+            ),
             SampleMetrics(sample_id="s-002", cer=0.20, wer=0.30, ncer=0.15),
             SampleMetrics(sample_id="s-003", cer=0.70, wer=0.80, ncer=0.65),
         ]
         candidate = [
-            SampleMetrics(sample_id="s-001", cer=0.25, wer=0.35, ncer=0.20,
-                          error_types={"whitespace": 0}),
+            SampleMetrics(
+                sample_id="s-001",
+                cer=0.25,
+                wer=0.35,
+                ncer=0.20,
+                error_types={"whitespace": 0},
+            ),
             SampleMetrics(sample_id="s-002", cer=0.45, wer=0.55, ncer=0.40),
             SampleMetrics(sample_id="s-003", cer=0.72, wer=0.80, ncer=0.66),
         ]
         rows = [
-            {"sample_id": "s-001", "cer": 0.25, "wer": 0.35, "ncer": 0.20,
-             "error_type_counts": {"whitespace": 1}, "model_id": "m1",
-             "profile": "bad_scan_heavy"},
-            {"sample_id": "s-002", "cer": 0.45, "wer": 0.55, "ncer": 0.40,
-             "error_type_counts": {"diacritic": 2}, "model_id": "m1",
-             "profile": "clean"},
-            {"sample_id": "s-003", "cer": 0.72, "wer": 0.80, "ncer": 0.66,
-             "error_type_counts": {"missing_word": 3}, "model_id": "m1",
-             "profile": "clean"},
+            {
+                "sample_id": "s-001",
+                "cer": 0.25,
+                "wer": 0.35,
+                "ncer": 0.20,
+                "error_type_counts": {"whitespace": 1},
+                "model_id": "m1",
+                "profile": "bad_scan_heavy",
+            },
+            {
+                "sample_id": "s-002",
+                "cer": 0.45,
+                "wer": 0.55,
+                "ncer": 0.40,
+                "error_type_counts": {"diacritic": 2},
+                "model_id": "m1",
+                "profile": "clean",
+            },
+            {
+                "sample_id": "s-003",
+                "cer": 0.72,
+                "wer": 0.80,
+                "ncer": 0.66,
+                "error_type_counts": {"missing_word": 3},
+                "model_id": "m1",
+                "profile": "clean",
+            },
         ]
         analysis = analyze_run(
             run_id=run_id,
@@ -249,7 +298,9 @@ class TestPostRunPipeline:
         assert analysis.status == RunStatus.COMPLETED.value
         assert analysis.metrics_summary["available"] is True
         assert analysis.failure_report is not None
-        assert analysis.failure_report.counts["recovered"] == 1  # s-001 crosses failure line
+        assert (
+            analysis.failure_report.counts["recovered"] == 1
+        )  # s-001 crosses failure line
         assert analysis.failure_report.counts["regressed"] == 1  # s-002
         assert analysis.failure_report.counts["unchanged"] == 1  # s-003
         assert analysis.hard_examples
@@ -259,7 +310,9 @@ class TestPostRunPipeline:
         payload = json.dumps(analysis.to_dict(), ensure_ascii=False)
         assert "failure_report" in payload
 
-    def test_mock_trainer_metrics_never_used_as_ocr_truth(self, base_manifest: Path, tmp_path: Path):
+    def test_mock_trainer_metrics_never_used_as_ocr_truth(
+        self, base_manifest: Path, tmp_path: Path
+    ):
         # The pipeline consumes caller-provided per-sample metrics; dry-run
         # mock metrics stay confined to run artifacts. Guard: analyze_run
         # requires explicit metric inputs.

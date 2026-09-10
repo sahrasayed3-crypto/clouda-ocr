@@ -43,7 +43,9 @@ def _percentile(sorted_values: Sequence[float], pct: float) -> float:
     lower = int(rank)
     upper = min(lower + 1, len(sorted_values) - 1)
     fraction = rank - lower
-    return sorted_values[lower] + (sorted_values[upper] - sorted_values[lower]) * fraction
+    return (
+        sorted_values[lower] + (sorted_values[upper] - sorted_values[lower]) * fraction
+    )
 
 
 def _metadata_value(sample: OCRSample, dimension: str) -> str:
@@ -106,10 +108,7 @@ def analyze_batch(
     for sample in samples:
         analysis = analyze_sample(sample)
         analyses.append(analysis)
-        keys = {
-            dim: _metadata_value(sample, dim)
-            for dim in dimensions
-        }
+        keys = {dim: _metadata_value(sample, dim) for dim in dimensions}
         page_rows.append((keys, _page_summary("page", sample.sample_id, analysis)))
         for error_type, count in analysis.error_type_counts.items():
             error_type_counts[error_type] = error_type_counts.get(error_type, 0) + count
@@ -139,8 +138,13 @@ def analyze_batch(
 
     return BatchReport(
         total_samples=len(analyses),
-        overall=_group_summary("overall", "all", analyses) if analyses
-        else BatchSummary("overall", "all", 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+        overall=(
+            _group_summary("overall", "all", analyses)
+            if analyses
+            else BatchSummary(
+                "overall", "all", 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+            )
+        ),
         groups=grouped_summaries,
         error_type_counts=dict(sorted(error_type_counts.items())),
         common_substitutions=_top_substitutions(substitutions),
@@ -165,15 +169,35 @@ def export_batch_csv(report: BatchReport, path) -> None:
     with open(path, "w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle)
         writer.writerow(
-            ["group", "key", "count", "cer_mean", "wer_mean", "ncer_mean",
-             "exact_match_rate", "cer_p50", "cer_p90", "cer_p95", "cer_max"]
+            [
+                "group",
+                "key",
+                "count",
+                "cer_mean",
+                "wer_mean",
+                "ncer_mean",
+                "exact_match_rate",
+                "cer_p50",
+                "cer_p90",
+                "cer_p95",
+                "cer_max",
+            ]
         )
         for row in report.worst_pages:
             writer.writerow(
-                [row.group, row.key, row.count, f"{row.cer_mean:.6f}",
-                 f"{row.wer_mean:.6f}", f"{row.ncer_mean:.6f}",
-                 f"{row.exact_match_rate:.4f}", f"{row.cer_p50:.6f}",
-                 f"{row.cer_p90:.6f}", f"{row.cer_p95:.6f}", f"{row.cer_max:.6f}"]
+                [
+                    row.group,
+                    row.key,
+                    row.count,
+                    f"{row.cer_mean:.6f}",
+                    f"{row.wer_mean:.6f}",
+                    f"{row.ncer_mean:.6f}",
+                    f"{row.exact_match_rate:.4f}",
+                    f"{row.cer_p50:.6f}",
+                    f"{row.cer_p90:.6f}",
+                    f"{row.cer_p95:.6f}",
+                    f"{row.cer_max:.6f}",
+                ]
             )
 
 

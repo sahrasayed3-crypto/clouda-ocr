@@ -32,7 +32,9 @@ ARABIC_DIGITS = frozenset("٠١٢٣٤٥٦٧٨٩")  # U+0660..U+0669
 ARABIC_DIGITS_EXT = frozenset("۰۱۲۳۴۵۶۷۸۹")  # U+06F0..U+06F9 (Persian/Urdu)
 LATIN_DIGITS = frozenset("0123456789")
 
-ARABIC_LETTERS_RE = re.compile(r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]")
+ARABIC_LETTERS_RE = re.compile(
+    r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]"
+)
 LATIN_LETTERS_RE = re.compile(r"[A-Za-z]")
 
 PUNCTUATION_RE = re.compile(
@@ -103,7 +105,9 @@ def _classify_char_substitution(gt: str, pred: str) -> str:
         return "punctuation"
     # Digits (before script confusion: ٣ vs 3 is digit confusion)
     gt_digit = gt in ARABIC_DIGITS or gt in ARABIC_DIGITS_EXT or gt in LATIN_DIGITS
-    pred_digit = pred in ARABIC_DIGITS or pred in ARABIC_DIGITS_EXT or pred in LATIN_DIGITS
+    pred_digit = (
+        pred in ARABIC_DIGITS or pred in ARABIC_DIGITS_EXT or pred in LATIN_DIGITS
+    )
     if gt_digit and pred_digit:
         if (gt in LATIN_DIGITS) != (pred in LATIN_DIGITS):
             return "digit_system_confusion"  # Arabic-Indic <-> Latin
@@ -182,9 +186,13 @@ def _is_punctuation_only(word: str) -> bool:
 
 
 def _is_latin_word(word: str) -> bool:
-    return bool(word) and all(
-        LATIN_LETTERS_RE.match(ch) or not ARABIC_LETTERS_RE.match(ch) for ch in word
-    ) and any(LATIN_LETTERS_RE.match(ch) for ch in word)
+    return (
+        bool(word)
+        and all(
+            LATIN_LETTERS_RE.match(ch) or not ARABIC_LETTERS_RE.match(ch) for ch in word
+        )
+        and any(LATIN_LETTERS_RE.match(ch) for ch in word)
+    )
 
 
 # Canonical category list (for stable exports and tests)

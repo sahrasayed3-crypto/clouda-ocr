@@ -21,7 +21,7 @@ from .active_learning import recommend_next_batch
 from .batch_analysis import analyze_batch
 from .error_analysis import analyze_sample
 from .failure_analysis import SampleMetrics, compare_failure, summarize_comparison
-from .failure_buckets import assign_buckets, primary_bucket
+from .failure_buckets import assign_buckets
 from .hard_examples import select_hard_examples
 from .io import export_csv, export_json, export_jsonl, load_samples_jsonl
 from .models import (
@@ -143,7 +143,9 @@ class EvaluationService:
         return export_json(analysis.to_dict(), path)
 
     @staticmethod
-    def export_batch(report: BatchReport, path: str | Path, *, csv: bool = False) -> Path:
+    def export_batch(
+        report: BatchReport, path: str | Path, *, csv: bool = False
+    ) -> Path:
         if csv:
             rows = report.worst_pages and [row.to_dict() for row in report.worst_pages]
             return export_csv(rows or [], path)

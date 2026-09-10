@@ -50,9 +50,7 @@ def normalized_cer(reference: str, hypothesis: str) -> float:
     return project_cer(normalize_for_ncer(reference), normalize_for_ncer(hypothesis))
 
 
-def _align(
-    reference: list[str], hypothesis: list[str]
-) -> list[tuple[str, int, int]]:
+def _align(reference: list[str], hypothesis: list[str]) -> list[tuple[str, int, int]]:
     """Return aligned ops ``[(op, ref_idx, hyp_idx)]`` with deterministic ties.
 
     ``ref_idx``/``hyp_idx`` are ``-1`` when the token is absent on that side.
@@ -87,11 +85,7 @@ def _align(
         if i > 0 and j > 0:
             op = trace[i][j]
             if op == _TRACE_SUB:
-                kind = (
-                    _OP_MATCH
-                    if reference[i - 1] == hypothesis[j - 1]
-                    else _OP_SUB
-                )
+                kind = _OP_MATCH if reference[i - 1] == hypothesis[j - 1] else _OP_SUB
                 ops.append((kind, i - 1, j - 1))
                 i, j = i - 1, j - 1
             elif op == _TRACE_DEL:
@@ -206,9 +200,7 @@ def _word_char_index(reference: str) -> list[tuple[int, int]]:
     return spans
 
 
-def _word_records(
-    reference: str, hypothesis: str
-) -> tuple[ErrorRecord, ...]:
+def _word_records(reference: str, hypothesis: str) -> tuple[ErrorRecord, ...]:
     ref_words = reference.split()
     hyp_words = hypothesis.split()
     spans = _word_char_index(reference)
@@ -289,7 +281,9 @@ def _error_type_counts(records: Iterable[ErrorRecord]) -> dict[str, int]:
     return dict(sorted(counts.items()))
 
 
-def _substitution_pairs(records: Iterable[ErrorRecord]) -> tuple[tuple[str, str, int], ...]:
+def _substitution_pairs(
+    records: Iterable[ErrorRecord],
+) -> tuple[tuple[str, str, int], ...]:
     pairs: dict[tuple[str, str], int] = {}
     for record in records:
         if record.operation == _OP_SUB and record.gt and record.predicted:

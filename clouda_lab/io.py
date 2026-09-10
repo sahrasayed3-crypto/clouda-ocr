@@ -95,11 +95,7 @@ def load_samples_jsonl(
     if stripped.startswith("["):
         records = json.loads(text)
     else:
-        records = [
-            json.loads(line)
-            for line in text.splitlines()
-            if line.strip()
-        ]
+        records = [json.loads(line) for line in text.splitlines() if line.strip()]
     return [
         record_to_sample(
             record,

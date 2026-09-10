@@ -20,7 +20,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-
 # ---------------------------------------------------------------------------
 # Error analysis models
 # ---------------------------------------------------------------------------
@@ -95,9 +94,13 @@ class ErrorAnalysis:
             "exact_match": self.exact_match,
             "character_count": self.character_count,
             "word_count": self.word_count,
-            "char_errors": [r.to_dict() for r in self.char_records if r.operation != "match"],
+            "char_errors": [
+                r.to_dict() for r in self.char_records if r.operation != "match"
+            ],
             "char_matches": sum(1 for r in self.char_records if r.operation == "match"),
-            "word_errors": [r.to_dict() for r in self.word_records if r.operation != "match"],
+            "word_errors": [
+                r.to_dict() for r in self.word_records if r.operation != "match"
+            ],
             "error_type_counts": dict(self.error_type_counts),
             "error_type_rates": dict(self.error_type_rates),
             "substitutions": [
@@ -301,7 +304,11 @@ class FailureBucket:
     evidence: dict[str, Any]  # measured values that triggered the bucket
 
     def to_dict(self) -> dict[str, Any]:
-        return {"bucket": self.bucket, "sample_id": self.sample_id, "evidence": dict(self.evidence)}
+        return {
+            "bucket": self.bucket,
+            "sample_id": self.sample_id,
+            "evidence": dict(self.evidence),
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -346,9 +353,7 @@ class TrainingBatchRecommendation:
             "seed": self.seed,
             "selections": [s.to_dict() for s in self.selections],
             "rationale": dict(self.rationale),
-            "balance": {
-                dim: dict(keys) for dim, keys in self.balance.items()
-            },
+            "balance": {dim: dict(keys) for dim, keys in self.balance.items()},
             "excluded": list(self.excluded),
         }
 

@@ -50,7 +50,9 @@ class SelectionHistory:
             )
         record = {
             "schema_version": HISTORY_SCHEMA_VERSION,
-            "recorded_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "recorded_utc": datetime.now(timezone.utc)
+            .isoformat()
+            .replace("+00:00", "Z"),
             "purpose": purpose,
             "selection_id": selection_id,
             "sample_ids": list(sample_ids),
@@ -82,9 +84,7 @@ class SelectionHistory:
     def usage_count(self, sample_id: str) -> int:
         """Number of recorded batches containing this sample."""
         return sum(
-            1
-            for record in self.load()
-            if sample_id in record.get("sample_ids", [])
+            1 for record in self.load() if sample_id in record.get("sample_ids", [])
         )
 
     def history_for(self, sample_id: str) -> list[dict[str, Any]]:

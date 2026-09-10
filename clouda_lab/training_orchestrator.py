@@ -17,16 +17,14 @@ resolves an experiment config the framework accepts.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping
 
 import yaml
 
 from clouda_contracts.checksums import sha256_file
 from clouda_training.experiments import (
     ConfigError,
-    ExperimentConfig,
     ExperimentRegistry,
-    RunHandle,
     compare_runs,
     list_checkpoints,
     list_runs,
@@ -147,7 +145,9 @@ class TrainingOrchestrator:
             manifest_path, criteria, seed=seed, scores=scores
         )
         if not selection.sample_ids:
-            raise ValueError("Selection produced no rows; refusing to create an experiment")
+            raise ValueError(
+                "Selection produced no rows; refusing to create an experiment"
+            )
         # Fail closed: verify every selected row against the holdout guard.
         assert_selection_safe(list(selection.rows))
 
@@ -169,12 +169,12 @@ class TrainingOrchestrator:
 
         config = _build_experiment_config(
             experiment_name=experiment_name,
-            dataset_id=str(header.get("dataset_id", f"lab_selection_{selection.selection_id}")),
+            dataset_id=str(
+                header.get("dataset_id", f"lab_selection_{selection.selection_id}")
+            ),
             dataset_version=selection.selection_id,
             manifest_path=derived_manifest,
-            split=str(
-                (criteria.split or "train")
-            ),
+            split=str((criteria.split or "train")),
             seed=seed,
             dry_run=dry_run,
             output_root=self.runs_root.resolve(),

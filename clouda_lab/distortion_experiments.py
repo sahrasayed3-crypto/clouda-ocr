@@ -21,7 +21,6 @@ distortion metadata recorded here — only from actual available results.
 from __future__ import annotations
 
 import hashlib
-import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -71,7 +70,9 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _experiment_id(source_manifest: str, source_sample_ids: Sequence[str], profile: str, seed: int) -> str:
+def _experiment_id(
+    source_manifest: str, source_sample_ids: Sequence[str], profile: str, seed: int
+) -> str:
     material = "\x1f".join(
         [source_manifest, ",".join(sorted(source_sample_ids)), profile, str(seed)]
     )
@@ -114,10 +115,16 @@ def plan_distortion_experiment(
     for sample_id in source_sample_ids:
         for variant_index in range(max(1, variants_per_sample)):
             if profile:
-                steps = [(step.distortion, step.severity) for step in book.profile(profile).steps]
+                steps = [
+                    (step.distortion, step.severity)
+                    for step in book.profile(profile).steps
+                ]
                 variant_seed = derive_seed(
-                    seed, sample_id, document_id=sample_id,
-                    variant_index=variant_index, profile=profile,
+                    seed,
+                    sample_id,
+                    document_id=sample_id,
+                    variant_index=variant_index,
+                    profile=profile,
                 )
                 distortion_names = tuple(d for d, _s in steps)
             else:
@@ -127,7 +134,9 @@ def plan_distortion_experiment(
                     for index, name in enumerate(names)
                 ]
                 variant_seed = derive_seed(
-                    seed, sample_id, document_id=sample_id,
+                    seed,
+                    sample_id,
+                    document_id=sample_id,
                     variant_index=variant_index,
                     profile="explicit:" + ",".join(names),
                 )
@@ -137,9 +146,7 @@ def plan_distortion_experiment(
                     "variant_id": f"{experiment_id}:{sample_id}:v{variant_index}",
                     "source_sample_id": sample_id,
                     "profile": profile or "",
-                    "steps": [
-                        {"distortion": d, "severity": s} for d, s in steps
-                    ],
+                    "steps": [{"distortion": d, "severity": s} for d, s in steps],
                     "distortions": list(distortion_names),
                     "seed": variant_seed,
                 }
@@ -194,8 +201,10 @@ def run_distortion_experiment(
             severity = str(step["severity"])
             spec = book.spec(name)
             stage_seed = derive_seed(
-                seed, sample_id,
-                distortion_stage=name, severity=severity,
+                seed,
+                sample_id,
+                distortion_stage=name,
+                severity=severity,
                 variant_index=index,
             )
             array = apply_distortion(
@@ -204,7 +213,9 @@ def run_distortion_experiment(
                 spec.params(severity),
                 __import__("numpy").random.default_rng(stage_seed),
             )
-            applied.append({"distortion": name, "severity": severity, "seed": stage_seed})
+            applied.append(
+                {"distortion": name, "severity": severity, "seed": stage_seed}
+            )
         out_image = Image.fromarray(array)
         output_name = f"{variant['variant_id'].replace(':', '__')}.png"
         output_path = out_root / output_name
@@ -243,7 +254,7 @@ def run_distortion_experiment(
 
 def sensitivity_by_distortion(
     evaluation_rows: Sequence[Mapping[str, Any]],
-) -> dict[str, dict[str, float]]:
+) -> dict[str, dict[str, dict[str, float]]]:
     """Aggregate actual evaluation results by distortion type / profile.
 
     ``evaluation_rows`` must carry per-sample ``cer`` (or ``wer``) plus
@@ -275,7 +286,9 @@ def sensitivity_by_distortion(
         for name in sorted(names) or ["clean"]:
             by_distortion.setdefault(name, []).append((cer_value, wer_value))
 
-    def _summarize(groups: dict[str, list[tuple[float, float]]]) -> dict[str, dict[str, float]]:
+    def _summarize(
+        groups: dict[str, list[tuple[float, float]]],
+    ) -> dict[str, dict[str, float]]:
         summary: dict[str, dict[str, float]] = {}
         for key, pairs in sorted(groups.items()):
             cers = [p[0] for p in pairs]

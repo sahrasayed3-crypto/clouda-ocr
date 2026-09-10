@@ -17,7 +17,7 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable, Sequence
+from typing import Any, Sequence
 
 from clouda_contracts.checksums import sha256_file
 from clouda_data.pretraining.manifest import read_manifest, write_manifest
@@ -108,7 +108,10 @@ def _row_matches(row: dict[str, Any], criteria: SelectionCriteria) -> bool:
                 return row[name]
         return None
 
-    if criteria.dataset_id is not None and str(get("dataset_id")) != criteria.dataset_id:
+    if (
+        criteria.dataset_id is not None
+        and str(get("dataset_id")) != criteria.dataset_id
+    ):
         return False
     if criteria.split is not None:
         # ``target_split`` is the assignment field; ``split``/``source_split``
@@ -118,15 +121,24 @@ def _row_matches(row: dict[str, Any], criteria: SelectionCriteria) -> bool:
         split_value = row.get("target_split")
         if split_value is None:
             split_value = get("split", "source_split")
-        if split_value is None or str(split_value).strip().casefold() != criteria.split.strip().casefold():
+        if (
+            split_value is None
+            or str(split_value).strip().casefold() != criteria.split.strip().casefold()
+        ):
             return False
     if criteria.document_type is not None:
         candidates = [
             get("document_type"),
-            (row.get("metadata") or {}).get("document_type")
-            if isinstance(row.get("metadata"), dict) else None,
-            (row.get("provenance") or {}).get("document_type")
-            if isinstance(row.get("provenance"), dict) else None,
+            (
+                (row.get("metadata") or {}).get("document_type")
+                if isinstance(row.get("metadata"), dict)
+                else None
+            ),
+            (
+                (row.get("provenance") or {}).get("document_type")
+                if isinstance(row.get("provenance"), dict)
+                else None
+            ),
         ]
         if not any(
             value is not None and str(value) == criteria.document_type
@@ -136,8 +148,11 @@ def _row_matches(row: dict[str, Any], criteria: SelectionCriteria) -> bool:
     if criteria.profile is not None:
         candidates = [
             get("profile", "profile_id"),
-            (row.get("provenance") or {}).get("profile")
-            if isinstance(row.get("provenance"), dict) else None,
+            (
+                (row.get("provenance") or {}).get("profile")
+                if isinstance(row.get("provenance"), dict)
+                else None
+            ),
         ]
         if not any(
             value is not None and str(value) == criteria.profile for value in candidates
@@ -147,7 +162,9 @@ def _row_matches(row: dict[str, Any], criteria: SelectionCriteria) -> bool:
         candidates = [get("distortion")]
         provenance = row.get("provenance")
         if isinstance(provenance, dict):
-            transform = provenance.get("transform_steps") or provenance.get("distortions")
+            transform = provenance.get("transform_steps") or provenance.get(
+                "distortions"
+            )
             if isinstance(transform, list):
                 candidates.extend(
                     step.get("distortion")
@@ -288,7 +305,11 @@ def _apply_sampling(
         low, high = criteria.percentile_range
         scored = sorted(
             (
-                (scores.get(str(row.get("sample_id")), 0.0), str(row.get("sample_id")), row)
+                (
+                    scores.get(str(row.get("sample_id")), 0.0),
+                    str(row.get("sample_id")),
+                    row,
+                )
                 for row in rows
             ),
             key=lambda item: (item[0], item[1]),
@@ -298,11 +319,7 @@ def _apply_sampling(
         values = [item[0] for item in scored]
         low_cut = _percentile_value(values, low)
         high_cut = _percentile_value(values, high)
-        window = [
-            row
-            for score, _sid, row in scored
-            if low_cut <= score <= high_cut
-        ]
+        window = [row for score, _sid, row in scored if low_cut <= score <= high_cut]
         return window
     if criteria.limit is not None:
         return rows[: criteria.limit]
@@ -316,7 +333,9 @@ def _percentile_value(sorted_values: list[float], pct: float) -> float:
     lower = int(rank)
     upper = min(lower + 1, len(sorted_values) - 1)
     fraction = rank - lower
-    return sorted_values[lower] + (sorted_values[upper] - sorted_values[lower]) * fraction
+    return (
+        sorted_values[lower] + (sorted_values[upper] - sorted_values[lower]) * fraction
+    )
 
 
 def select_samples(
@@ -362,7 +381,9 @@ def select_samples(
         sort_keys=True,
         ensure_ascii=False,
     )
-    selection_id = "sel_" + hashlib.sha256(selection_material.encode("utf-8")).hexdigest()[:20]
+    selection_id = (
+        "sel_" + hashlib.sha256(selection_material.encode("utf-8")).hexdigest()[:20]
+    )
 
     return SelectionResult(
         sample_ids=selected_ids,
@@ -417,9 +438,7 @@ def validate_derived_manifest_for_training(manifest_path: str) -> dict[str, Any]
         raise PermissionError("Derived manifest header is marked protected")
     protected = sum(1 for row in rows if row_is_protected(row))
     if protected:
-        raise PermissionError(
-            f"Derived manifest contains {protected} protected rows"
-        )
+        raise PermissionError(f"Derived manifest contains {protected} protected rows")
     splits = {
         str(row.get("target_split", row.get("split", ""))).strip().casefold()
         for row in rows

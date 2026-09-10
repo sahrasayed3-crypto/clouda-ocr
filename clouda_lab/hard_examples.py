@@ -32,7 +32,16 @@ DEFAULT_WEIGHTS: dict[str, float] = {
     "error_type_rarity": 0.05,
 }
 
-_SEVERITY_ORDER = {"none": 0.0, "low": 0.33, "light": 0.33, "medium": 0.66, "mid": 0.66, "high": 1.0, "heavy": 1.0, "severe": 1.0}
+_SEVERITY_ORDER = {
+    "none": 0.0,
+    "low": 0.33,
+    "light": 0.33,
+    "medium": 0.66,
+    "mid": 0.66,
+    "high": 1.0,
+    "heavy": 1.0,
+    "severe": 1.0,
+}
 
 
 def _clip01(value: float) -> float:
@@ -50,28 +59,41 @@ class _SignalExtractor:
     ) -> None:
         self.failure_cer = failure_cer
         self.samples = list(samples)
-        max_cer = max((float(s.get("cer", 0.0) or 0.0) for s in self.samples), default=0.0)
-        self._cer_norm = (max_cer or 1.0)
-        self._max_categories = max(
-            (
-                len((s.get("error_type_counts") or {}))
-                for s in self.samples
-            ),
-            default=1,
-        ) or 1
-        self._max_persistent = max(
-            (float(s.get("persistent_failure_count", 0) or 0) for s in self.samples),
-            default=0.0,
-        ) or 1.0
-        self._max_regression = max(
-            (float(s.get("regression_magnitude", 0) or 0) for s in self.samples),
-            default=0.0,
-        ) or 1.0
+        max_cer = max(
+            (float(s.get("cer", 0.0) or 0.0) for s in self.samples), default=0.0
+        )
+        self._cer_norm = max_cer or 1.0
+        self._max_categories = (
+            max(
+                (len((s.get("error_type_counts") or {})) for s in self.samples),
+                default=1,
+            )
+            or 1
+        )
+        self._max_persistent = (
+            max(
+                (
+                    float(s.get("persistent_failure_count", 0) or 0)
+                    for s in self.samples
+                ),
+                default=0.0,
+            )
+            or 1.0
+        )
+        self._max_regression = (
+            max(
+                (float(s.get("regression_magnitude", 0) or 0) for s in self.samples),
+                default=0.0,
+            )
+            or 1.0
+        )
         # Category frequency across the batch for rarity.
         category_totals: dict[str, int] = {}
         for sample in self.samples:
             for category, count in (sample.get("error_type_counts") or {}).items():
-                category_totals[category] = category_totals.get(category, 0) + int(count)
+                category_totals[category] = category_totals.get(category, 0) + int(
+                    count
+                )
         total = sum(category_totals.values()) or 1
         self._category_share = {
             category: count / total for category, count in category_totals.items()
@@ -90,7 +112,9 @@ class _SignalExtractor:
         categories = list(counts)
         rarity = 0.0
         if categories:
-            rarity = 1.0 - sum(self._category_share.get(c, 0.0) for c in categories) / len(categories)
+            rarity = 1.0 - sum(
+                self._category_share.get(c, 0.0) for c in categories
+            ) / len(categories)
         metadata = sample.get("metadata") or {}
         severity = str(sample.get("severity", metadata.get("severity", "none")))
         models = self._models_per_sample.get(str(sample.get("sample_id")), set())
@@ -101,22 +125,27 @@ class _SignalExtractor:
             "regression_magnitude": _clip01(
                 float(sample.get("regression_magnitude", 0) or 0) / self._max_regression
             ),
-            "error_diversity": len(categories) / self._max_categories if categories else 0.0,
+            "error_diversity": (
+                len(categories) / self._max_categories if categories else 0.0
+            ),
             "persistent_failure_count": _clip01(
-                float(sample.get("persistent_failure_count", 0) or 0) / self._max_persistent
+                float(sample.get("persistent_failure_count", 0) or 0)
+                / self._max_persistent
             ),
             "distortion_severity": _SEVERITY_ORDER.get(severity.casefold(), 0.0),
             "error_type_rarity": _clip01(rarity),
             "cross_model_failure": (
-                sum(
-                    1
-                    for m in models
-                    if float(sample.get("cer", 0.0) or 0.0) >= self.failure_cer
+                (
+                    sum(
+                        1
+                        for m in models
+                        if float(sample.get("cer", 0.0) or 0.0) >= self.failure_cer
+                    )
+                    / max(1, len(models))
                 )
-                / max(1, len(models))
-            )
-            if models
-            else 0.0,
+                if models
+                else 0.0
+            ),
         }
 
 

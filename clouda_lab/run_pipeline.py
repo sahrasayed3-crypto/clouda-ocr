@@ -22,7 +22,7 @@ from __future__ import annotations
 from typing import Any, Mapping, Sequence
 
 from .active_learning import recommend_next_batch
-from .failure_analysis import SampleMetrics, compare_failure, summarize_comparison
+from .failure_analysis import SampleMetrics, compare_failure
 from .hard_examples import select_hard_examples
 from .models import RunAnalysis
 from .training_orchestrator import TrainingOrchestrator

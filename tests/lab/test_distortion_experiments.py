@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -25,13 +26,24 @@ from clouda_lab.distortion_experiments import (
 
 
 def _write_manifest(path: Path, sample_ids: list[str]) -> Path:
-    rows = [{"_schema_version": "clouda.pretraining.manifest.v1", "_row_count": len(sample_ids)}]
+    rows = [
+        {
+            "_schema_version": "clouda.pretraining.manifest.v1",
+            "_row_count": len(sample_ids),
+        }
+    ]
     rows.extend(
-        {"sample_id": sid, "target_split": "train", "source_id": "synthetic",
-         "source_license": "Apache-2.0"}
+        {
+            "sample_id": sid,
+            "target_split": "train",
+            "source_id": "synthetic",
+            "source_license": "Apache-2.0",
+        }
         for sid in sample_ids
     )
-    path.write_text("\n".join(json.dumps(r, sort_keys=True) for r in rows) + "\n", encoding="utf-8")
+    path.write_text(
+        "\n".join(json.dumps(r, sort_keys=True) for r in rows) + "\n", encoding="utf-8"
+    )
     return path
 
 
@@ -48,7 +60,9 @@ class TestPlanning:
         assert len(plan["variants"]) == 2
         steps = plan["variants"][0]["steps"]
         book = load_profile_book(include_scan_factory=False)
-        expected = [(s.distortion, s.severity) for s in book.profile("bad_scan_medium").steps]
+        expected = [
+            (s.distortion, s.severity) for s in book.profile("bad_scan_medium").steps
+        ]
         assert [(st["distortion"], st["severity"]) for st in steps] == expected
         # provenance fields present
         assert plan["variants"][0]["seed"] > 0
@@ -69,14 +83,18 @@ class TestPlanning:
     def test_plan_requires_profile_or_distortions(self, tmp_path: Path):
         manifest = _write_manifest(tmp_path / "m.jsonl", ["s-1"])
         with pytest.raises(ValueError, match="profile or an explicit distortion"):
-            plan_distortion_experiment(source_manifest=str(manifest), source_sample_ids=["s-1"])
+            plan_distortion_experiment(
+                source_manifest=str(manifest), source_sample_ids=["s-1"]
+            )
 
     def test_plan_rejects_both(self, tmp_path: Path):
         manifest = _write_manifest(tmp_path / "m.jsonl", ["s-1"])
         with pytest.raises(ValueError, match="either profile or distortions"):
             plan_distortion_experiment(
-                source_manifest=str(manifest), source_sample_ids=["s-1"],
-                profile="bad_scan_medium", distortions=["skew"],
+                source_manifest=str(manifest),
+                source_sample_ids=["s-1"],
+                profile="bad_scan_medium",
+                distortions=["skew"],
             )
 
     def test_plan_unknown_profile_or_distortion(self, tmp_path: Path):
@@ -87,13 +105,19 @@ class TestPlanning:
             )
         with pytest.raises(ValueError, match="Unknown distortions"):
             plan_distortion_experiment(
-                source_manifest=str(manifest), source_sample_ids=["s-1"], distortions=["nope"]
+                source_manifest=str(manifest),
+                source_sample_ids=["s-1"],
+                distortions=["nope"],
             )
 
     def test_plan_deterministic(self, tmp_path: Path):
         manifest = _write_manifest(tmp_path / "m.jsonl", ["s-1", "s-2"])
-        kwargs = dict(source_manifest=str(manifest), source_sample_ids=["s-1", "s-2"],
-                      profile="bad_scan_medium", seed=55)
+        kwargs: dict[str, Any] = dict(
+            source_manifest=str(manifest),
+            source_sample_ids=["s-1", "s-2"],
+            profile="bad_scan_medium",
+            seed=55,
+        )
         first = plan_distortion_experiment(**kwargs)
         second = plan_distortion_experiment(**kwargs)
         # Everything except the wall-clock stamp is identical.
@@ -103,11 +127,16 @@ class TestPlanning:
     def test_seed_uses_canonical_derive(self, tmp_path: Path):
         manifest = _write_manifest(tmp_path / "m.jsonl", ["s-1"])
         plan = plan_distortion_experiment(
-            source_manifest=str(manifest), source_sample_ids=["s-1"], seed=7,
+            source_manifest=str(manifest),
+            source_sample_ids=["s-1"],
+            seed=7,
             distortions=["skew"],
         )
         expected = derive_seed(
-            7, "s-1", document_id="s-1", variant_index=0,
+            7,
+            "s-1",
+            document_id="s-1",
+            variant_index=0,
             profile="explicit:skew",
         )
         assert plan["variants"][0]["seed"] == expected
@@ -119,10 +148,15 @@ class TestGeneration:
         # Textured source so the blur actually changes pixels.
         image_path = tmp_path / "src.png"
         rng = np.random.default_rng(0)
-        Image.fromarray(rng.integers(0, 255, (60, 80, 3), dtype=np.uint8)).save(image_path)
+        Image.fromarray(rng.integers(0, 255, (60, 80, 3), dtype=np.uint8)).save(
+            image_path
+        )
         plan = plan_distortion_experiment(
-            source_manifest=str(manifest), source_sample_ids=["s-1"],
-            distortions=["gaussian_blur"], severities=["heavy"], seed=3,
+            source_manifest=str(manifest),
+            source_sample_ids=["s-1"],
+            distortions=["gaussian_blur"],
+            severities=["heavy"],
+            seed=3,
         )
         result = run_distortion_experiment(
             plan, source_images={"s-1": str(image_path)}, output_dir=tmp_path / "out"
@@ -146,13 +180,18 @@ class TestGeneration:
         image_path = tmp_path / "src.png"
         Image.new("RGB", (80, 60), (200, 200, 210)).save(image_path)
         plan = plan_distortion_experiment(
-            source_manifest=str(manifest), source_sample_ids=["s-1"],
-            distortions=["gaussian_noise"], severities=["medium"], seed=11,
+            source_manifest=str(manifest),
+            source_sample_ids=["s-1"],
+            distortions=["gaussian_noise"],
+            severities=["medium"],
+            seed=11,
         )
-        out_a = run_distortion_experiment(plan, source_images={"s-1": str(image_path)},
-                                          output_dir=tmp_path / "out_a")
-        out_b = run_distortion_experiment(plan, source_images={"s-1": str(image_path)},
-                                          output_dir=tmp_path / "out_b")
+        out_a = run_distortion_experiment(
+            plan, source_images={"s-1": str(image_path)}, output_dir=tmp_path / "out_a"
+        )
+        out_b = run_distortion_experiment(
+            plan, source_images={"s-1": str(image_path)}, output_dir=tmp_path / "out_b"
+        )
         a = np.asarray(Image.open(out_a["rows"][0]["output_path"]))
         b = np.asarray(Image.open(out_b["rows"][0]["output_path"]))
         assert np.array_equal(a, b)
@@ -160,9 +199,13 @@ class TestGeneration:
     def test_missing_source_image_row_errors(self, tmp_path: Path):
         manifest = _write_manifest(tmp_path / "m.jsonl", ["s-1"])
         plan = plan_distortion_experiment(
-            source_manifest=str(manifest), source_sample_ids=["s-1"], distortions=["skew"],
+            source_manifest=str(manifest),
+            source_sample_ids=["s-1"],
+            distortions=["skew"],
         )
-        result = run_distortion_experiment(plan, source_images={}, output_dir=tmp_path / "out")
+        result = run_distortion_experiment(
+            plan, source_images={}, output_dir=tmp_path / "out"
+        )
         assert result["rows"][0]["status"] == "error"
 
     def test_uses_factory_apply_distortion(self):
@@ -179,13 +222,19 @@ class TestSensitivity:
             {"sample_id": "1", "cer": 0.10, "wer": 0.20, "distortion": "clean"},
             {"sample_id": "2", "cer": 0.30, "wer": 0.40, "distortion": "gaussian_blur"},
             {"sample_id": "3", "cer": 0.50, "wer": 0.60, "distortion": "gaussian_blur"},
-            {"sample_id": "4", "cer": 0.25, "wer": 0.35, "applied":
-                [{"distortion": "skew", "severity": "heavy"}]},
+            {
+                "sample_id": "4",
+                "cer": 0.25,
+                "wer": 0.35,
+                "applied": [{"distortion": "skew", "severity": "heavy"}],
+            },
         ]
         summary = sensitivity_by_distortion(rows)
         assert summary["by_distortion"]["clean"]["count"] == 1
         assert summary["by_distortion"]["gaussian_blur"]["count"] == 2
-        assert summary["by_distortion"]["gaussian_blur"]["cer_mean"] == pytest.approx(0.40)
+        assert summary["by_distortion"]["gaussian_blur"]["cer_mean"] == pytest.approx(
+            0.40
+        )
         assert summary["by_distortion"]["skew"]["count"] == 1
         assert summary["by_profile"]["unspecified"]["count"] == 4
         # hardest distortion first by CER

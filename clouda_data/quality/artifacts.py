@@ -30,7 +30,10 @@ from clouda_data.pretraining.validation import (
     validate_sample,
 )
 from clouda_data.quality.config import HeuristicsPolicy
-from clouda_data.quality.image_fp import ImageDecodeError, safe_load_image
+from clouda_data.quality.image_fp import (
+    ImageDecodeError,
+    safe_load_image_cached as safe_load_image,
+)
 from clouda_data.quality.models import IssueCode, IssueSeverity, QualityIssue
 
 __all__ = ["validate_artifact", "map_finding_severity", "map_finding_code"]

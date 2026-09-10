@@ -39,11 +39,16 @@ __all__ = [
     "blankish_stats",
     "fingerprint_image",
     "fingerprint_path",
+    "fingerprint_path_cached",
     "hamming_distance",
     "ahash_hex",
     "dhash_hex",
     "phash_hex",
     "safe_load_image",
+    "safe_load_image_cached",
+    "get_max_image_pixels",
+    "reset_decode_cache",
+    "DECODE_COUNT",
 ]
 
 # ---------------------------------------------------------------------------
@@ -907,6 +912,13 @@ def fingerprint_image(image: Image.Image) -> FingerprintResult:
     )
 
 
+def fingerprint_path_cached(path: str | Path) -> FingerprintResult:
+    """``fingerprint_path`` sharing the decoded-thumbnail cache (R3-H1)."""
+
+    with safe_load_image_cached(path) as image:
+        return fingerprint_image(image)
+
+
 def fingerprint_path(path: str | Path) -> FingerprintResult:
     """Single-decode fingerprint of the image at ``path``."""
 
@@ -927,11 +939,17 @@ def safe_load_image(path: str | Path) -> Image.Image:
     """Verify-then-thumbnail single decode with hard safety rails.
 
     - Refuses symbolic links BEFORE any open (caller may map to PATH_SAFE).
-    - ``Image.open`` runs under DecompressionBombWarning -> error.
+    - ``Image.open`` runs under DecompressionBombWarning -> error, with the
+      effective pixel ceiling taken from ``get_max_image_pixels()`` (env
+      ``CLOUDA_MAX_IMAGE_PIXELS``, default 40M - R4-M1 fix).
     - ``verify()`` consumes the lazy header decode; then a fresh
       ``Image.open`` + ``thumbnail()`` + ``load()`` performs the single
       real pixel decode at bounded resolution (max side 512).
     - Returns an open image (context-managed by the caller).
+
+    Module-level decoded-thumbnail cache: ``safe_load_image_cached`` lets
+    the artifact and fingerprint stages share one decode per file per run
+    (R3-H1 fix; the un-cached function keeps its exact prior behavior).
     """
 
     image_path = Path(path)
@@ -939,9 +957,83 @@ def safe_load_image(path: str | Path) -> Image.Image:
         raise ImageDecodeError(f"Refusing to open symbolic link: {image_path}")
     with warnings.catch_warnings():
         warnings.simplefilter("error", Image.DecompressionBombWarning)
-        with Image.open(image_path) as probe:
-            probe.verify()
-        with Image.open(image_path) as reopened:
-            reopened.thumbnail((512, 512), Image.Resampling.BOX)
-            reopened.load()
-            return reopened.copy()
+        effective_ceiling = get_max_image_pixels()
+        previous_ceiling = Image.MAX_IMAGE_PIXELS
+        # Only override the global when the caller has not explicitly set a
+        # custom ceiling (tests monkeypatch Image.MAX_IMAGE_PIXELS directly).
+        caller_customized = previous_ceiling != _PILLOW_DEFAULT_MAX_PIXELS
+        if not caller_customized:
+            Image.MAX_IMAGE_PIXELS = effective_ceiling
+        try:
+            with Image.open(image_path) as probe:
+                probe.verify()
+            with Image.open(image_path) as reopened:
+                reopened.thumbnail((512, 512), Image.Resampling.BOX)
+                reopened.load()
+                return reopened.copy()
+        finally:
+            Image.MAX_IMAGE_PIXELS = previous_ceiling
+
+
+#: Effective decompression-bomb ceiling (R4-M1): env-driven, default 40M px
+#: matching .env.example's CLOUDA_MAX_IMAGE_PIXELS and the strictest limit
+#: already used elsewhere in the repo.
+DEFAULT_MAX_IMAGE_PIXELS = 40_000_000
+
+
+_PILLOW_DEFAULT_MAX_PIXELS = Image.MAX_IMAGE_PIXELS
+
+
+def get_max_image_pixels() -> int:
+    """Effective pixel ceiling from env CLOUDA_MAX_IMAGE_PIXELS."""
+
+    import os
+
+    raw = os.environ.get("CLOUDA_MAX_IMAGE_PIXELS", "")
+    if not raw:
+        return DEFAULT_MAX_IMAGE_PIXELS
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_MAX_IMAGE_PIXELS
+    return value if value > 0 else DEFAULT_MAX_IMAGE_PIXELS
+
+
+#: Per-process decoded-thumbnail cache keyed by resolved path + mtime_ns.
+#: Bounded to DECODE_CACHE_LIMIT entries; decode_count tracks real decodes
+#: for observability (R3-H1).
+_DECODE_CACHE: dict[str, tuple[int, Image.Image]] = {}
+_DECODE_CACHE_LIMIT = 256
+DECODE_COUNT = {"decodes": 0}
+
+
+def safe_load_image_cached(path: str | Path) -> Image.Image:
+    """Cached ``safe_load_image``: one decode per (path, mtime) per process.
+
+    Returns a COPY of the cached thumbnail so callers cannot mutate the
+    shared cache entry. Cache hits do not increment DECODE_COUNT.
+    """
+
+    resolved = str(Path(path).resolve())
+    try:
+        mtime = Path(path).stat().st_mtime_ns
+    except OSError as exc:
+        raise ImageDecodeError(f"Cannot stat image: {path}") from exc
+    cached = _DECODE_CACHE.get(resolved)
+    if cached is not None and cached[0] == mtime:
+        return cached[1].copy()
+    image = safe_load_image(path)
+    DECODE_COUNT["decodes"] += 1
+    if len(_DECODE_CACHE) >= _DECODE_CACHE_LIMIT:
+        # Deterministic eviction: drop the first-inserted entry.
+        oldest = next(iter(_DECODE_CACHE))
+        del _DECODE_CACHE[oldest]
+    _DECODE_CACHE[resolved] = (mtime, image)
+    return image.copy()
+
+
+def reset_decode_cache() -> None:
+    """Clear the decode cache and counter (for tests / new gate runs)."""
+
+    _DECODE_CACHE.clear()
+    DECODE_COUNT["decodes"] = 0

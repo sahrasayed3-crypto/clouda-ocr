@@ -181,7 +181,7 @@ def build_report_payload(
             dict(redact_mapping(_artifact_dict(exclusion)))
             for exclusion in sorted(result.exclusions, key=lambda e: e.sample_id)
         ],
-        "artifact_paths": dict(artifact_paths or {}),
+        "artifact_paths": redact_mapping(dict(artifact_paths or {})),
     }
 
 

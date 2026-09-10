@@ -42,7 +42,7 @@ from clouda_data.quality.image_fp import (
     CONFIRMED_D_MAX,
     CONFIRMED_P_MAX,
     FINGERPRINT_VERSION,
-    fingerprint_path,
+    fingerprint_path_cached,
 )
 from clouda_data.quality.models import (
     NEAR_DUPLICATE_LEVELS,
@@ -116,7 +116,7 @@ def build_fingerprints_with_summary(
         if not path.is_absolute():
             path = base / path
         try:
-            result = fingerprint_path(path)
+            result = fingerprint_path_cached(path)
         except Exception as exc:  # decode/IO failure -> recorded, never fatal
             errors[sample.sample_id] = f"{type(exc).__name__}: {exc}"
             continue
@@ -241,13 +241,15 @@ def candidate_pairs_with_summary(
             buckets.setdefault(key, []).append(fp.sample_id)
         for key in sorted(buckets):
             members = buckets[key]
-            if len(members) > max_bucket:
+            # >= : a bucket AT the cap can still emit ~8M pairs (R3-H2).
+            if len(members) >= max_bucket:
                 overflowed.append(
                     (f"band_{key[0]}:bucket_{key[1]:04x}:{key[2]}", len(members))
                 )
                 continue
-            for i, sid_a in enumerate(sorted(members)):
-                for sid_b in sorted(members)[i + 1 :]:
+            ordered_members = sorted(members)
+            for i, sid_a in enumerate(ordered_members):
+                for sid_b in ordered_members[i + 1 :]:
                     pair_ids.add((sid_a, sid_b))
                     pairs_before += 1
 

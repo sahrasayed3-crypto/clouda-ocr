@@ -122,15 +122,25 @@ def _cmd_scan(args: argparse.Namespace) -> int:
         )
 
     from clouda_data.quality.report import build_report_payload
+    from clouda_data.quality.policy import quarantine_sample_ids
 
-    payload = build_report_payload(scan.result)
+    # R2-M2 fix: the CLI always knows the protected rows (it ran the gate)
+    # and must redact their finding details by default.
+    payload = build_report_payload(
+        scan.result,
+        protected_ids=frozenset(quarantine_sample_ids(scan.samples, scan.exclusions)),
+    )
     payload["verdict"] = scan.result.verdict.value
     payload["manifest_sha256"] = scan.manifest_sha256
     payload["quarantine_count"] = len(scan.quarantine_ids)
 
+    # R4-L1 fix: atomic report write (matches manifest/run_state discipline).
+    from clouda_data.pretraining.hashing import atomic_write_text
+
     if args.output:
-        Path(args.output).write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+        atomic_write_text(
+            Path(args.output),
+            json.dumps(payload, ensure_ascii=False, indent=2),
         )
     else:
         _print_payload(payload, as_json=True)

@@ -86,4 +86,3 @@ changes, and repository secret/large-file checks. Classify baseline or optional
 renderer failures separately, but do not merge with unresolved Critical or
 Important integration findings. Push normally to `origin/main`, fetch again,
 and verify clean `main == origin/main`.
-

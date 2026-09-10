@@ -140,4 +140,3 @@
 - [ ] Push normally to `origin/main`, fetch again, and compare exact SHAs.
 - [ ] Verify both canonical and integration worktrees contain no uncommitted files; preserve user-owned feature worktrees.
 - [ ] Produce the requested 35-point final report with exact commands, counts, SHAs, commits, limitations, and deferred hardware validation.
-

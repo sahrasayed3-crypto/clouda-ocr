@@ -49,6 +49,9 @@ training = [
   "PyYAML==6.0.2",
   "jsonschema==4.23.0"
 ]
+training-torch = [
+  "torch>=2.2"
+]
 models = [
   "requests>=2.32.0"
 ]

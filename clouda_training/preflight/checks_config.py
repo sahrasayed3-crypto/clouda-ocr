@@ -136,6 +136,23 @@ def validate_config(config: ExperimentConfig) -> list[PreflightCheck]:
         )
     )
 
+    # max_steps, WHEN SET, must be positive: the runtime honors it as an
+    # exact step budget, so max_steps<=0 would silently run ZERO optimizer
+    # steps and report a successful no-op training run (false-READY guard).
+    if max_steps is not None and not max_steps_ok:
+        checks.append(
+            _check(
+                "training.max_steps_positive",
+                False,
+                f"training.max_steps={max_steps}",
+                (
+                    f"training.max_steps must be > 0 when set "
+                    f"(got {max_steps!r}); set it to null/0 to use the "
+                    "epochs-based budget instead"
+                ),
+            )
+        )
+
     checks.append(
         _number_check(
             "training.weight_decay",

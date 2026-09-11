@@ -1,9 +1,16 @@
 """Preflight orchestrator: assemble the full report for one experiment config.
 
 Aggregates config / system / dataset / plan checks into a single
-:class:`PreflightReport`. Read-only: never starts training, never downloads,
-never mutates datasets. Allowed side effects: a cleaned temp write probe and
-lazy import probes (inside checks_system).
+:class:`PreflightReport`. Read-only with respect to datasets, models and the
+network: never starts training, never downloads, never mutates datasets,
+never creates checkpoints/metrics/run directories.
+
+Documented side effects (the only ones):
+- a cleaned temp write probe inside output_root (skippable via
+  ``write_probe=False``);
+- creation of a missing output_root directory itself (mkdir parents=True) so
+  writability can be probed — a real run would create it anyway;
+- lazy import probes (torch/transformers) inside checks_system.
 """
 
 from __future__ import annotations
@@ -163,14 +170,20 @@ def run_preflight(
 def _planned_steps(
     config: Any, dataset_row_count: int | None, world_size: int
 ) -> int | None:
-    """Planned optimizer steps (mirrors plan.py semantics) for cadence checks."""
+    """Planned optimizer steps (mirrors plan.py semantics) for cadence checks.
+
+    Boundary note: max_steps is treated as set only when > 0 (matching
+    plan.py's ValueError guard); a non-positive max_steps never reaches here
+    because the config section already blocks it.
+    """
     training = config.training
-    if training.max_steps:
+    if training.max_steps is not None and training.max_steps > 0:
         return int(training.max_steps)
     if dataset_row_count and training.batch_size > 0:
         micro = -(-dataset_row_count // training.batch_size)
         steps_per_epoch = -(-micro // max(training.gradient_accumulation_steps, 1))
-        return steps_per_epoch * max(training.epochs, 0) or None
+        steps = steps_per_epoch * max(training.epochs, 0)
+        return steps if steps > 0 else None
     return None  # runtime fallback budget (epochs*5) is not dataset-derived
 
 

@@ -123,12 +123,20 @@ def compute_training_plan(
         notes.append("max_steps override wins over the epoch-based estimate")
     else:
         planned_optimizer_steps = (optimizer_steps_per_epoch or 0) * training.epochs
+        runtime_budget = training.epochs * RUNTIME_STEPS_PER_EPOCH_FALLBACK
         notes.append(
             "no max_steps: planned steps use the dataset-derived epoch "
             "estimate; the real torch backend budgets "
             f"epochs * {RUNTIME_STEPS_PER_EPOCH_FALLBACK} optimizer steps "
             "(torch_backend.train step loop) — keep both in mind"
         )
+        if planned_optimizer_steps > runtime_budget:
+            notes.append(
+                f"WARNING: dataset-derived plan ({planned_optimizer_steps} steps) "
+                f"exceeds the runtime's epochs*{RUNTIME_STEPS_PER_EPOCH_FALLBACK} "
+                f"budget ({runtime_budget} steps) — the runtime will stop early; "
+                "set max_steps explicitly for an accurate plan"
+            )
 
     if checkpoint.save_strategy == "steps":
         if checkpoint.save_steps > 0:

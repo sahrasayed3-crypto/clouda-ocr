@@ -64,6 +64,17 @@ def check_dataset(config: Any) -> tuple[PreflightCheck, ...]:
                 blocker=True,
             ),
         )
+    except OSError as exc:
+        # IO errors racing the is_file() check (locked file, unreadable
+        # manifest) — fail closed rather than crash the whole preflight.
+        return (
+            PreflightCheck(
+                name="dataset.manifest_readable",
+                status=PreflightStatus.FAIL,
+                detail=f"manifest could not be read: {exc}",
+                blocker=True,
+            ),
+        )
     except ValueError as exc:
         # Identity mismatch, malformed protection metadata, malformed split
         # metadata, empty selection — all fail closed (canonical behavior).
@@ -155,9 +166,16 @@ def check_resume(config: Any) -> PreflightCheck:
     When no ``resume_from`` is configured this is a SKIP (fresh run). The
     heavy canonical validation is delegated to
     ``CheckpointManager.validate_resume`` semantics, mirrored here read-only
-    WITHOUT constructing a manager (no run directory needed) — same expected
-    fields, same strict equality, plus the adapter-identity gate the runtime
-    enforces in ``torch_backend._restore_from_latest_checkpoint``.
+    WITHOUT constructing a manager (no run directory needed).
+
+    Deliberate subset: preflight checks experiment_name/model_id/
+    model_revision/dataset_id/dataset_version + adapter identity + state
+    integrity. ``config_hash`` and ``run_id`` are NOT checked here — they are
+    per-run values (run_id does not exist before a run starts; config_hash
+    covers every config field including this preflight's own additions), so
+    checking them here would reject every valid resume. The runtime's
+    ``validate_resume`` still enforces them at resume time — preflight PASS
+    therefore means "identity-compatible", not "guaranteed accepted".
     """
     resume_from = getattr(config.checkpoint, "resume_from", None)
     if not resume_from:
@@ -209,21 +227,30 @@ def check_resume(config: Any) -> PreflightCheck:
         )
     # Adapter-identity gate: checkpoint must carry the same adapter identity
     # the current adapter would produce (cross-family resume rejected).
+    # Fail-closed on malformed identity: a checkpoint that records an
+    # adapter_identity block without a usable adapter_id is treated as
+    # incompatible rather than silently passing the gate.
     recorded_adapter = payload.get("adapter_identity")
     adapter_type = config.model.adapter_type
     if recorded_adapter is not None and adapter_type not in {"mock", "torch"}:
-        recorded_id = (
-            recorded_adapter.get("adapter_id")
-            if isinstance(recorded_adapter, dict)
-            else None
-        )
-        if recorded_id is not None and recorded_id != adapter_type:
+        if not isinstance(recorded_adapter, dict):
             return PreflightCheck(
                 name="checkpoint.resume",
                 status=PreflightStatus.FAIL,
                 detail=(
-                    f"cross-adapter resume rejected: checkpoint was written by "
-                    f"adapter {recorded_id!r} but config selects {adapter_type!r}"
+                    "checkpoint adapter_identity is malformed (not an object) — "
+                    "refusing to resume"
+                ),
+                blocker=True,
+            )
+        recorded_id = recorded_adapter.get("adapter_id")
+        if recorded_id != adapter_type:
+            return PreflightCheck(
+                name="checkpoint.resume",
+                status=PreflightStatus.FAIL,
+                detail=(
+                    f"cross-adapter resume rejected: checkpoint adapter "
+                    f"{recorded_id!r} does not match configured {adapter_type!r}"
                 ),
                 blocker=True,
             )

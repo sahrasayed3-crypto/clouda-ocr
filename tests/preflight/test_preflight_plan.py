@@ -252,9 +252,11 @@ def test_plan_matches_real_torch_runtime(
     Runtime truth (torch_backend.train): with max_steps unset the step loop
     runs ``range(1, epochs*5 + 1)`` — the backend is step-budgeted and does
     NOT derive its budget from dataset size. The plan mirrors the runtime's
-    dataset-derived micro-batch math (drop_last=False) and, when no
-    max_steps is set, clamps the planned optimizer steps to the same
-    ``epochs * 5`` budget the backend actually executes.
+    dataset-derived micro-batch math (drop_last=False). NOTE: with no
+    max_steps the plan does NOT clamp to the runtime's ``epochs * 5`` budget
+    — the dataset-derived estimate overstates the executed steps and carries
+    an explicit note (see plan.py); these parity cases all stay under budget
+    by construction.
     """
     config = _config(
         epochs=epochs,

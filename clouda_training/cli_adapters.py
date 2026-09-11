@@ -112,9 +112,23 @@ def _adapter_command(args: argparse.Namespace) -> int:
 
 def _import_known_adapter_packages() -> None:
     """Import packages that self-register adapters (best effort, tolerant)."""
-    for module_name in ("clouda_training.hunyuan", "clouda_training.qwen"):
+    for module_name, register in (
+        (
+            "clouda_training.hunyuan",
+            "clouda_training.hunyuan.registration:register_hunyuan_adapters",
+        ),
+        (
+            "clouda_training.qwen",
+            "clouda_training.qwen.registration:register_qwen_adapters",
+        ),
+    ):
         try:
             __import__(module_name)
+            module_path, func_name = register.split(":")
+            register_fn = getattr(
+                __import__(module_path, fromlist=[func_name]), func_name
+            )
+            register_fn()
         except ImportError:
             # Package not present yet (e.g. qwen before Wave 2A lands) or an
             # optional dependency missing at import time — listing stays

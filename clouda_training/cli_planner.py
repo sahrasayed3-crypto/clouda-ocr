@@ -70,11 +70,11 @@ def _planner_command(args: argparse.Namespace) -> int:
         per_gpu_vram_gb=args.vram_gb,
         storage_kind=StorageKind.UNKNOWN,
     )
+    # Only parameter_count is DECLARED by the operator; trainable count is
+    # deliberately NOT fabricated (trainable==total is false for selective/
+    # LoRA modes — memory.py handles the full-finetune fallback explicitly).
     parameter_metadata = ParameterMetadata(
         parameter_count=int(args.parameter_count) if args.parameter_count else None,
-        trainable_parameter_count=(
-            int(args.parameter_count) if args.parameter_count else None
-        ),
     )
     profile = default_profile(
         TrainingScale.PILOT, training_mode=TrainingMode.SELECTIVE_FINETUNE

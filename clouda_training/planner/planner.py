@@ -50,14 +50,6 @@ from clouda_training.preflight.plan import compute_training_plan
 
 PLANNING_POLICY_VERSION = "1.0.0"
 
-_MATRIX_SCALES: tuple[TrainingScale, ...] = (
-    TrainingScale.SMOKE,
-    TrainingScale.PILOT,
-    TrainingScale.PILOT,  # conservative vs higher-batch variant below
-    TrainingScale.MEDIUM,
-    TrainingScale.FULL,
-)
-
 
 def build_experiment_plan(
     config: ExperimentConfig,
@@ -118,7 +110,9 @@ def build_experiment_plan(
         precision=profile.precision,
         training_mode=profile.training_mode,
         measured_activations_bytes=measured_activations_bytes,
-        optimizer_state_multiplier=optimizer_state_multiplier or 2.0,
+        optimizer_state_multiplier=(
+            2.0 if optimizer_state_multiplier is None else optimizer_state_multiplier
+        ),
     )
     resources: ResourceEstimate = vram["resources"]
 
@@ -129,6 +123,7 @@ def build_experiment_plan(
         parameter_metadata=parameter_metadata,
         dataset_row_count=row_count,
         cost_per_gpu_hour=cost_per_gpu_hour,
+        world_size=profile.world_size,
     )
     storage = storage_runtime["storage"]
     runtime = storage_runtime["runtime"]
@@ -446,7 +441,16 @@ def generate_training_config(
             trust_remote_code=base_config.model.trust_remote_code,
             precision=profile.precision,
         ),
-        dataset=base_config.dataset,
+        dataset=dataclasses.replace(
+            base_config.dataset,
+            # The generated config must train on the SAME sample count the
+            # plan's step math assumed — never silently uncapped.
+            sample_limit=(
+                min(profile.sample_count, base_config.dataset.sample_limit)
+                if base_config.dataset.sample_limit
+                else profile.sample_count
+            ),
+        ),
         training=TrainingSection(
             seed=base_config.training.seed,
             epochs=profile.epochs,
@@ -521,11 +525,14 @@ def render_plan_report(plan: ExperimentPlan, *, model_label: str) -> str:
         + (f"{opt_gib:.1f} GiB" if opt_gib is not None else "UNKNOWN")
         + f" ({r.memory.optimizer_states_bytes.source.value})"
     )
-    lines.append(
-        f"  Activations: {r.memory.activations_bytes.source.value}"
-        if r.memory.activations_bytes.value is None
-        else f"  Activations: {bytes_to_gib(r.memory.activations_bytes.value):.1f} GiB (MEASURED)"
-    )
+    if r.memory.activations_bytes.value is None:
+        lines.append(f"  Activations: {r.memory.activations_bytes.source.value}")
+    else:
+        act_gib = bytes_to_gib(r.memory.activations_bytes.value)
+        lines.append(
+            f"  Activations: {act_gib:.1f} GiB "
+            f"({r.memory.activations_bytes.source.value})"
+        )
     lines.append(f"  Estimated VRAM status: {r.fit.value}")
     lines.append(f"  Confidence: {plan.confidence}")
     s = plan.storage

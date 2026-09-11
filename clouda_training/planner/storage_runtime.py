@@ -395,6 +395,7 @@ def plan_storage_runtime(
     parameter_metadata: ParameterMetadata,
     dataset_row_count: int | None = None,
     cost_per_gpu_hour: float | None = None,
+    world_size: int = 1,
 ) -> dict[str, Any]:
     """Assemble storage + I/O + runtime + cost + checkpoint planning.
 
@@ -409,7 +410,7 @@ def plan_storage_runtime(
     checkpoint_plan, planned_steps = build_checkpoint_plan(
         config,
         dataset_row_count=dataset_row_count,
-        world_size=hardware.gpu_count if hardware.gpu_count > 1 else 1,
+        world_size=world_size,
     )
 
     # -- storage --------------------------------------------------------

@@ -387,11 +387,14 @@ class TestCheckOutputStorage:
         finally:
             out.chmod(mode)
 
-    def test_missing_directory_fails(self, tmp_path: Path) -> None:
+    def test_missing_directory_is_created(self, tmp_path: Path) -> None:
+        # Phase 15: output root "exists or can be safely created" — a missing
+        # leaf dir is created by the probe, then writability is verified.
         config = make_config(tmp_path, output_root=tmp_path / "does_not_exist")
         check = check_output_storage(config)
-        assert check.status is PreflightStatus.FAIL
-        assert "does not exist" in check.detail
+        assert check.status is PreflightStatus.PASS
+        assert "created missing output_root" in check.detail
+        assert (tmp_path / "does_not_exist").is_dir()
 
     def test_traversal_pattern_fails(self, tmp_path: Path) -> None:
         out = tmp_path / ".." / "elsewhere"

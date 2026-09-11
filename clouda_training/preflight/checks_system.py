@@ -542,13 +542,22 @@ def check_output_storage(config: Any) -> PreflightCheck:
 
     # -- writability probe (temp file, always cleaned up)
     if not output_root.exists():
-        detail_parts.append(f"directory does not exist yet: {output_root}")
-        return PreflightCheck(
-            name="output_storage",
-            status=PreflightStatus.FAIL,
-            detail="; ".join(detail_parts),
-            blocker=True,
-        )
+        # Phase 15: "output root exists or can be safely created". Fail only
+        # when creation is impossible (unwritable/invalid parent); creating a
+        # missing leaf directory is what a real run would do anyway.
+        try:
+            output_root.mkdir(parents=True, exist_ok=True)
+            detail_parts.append(f"created missing output_root: {output_root}")
+        except OSError as exc:
+            return PreflightCheck(
+                name="output_storage",
+                status=PreflightStatus.FAIL,
+                detail=(
+                    f"output_root does not exist and cannot be created "
+                    f"({exc}): {output_root}"
+                ),
+                blocker=True,
+            )
     if not output_root.is_dir():
         return PreflightCheck(
             name="output_storage",

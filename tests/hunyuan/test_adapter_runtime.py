@@ -167,6 +167,8 @@ def test_e2e_mock_hunyuan_through_torch_runtime(tmp_path: Path) -> None:
 
     from clouda_training.experiments.metrics import MetricLogger
 
+    metrics_logger = MetricLogger(tmp_path / "metrics.jsonl", "probe")
+
     class _Mgr:
         def __init__(self):
             self.saved = []
@@ -178,9 +180,9 @@ def test_e2e_mock_hunyuan_through_torch_runtime(tmp_path: Path) -> None:
         def latest(self):
             return None
 
-    _ = MetricLogger(tmp_path / "metrics.jsonl", "probe")
     backend = TorchTrainerBackend.__new__(TorchTrainerBackend)
     backend.torch = torch
+    backend.metrics = metrics_logger
     # minimal config shim for the backend loop
     from clouda_training.experiments.config import (
         TrainingSection,

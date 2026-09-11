@@ -231,9 +231,11 @@ class HunyuanOCR15SFTAdapter:
     def make_batch(self, step: int, batch_size: int, seed: int) -> Any:
         """Model-specific batch boundary.
 
-        With a real processor this collates packed multimodal features;
-        in mock/test mode a processor-backed fake supplies tensors. The
-        generic runtime never sees these fields.
+        The upstream-compatible real batch path (tokenizer/processor +
+        PackedVLDataCollator semantics) is NOT implemented yet — it requires
+        real weights to validate (see UPSTREAM_COMPATIBILITY.md). In mock/test
+        mode an injected mock processor supplies tensor batches; the generic
+        runtime never sees these fields.
         """
         if self.processor is None:
             raise HunyuanAdapterError(

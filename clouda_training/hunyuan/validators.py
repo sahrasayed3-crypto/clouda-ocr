@@ -39,12 +39,17 @@ def validate_raw_line(payload: Any, *, check_image_exists: bool = False) -> None
     conversations = payload.get("conversations")
     if not isinstance(conversations, list) or len(conversations) < 2:
         raise RawSchemaError("conversations must be a non-empty list (>=2 turns)")
+    for turn in conversations:
+        if not isinstance(turn, dict):
+            raise RawSchemaError("conversation turns must be JSON objects")
     roles = [turn.get("from") for turn in conversations]
     if roles[0] != "human":
         raise RawSchemaError("first conversation turn must be from 'human' role")
     if "gpt" not in roles[1:]:
         raise RawSchemaError("conversation must contain a 'gpt' turn")
     for turn in conversations:
+        if not isinstance(turn, dict):
+            raise RawSchemaError("conversation turns must be JSON objects")
         if turn.get("from") not in {"human", "gpt"}:
             raise RawSchemaError(f"invalid conversation role: {turn.get('from')!r}")
         if not isinstance(turn.get("value"), str):

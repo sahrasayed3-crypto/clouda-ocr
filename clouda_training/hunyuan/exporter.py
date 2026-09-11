@@ -122,7 +122,7 @@ def _validate_split(rows: list[dict[str, Any]], split: str) -> list[dict[str, An
     if not selected:
         raise HunyuanExportError(f"manifest has no rows for split {split!r}")
     # Per-row protection is enforced in build_raw_sample (fail-closed, counted).
-    # Whole-manifest protection (header marker) still hard-fails via the caller.
+    # Whole-manifest protection (header marker) hard-fails in export_raw_jsonl.
     return selected
 
 
@@ -143,6 +143,13 @@ def export_raw_jsonl(
         )
 
     _header, rows = read_manifest(manifest)
+    # Fail closed on whole-manifest protection markers (e.g. evaluation_only).
+    if protection_metadata_is_malformed(_header):
+        raise HunyuanExportError("manifest header has malformed protection metadata")
+    if record_is_protected(_header):
+        raise PermissionError(
+            "manifest header marks the whole dataset protected — refusing to export"
+        )
     selected = _validate_split(rows, config.split)
 
     out_path = Path(output_path)

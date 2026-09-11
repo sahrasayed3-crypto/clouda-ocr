@@ -59,22 +59,6 @@ _MATRIX_SCALES: tuple[TrainingScale, ...] = (
 )
 
 
-def _assumption_from_estimate(
-    label: str, source: EstimateSource, detail: str
-) -> PlanningAssumption | None:
-    """Assumption ledger entries for every non- DERIVED-from-config input."""
-    if source in (
-        EstimateSource.MEASURED,
-        EstimateSource.DECLARED,
-        EstimateSource.HEURISTIC,
-        EstimateSource.UNKNOWN,
-    ):
-        return PlanningAssumption(
-            assumption=(f"{label}: {detail} (source={source.value})"),
-        )
-    return None
-
-
 def build_experiment_plan(
     config: ExperimentConfig,
     profile: ExperimentProfile,
@@ -493,6 +477,13 @@ def generate_training_config(
 def render_plan_report(plan: ExperimentPlan, *, model_label: str) -> str:
     """Human-readable report (example format from the planning spec)."""
     from clouda_training.planner.memory import bytes_to_gib
+
+    if plan.resources is None:
+        return (
+            f"CLOUDA TRAINING EXPERIMENT PLAN\n\nModel:\n{model_label}\n"
+            "\nResource estimate: UNAVAILABLE (no parameter metadata)\n"
+            f"\nSTATUS: {plan.execution_status}"
+        )
 
     lines: list[str] = ["CLOUDA TRAINING EXPERIMENT PLAN", ""]
     lines.append(f"Model:\n{model_label}")

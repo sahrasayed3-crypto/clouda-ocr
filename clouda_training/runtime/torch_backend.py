@@ -120,10 +120,21 @@ class TorchTrainerBackend:
             running_loss = 0.0
             micro_losses: list[float] = []
             for micro in range(accumulation):
-                inputs, targets = self._step_batch(step, micro)
-                inputs = inputs.to(self.device)
-                targets = targets.to(self.device)
-                loss = self.adapter.forward_loss(self.model, (inputs, targets))
+                batch = self._step_batch(step, micro)
+                # Adapter-agnostic: batches may be (inputs, targets) tuples or
+                # model-specific dicts (e.g. Hunyuan multimodal fields).
+                if (
+                    isinstance(batch, tuple)
+                    and len(batch) == 2
+                    and hasattr(batch[0], "to")
+                ):
+                    batch = (batch[0].to(self.device), batch[1].to(self.device))
+                elif isinstance(batch, dict):
+                    batch = {
+                        k: (v.to(self.device) if hasattr(v, "to") else v)
+                        for k, v in batch.items()
+                    }
+                loss = self.adapter.forward_loss(self.model, batch)
                 (loss / accumulation).backward()
                 running_loss += float(loss.detach()) / accumulation
                 micro_losses.append(float(loss.detach()))

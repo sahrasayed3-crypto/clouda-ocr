@@ -187,37 +187,35 @@ flags stay conservative until then):
 ## 8. Compatibility matrix
 
 The authoritative capability record is the registered descriptor — run
-`adapters list --json` / `adapters inspect <type> --json`. The table below is
-the **expected** record derived from the verified upstream audits (WAVE2
-brief); it must be reconciled against the actual descriptors when Wave 2A's
-registration lands. Both adapters are mock-verified only, so
-`real_weights_validated` and `gpu_validated` must stay `False` in any
-descriptor written today.
+`adapters list --json` / `adapters inspect <type> --json`. The table below
+reflects the **actual registered descriptors** (reconciled with
+`adapters list --json` after Wave 2 registration landed). A flag means the
+capability is proven in the Clouda runtime (mock/synthetic E2E where real
+weights are unavailable); upstream-theoretical capability that Clouda has not
+exercised stays `False`. Both adapters are mock-verified only, so
+`real_weights_validated` and `gpu_validated` stay `False`.
 
 | Capability | hunyuanocr15_sft | qwen_vl_sft |
 |---|---|---|
-| supports_full_finetune | True (upstream sft_base.sh tunes vision+mlp+llm) | True (official SFT path; selective flags per-component) |
-| supports_selective_finetune | True (per-component tune_mm_* gates) | True (tune_mm_vision/mlp/llm + separate LRs) |
-| supports_lora | True (optional LoraConfig r/alpha/dropout) | True (official peft LoraConfig, q/k/v/o_proj) |
-| supports_gradient_checkpointing | True (training_args flag) | True (official enable_input_require_grads) |
-| supports_packed_sequences | True (FSD pack pipeline, cu_seqlens) | True (--data_flatten / --data_packing) |
-| supports_multimodal_batches | True | True |
-| supports_local_only_loading | True (enforced) | True (enforced) |
-| supports_bf16 | True | True (sft_qwen3_4b.sh) |
+| supports_full_finetune | True (upstream tunes vision+mlp+llm) | True (official SFT path; selective flags per-component) |
+| supports_selective_finetune | True (tune_vision/projector/llm gates, mock-verified) | True (tune_mm_vision/mlp/llm mapping, mock-verified) |
+| supports_lora | False (upstream supports it; not exercised in Clouda runtime yet) | False (official peft path verified; not exercised in Clouda runtime yet) |
+| supports_gradient_checkpointing | True (mock-verified enable path) | True (mock-verified enable path) |
+| supports_packed_sequences | True (FSD pack pipeline, cu_seqlens validators) | True (official --data_flatten / --data_packing contract) |
+| supports_multimodal_batches | True (mock-verified dict batches) | True (mock-verified dict batches) |
+| supports_local_only_loading | True (enforced + tested) | True (enforced + tested) |
+| supports_bf16 | True (upstream profile; unexercised without GPU) | True (upstream profile; unexercised without GPU) |
 | supports_fp16 | False (unverified) | False (unverified) |
-| supports_cpu_smoke | False | False |
-| supports_resume | False (unverified) | False (unverified) |
+| supports_cpu_smoke | True (synthetic E2E runs on CPU torch) | True (synthetic E2E runs on CPU torch) |
+| supports_resume | True (checkpoint/resume mock-verified + identity gate) | True (checkpoint/resume mock-verified + identity gate) |
 | real_weights_validated | False | False |
 | gpu_validated | False | False |
-
-The flag values marked "unverified" must remain `False` in the descriptors
-until a real run proves them — see §2 honesty rules.
 
 | Property | hunyuanocr15_sft | qwen_vl_sft |
 |---|---|---|
 | upstream_repository | Tencent-Hunyuan/HunyuanOCR | QwenLM/Qwen3-VL |
 | upstream_revision | `c55965d3da1e` | `96588727e44c78b25ba03ea03b8e12f7e64fd0da` |
-| model_family | hunyuanocr | qwen3_vl |
+| model_family | hunyuanocr15 | qwen3_vl |
 | trust_remote_code | True | not needed (transformers>=4.57) |
 | heavy deps | transformers (trust_remote_code) | transformers>=4.57.0 |
 | data modes | raw / packed JSONL | JSON / JSONL (media file paths) |

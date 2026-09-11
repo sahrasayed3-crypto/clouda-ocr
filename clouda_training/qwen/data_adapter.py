@@ -239,6 +239,26 @@ class QwenTrainingDataAdapter:
                     )
                 if not isinstance(turn.get("value"), str):
                     errors.append(f"{prefix}: turn {turn_index} value must be a string")
+                elif isinstance(turn.get("value"), str):
+                    # The <image> tag belongs ONLY in the first human turn:
+                    # tags inside a gpt (assistant) turn would leak the image
+                    # placeholder into the loss-bearing GT span, and tags in
+                    # later human turns would attach a second image.
+                    if role == "gpt" and QWEN_IMAGE_PLACEHOLDER in turn["value"]:
+                        errors.append(
+                            f"{prefix}: gpt turn {turn_index} must NOT contain the "
+                            f"{QWEN_IMAGE_PLACEHOLDER!r} tag"
+                        )
+                    if (
+                        role == "human"
+                        and turn_index > 0
+                        and QWEN_IMAGE_PLACEHOLDER in turn["value"]
+                    ):
+                        errors.append(
+                            f"{prefix}: only the first human turn may contain the "
+                            f"{QWEN_IMAGE_PLACEHOLDER!r} tag (found in turn "
+                            f"{turn_index})"
+                        )
             first = conversations[0]
             if isinstance(first, dict) and isinstance(first.get("value"), str):
                 value = first["value"]

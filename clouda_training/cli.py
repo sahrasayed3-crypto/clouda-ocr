@@ -15,6 +15,7 @@ from clouda_training.exporter import (
     export_training_data,
     training_statistics,
 )
+from clouda_training.cli_adapters import _adapters_parser, _adapter_command
 from clouda_training.experiments import (
     ConfigError,
     RunStatus,
@@ -119,6 +120,7 @@ def build_parser() -> argparse.ArgumentParser:
     _runs_root(checkpoints)
     _machine_flag(checkpoints)
     _hunyuan_parser(subparsers)
+    _adapters_parser(subparsers)
     return parser
 
 
@@ -341,6 +343,8 @@ def _hunyuan_command(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.command == "adapters":
+        return _adapter_command(args)
     if args.command == "hunyuan":
         return _hunyuan_command(args)
     if args.command in {

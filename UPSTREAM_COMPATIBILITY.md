@@ -94,3 +94,65 @@ trust_remote_code support for HunYuanVLForConditionalGeneration.
 - real model load, forward/loss values, memory footprint, bf16 behavior
 - real checkpoint compatibility (HF save format for HunYuanVL weights)
 - any end-to-end training quality claim
+
+---
+
+# Qwen3-VL Upstream Compatibility Snapshot
+
+## Verified upstream (Wave 2, official-source audit, revision pinned)
+- repository: QwenLM/Qwen3-VL (official), `qwen-vl-finetune/`
+- inspected revision: `96588727e44c78b25ba03ea03b8e12f7e64fd0da` (2026-01-30)
+- Clouda adapter: `adapter_type="qwen_vl_sft"`, `model_family="qwen3_vl"`
+
+## Verified model / processor surface
+- model classes: `Qwen3VLForConditionalGeneration` (dense) and
+  `Qwen3VLMoeForConditionalGeneration` (MoE); **native in
+  transformers >= 4.57.0 — NO `trust_remote_code`** (contrast with Hunyuan).
+- processor: `AutoProcessor` -> `Qwen3VLProcessor`
+- tokenizer: training uses a separate
+  `AutoTokenizer(use_fast=False, padding_side='right')`
+
+## Verified data format (JSON/JSONL)
+```json
+{"image": "path.jpg",
+ "conversations": [
+   {"from": "human", "value": "<image>\nquestion"},
+   {"from": "gpt",   "value": "answer"}]}
+```
+- media are FILE PATHS (like Hunyuan raw OCR JSONL; never embedded data URIs)
+- the `<image>` tag appears ONLY in the human turn; model-level
+  `<|vision_start|>` / `<|image_pad|>` / `<|vision_end|>` tokens are inserted
+  by the processor, not authored in the data
+
+## Verified loss + tuning surface
+- loss: causal LM, labels `-100` masked except assistant spans
+  (assistant token ids 77091..151645); `IGNORE_INDEX=-100`
+- selective tuning: `tune_mm_vision` (model.visual), `tune_mm_mlp`
+  (model.visual.merger), `tune_mm_llm` (model.language_model + lm_head);
+  separate `vision_tower_lr` / `mm_projector_lr`
+- LoRA: official peft `LoraConfig` (targets q/k/v/o_proj)
+- gradient checkpointing: official (`enable_input_require_grads`)
+- packing: official `--data_flatten` (cu_seqlens-style attention) and
+  `--data_packing` (`tools/pack_data.py`) — same varlen concept as Hunyuan's
+  packed JSONL, different file format
+
+## Verified SFT reference profile (sft_qwen3_4b.sh — NOT a Clouda recommendation)
+- learning rate: 1e-6..2e-7 range per README, bf16
+- gradient checkpointing on; `tune_mm_vision=False`, `tune_mm_mlp=True`,
+  `tune_mm_llm=True`; `model_max_length=8192`
+
+## Notes for the bridge
+- Clouda does NOT vendor upstream code; compatibility adapters only.
+- Loading is local-only: weights come from an operator-supplied directory;
+  transformers >= 4.57 provides the model classes natively, so no
+  trust_remote_code and no auto-download are involved.
+- Unlike Hunyuan, no custom-code license gate applies at the code level —
+  but upstream model weights carry their own license terms, which any
+  operator use must comply with. Clouda never redistributes weights.
+
+## Still requiring real weights / GPU (unvalidated)
+- real Qwen3VLProcessor outputs (image token expansion, label spans)
+- actual cu_seqlens/flatten-attention behavior
+- real model load, forward/loss values, MoE routing behavior, bf16 numerics
+- checkpoint compatibility (HF save format for Qwen3-VL / MoE weights)
+- any end-to-end training quality claim

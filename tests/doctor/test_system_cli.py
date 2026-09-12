@@ -70,8 +70,8 @@ def test_git_reports_branch_and_worktree_kind(clean_worktree_root):
     assert section.checks[0].status is DoctorStatus.SKIP
 
 
-def test_git_secondary_worktree_detection(tmp_path):
-    """Run git checks against the actual feature worktree (read-only)."""
+def test_git_checkout_kind_detection(tmp_path):
+    """Run Git checks against either a main or linked checkout (read-only)."""
     real_root = Path(__file__).resolve().parents[2]
     if not (real_root / ".git").exists():
         pytest.skip("not running inside the repo checkout")
@@ -87,8 +87,11 @@ def test_git_secondary_worktree_detection(tmp_path):
         text=True,
     ).stdout.strip()
     assert details["branch"] == expected_branch
-    assert details["is_linked_worktree"] is True
-    assert details["tree_kind"] == "secondary worktree"
+    expected_linked = (real_root / ".git").is_file()
+    assert details["is_linked_worktree"] is expected_linked
+    assert details["tree_kind"] == (
+        "secondary worktree" if expected_linked else "main working tree"
+    )
     assert details["head"]
 
 

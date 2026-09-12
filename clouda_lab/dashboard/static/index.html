@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Clouda Lab</title>
+  <link rel="stylesheet" href="/lab/assets/styles.css">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">CL</span>
+        <div><strong>Clouda Lab</strong><small>Clouda OCR Internal Control Center</small></div>
+      </div>
+      <nav aria-label="Primary navigation">
+        <a href="#/overview" data-page="overview">Overview</a>
+        <a href="#/datasets" data-page="datasets">Datasets</a>
+        <a href="#/quality" data-page="quality">Quality &amp; Dedup</a>
+        <a href="#/planner" data-page="planner">Experiment Planner</a>
+        <a href="#/preflight" data-page="preflight">Preflight</a>
+        <a href="#/models" data-page="models">Model Adapters</a>
+        <a href="#/runs" data-page="runs">Training Runs</a>
+        <a href="#/results" data-page="results">Results Store</a>
+        <a href="#/benchmarks" data-page="benchmarks">Benchmarks</a>
+        <a href="#/doctor" data-page="doctor">Doctor</a>
+        <a href="#/hardware" data-page="hardware">Hardware</a>
+        <a href="#/offline" data-page="offline">Offline Status</a>
+      </nav>
+      <div class="local-note"><span class="pulse"></span> Loopback-only · Offline-first</div>
+    </aside>
+    <main>
+      <div class="topbar">
+        <button id="menu-toggle" class="icon-button" type="button" aria-label="Toggle navigation">☰</button>
+        <div><h1 id="page-title">Overview</h1><p id="page-subtitle">Canonical local project state</p></div>
+        <span id="connection-state" class="badge status-warn">Connecting</span>
+      </div>
+      <div id="notice" class="notice" aria-live="polite"></div>
+      <section id="app" aria-live="polite" aria-busy="true"></section>
+      <div class="state-template" data-view="loading">Loading canonical repository state…</div>
+      <div class="state-template" data-view="empty">No local records are available.</div>
+      <div class="state-template" data-view="error">The local service could not load this view.</div>
+    </main>
+  </div>
+  <script src="/lab/assets/app.js" defer></script>
+</body>
+</html>

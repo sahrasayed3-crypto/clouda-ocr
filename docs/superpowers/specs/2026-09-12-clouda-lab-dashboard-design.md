@@ -1,7 +1,7 @@
 # Clouda Lab Dashboard Design
 
 Date: 2026-09-12  
-Status: approved architecture, pending written-spec review  
+Status: implemented and verified
 Branch: `feature/clouda-lab-dashboard`
 
 ## Objective
@@ -119,6 +119,7 @@ path or command.
 
 - `GET /api/lab/overview`
 - `GET /api/lab/datasets`
+- `GET /api/lab/dataset-sources`
 - `GET /api/lab/datasets/{dataset_id}`
 - `GET /api/lab/datasets/{dataset_id}/preview?limit=N`
 - `GET /api/lab/quality?dataset_id={dataset_id}`
@@ -130,6 +131,7 @@ path or command.
 - `GET /api/lab/runs/{run_id}`
 - `GET /api/lab/runs/{run_id}/checkpoints`
 - `GET /api/lab/results`
+- `GET /api/lab/results/{run_id}`
 - `GET /api/lab/benchmarks`
 - `GET /api/lab/doctor/latest`
 - `GET /api/lab/hardware`

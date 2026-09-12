@@ -83,7 +83,9 @@ class TrainingOrchestrator:
         handle = load_run(run_id, self.runs_root)
         return {
             "run": handle.to_dict(),
-            "summary": handle.summary(),
+            "summary": (
+                handle.summary() if (handle.path / "summary.json").is_file() else None
+            ),
             "metrics": list(handle.metrics()),
         }
 

@@ -124,6 +124,22 @@ python -m clouda_data.pipeline.cli --help
 python -m clouda_training.cli --help
 ```
 
+### Clouda Lab internal dashboard
+
+Clouda Lab is a separate loopback-only FastAPI control plane over the
+canonical local datasets, quality gate, planner, preflight, adapters, runs,
+checkpoints, Results Store, benchmarks, and Doctor diagnostics. Start it from
+the repository root:
+
+```powershell
+.\.venv311\Scripts\python.exe -m clouda_lab.cli serve
+```
+
+Open `http://127.0.0.1:8000/lab`. The command rejects non-loopback bind
+addresses. Normal navigation is offline-only and never downloads datasets,
+models, checkpoints, or benchmark assets. Real training remains disabled;
+missing GPU, dependencies, and model assets are shown as capability states.
+
 ### Pre-training stage status
 
 Ready now: local source registration and deterministic discovery, provenance-

@@ -118,6 +118,7 @@ def build_parser() -> argparse.ArgumentParser:
     checkpoints.add_argument("run_id")
     _runs_root(checkpoints)
     _machine_flag(checkpoints)
+    _hunyuan_parser(subparsers)
     return parser
 
 
@@ -226,8 +227,122 @@ def _experiment_command(args: argparse.Namespace) -> int:
     raise AssertionError(f"Unhandled experiment command: {args.command}")
 
 
+def _hunyuan_parser(subparsers: argparse._SubParsersAction) -> None:
+    """HunyuanOCR-1.5 bridge commands (Phase 29). No command starts training."""
+    hunyuan = subparsers.add_parser(
+        "hunyuan", help="HunyuanOCR-1.5 SFT bridge: export/validate/preflight."
+    )
+    hun_sub = hunyuan.add_subparsers(dest="hunyuan_command", required=True)
+
+    p_export = hun_sub.add_parser(
+        "export", help="Export a canonical manifest to Hunyuan raw OCR JSONL."
+    )
+    p_export.add_argument("manifest", type=Path)
+    p_export.add_argument("--output", required=True, type=Path)
+    p_export.add_argument("--dataset-id", required=True)
+    p_export.add_argument("--dataset-version", required=True)
+    p_export.add_argument("--split", default="train")
+    p_export.add_argument(
+        "--image-root",
+        required=True,
+        help="Absolute root used to absolutize image paths in the EXPORT only.",
+    )
+    p_export.add_argument(
+        "--manifest-hash",
+        default=None,
+        help="Expected sha256 of the manifest; computed from the file when omitted.",
+    )
+
+    p_raw = hun_sub.add_parser("validate-raw", help="Validate Hunyuan raw OCR JSONL.")
+    p_raw.add_argument("raw_jsonl", type=Path)
+    p_raw.add_argument("--check-images", action="store_true")
+
+    p_packed = hun_sub.add_parser(
+        "validate-packed", help="Validate upstream-compatible packed JSONL."
+    )
+    p_packed.add_argument("packed_jsonl", type=Path)
+    p_packed.add_argument("--pack-length", type=int, default=20480)
+
+    p_plan = hun_sub.add_parser(
+        "plan", help="Build an offline packing plan for the official upstream packer."
+    )
+    p_plan.add_argument("raw_jsonl", type=Path)
+    p_plan.add_argument("--pack-length", type=int, default=20480)
+    p_plan.add_argument("--output-dir", type=Path, default=None)
+    p_plan.add_argument("--check-images", action="store_true")
+
+    p_preflight = hun_sub.add_parser(
+        "preflight", help="Local-only Hunyuan compatibility preflight (no training)."
+    )
+    p_preflight.add_argument("--model-path", type=Path, default=None)
+    p_preflight.add_argument("--raw-data", type=Path, default=None)
+    p_preflight.add_argument("--packed-data", type=Path, default=None)
+    p_preflight.add_argument("--pack-length", type=int, default=20480)
+
+
+def _hunyuan_command(args: argparse.Namespace) -> int:
+    from clouda_contracts.checksums import sha256_file
+    from clouda_training.hunyuan.exporter import export_raw_jsonl
+    from clouda_training.hunyuan.models import (
+        ARABIC_DOCUMENT_OCR_PROMPT,
+        HunyuanExportConfig,
+    )
+    from clouda_training.hunyuan.packing import build_packing_plan
+    from clouda_training.hunyuan.preflight import run_preflight
+    from clouda_training.hunyuan.validators import (
+        validate_packed_jsonl,
+        validate_raw_jsonl,
+    )
+
+    if args.hunyuan_command == "export":
+        manifest_hash = args.manifest_hash or sha256_file(args.manifest)
+        config = HunyuanExportConfig(
+            dataset_id=args.dataset_id,
+            dataset_version=args.dataset_version,
+            manifest_path=str(args.manifest),
+            manifest_hash=manifest_hash,
+            split=args.split,
+            image_root=str(args.image_root),
+            prompt_profile=ARABIC_DOCUMENT_OCR_PROMPT,
+        )
+        report = export_raw_jsonl(config, args.output)
+        print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
+        return 0
+    if args.hunyuan_command == "validate-raw":
+        summary = validate_raw_jsonl(
+            args.raw_jsonl, check_image_exists=args.check_images
+        )
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+        return 0
+    if args.hunyuan_command == "validate-packed":
+        summary = validate_packed_jsonl(args.packed_jsonl, pack_length=args.pack_length)
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+        return 0
+    if args.hunyuan_command == "plan":
+        plan = build_packing_plan(
+            args.raw_jsonl,
+            pack_length=args.pack_length,
+            output_dir=args.output_dir,
+            check_image_exists=args.check_images,
+        )
+        print(json.dumps(plan.to_dict(), ensure_ascii=False, indent=2))
+        return 0
+    if args.hunyuan_command == "preflight":
+        result = run_preflight(
+            model_path=str(args.model_path) if args.model_path else None,
+            raw_data_path=str(args.raw_data) if args.raw_data else None,
+            packed_data_path=str(args.packed_data) if args.packed_data else None,
+            pack_length=args.pack_length,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0 if result["ok"] else 1
+    raise AssertionError(f"Unhandled hunyuan command: {args.hunyuan_command}")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.command == "hunyuan":
+        return _hunyuan_command(args)
     if args.command in {
         "validate-config",
         "run",

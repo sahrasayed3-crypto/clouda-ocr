@@ -120,10 +120,21 @@ class TorchTrainerBackend:
             running_loss = 0.0
             micro_losses: list[float] = []
             for micro in range(accumulation):
-                inputs, targets = self._step_batch(step, micro)
-                inputs = inputs.to(self.device)
-                targets = targets.to(self.device)
-                loss = self.adapter.forward_loss(self.model, (inputs, targets))
+                batch = self._step_batch(step, micro)
+                # Adapter-agnostic: batches may be (inputs, targets) tuples or
+                # model-specific dicts (e.g. Hunyuan multimodal fields).
+                if (
+                    isinstance(batch, tuple)
+                    and len(batch) == 2
+                    and hasattr(batch[0], "to")
+                ):
+                    batch = (batch[0].to(self.device), batch[1].to(self.device))
+                elif isinstance(batch, dict):
+                    batch = {
+                        k: (v.to(self.device) if hasattr(v, "to") else v)
+                        for k, v in batch.items()
+                    }
+                loss = self.adapter.forward_loss(self.model, batch)
                 (loss / accumulation).backward()
                 running_loss += float(loss.detach()) / accumulation
                 micro_losses.append(float(loss.detach()))
@@ -191,6 +202,11 @@ class TorchTrainerBackend:
         )
         metadata["torch_state_file"] = state_file_path(directory).name
         metadata["torch_state_sha256"] = digest
+        # Adapter identity (id/version/upstream revision/trainable flags) rides
+        # in checkpoint metadata; no machine-specific paths are recorded.
+        identity = getattr(self.adapter, "identity", None)
+        if callable(identity):
+            metadata["adapter_identity"] = identity()
         tmp = metadata_path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(metadata), encoding="utf-8", newline="\n")
         os.replace(tmp, metadata_path)
@@ -235,6 +251,16 @@ class TorchTrainerBackend:
         if digest is None:
             return  # framework-only checkpoint (no torch state recorded)
         payload = load_torch_state(latest.path, expected_sha256=digest)
+        # Reject resumes whose adapter identity changed since the checkpoint.
+        recorded_identity = metadata.get("adapter_identity")
+        if recorded_identity is not None:
+            identity = getattr(self.adapter, "identity", None)
+            current_identity = identity() if callable(identity) else None
+            if current_identity is not None and current_identity != recorded_identity:
+                raise RuntimeError(
+                    "checkpoint adapter identity mismatch — refusing to resume "
+                    f"with a different adapter/config: {recorded_identity} != {current_identity}"
+                )
         self.adapter.load_model_state(self.model, payload["model"])
         self.optimizer.load_state_dict(payload["optimizer"])
         if self.scheduler is not None and payload.get("scheduler") is not None:
@@ -243,15 +269,16 @@ class TorchTrainerBackend:
             restore_rng_state(payload["rng"])
 
     # ------------------------------------------------------------------ state
-    def capture_state(self) -> TrainingState:
+    def capture_state(self, step: int = 0) -> TrainingState:
         payload = {
             "model": self.adapter.model_state(self.model),
             "optimizer": self.optimizer.state_dict(),
             "scheduler": self.scheduler.state_dict() if self.scheduler else None,
             "rng": capture_rng_state(),
+            "step": int(step),
         }
-        step = int(payload.get("step", 0))
-        return TrainingState(step=step, epoch=float(step), payload=payload)
+        step_value = int(step)
+        return TrainingState(step=step_value, epoch=float(step_value), payload=payload)
 
     def restore_state(self, state: TrainingState) -> None:
         payload = state.payload

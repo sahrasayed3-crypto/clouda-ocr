@@ -217,7 +217,7 @@ def test_training_framework_writable_root(tmp_path):
     assert by_id["training.output-root"].status is DoctorStatus.PASS
 
 
-def test_training_dry_run_deep(tmp_path):
+def test_training_dry_run_deep(tmp_path, capsys):
     """Deep mode dry-run is offline, fast, and cleans up via caller."""
     from clouda_data.doctor.training import run_training_dry_run
 
@@ -225,6 +225,7 @@ def test_training_dry_run_deep(tmp_path):
     status, message, detail = run_training_dry_run(output_root)
     assert status is DoctorStatus.PASS
     assert detail["exit_code"] == 0
+    assert capsys.readouterr().out == ""
     # cleanup contract: caller removes the tree
     import shutil
 

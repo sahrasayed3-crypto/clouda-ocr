@@ -12,7 +12,9 @@ Training readiness is split deliberately:
 
 from __future__ import annotations
 
+import contextlib
 import importlib
+import io
 import shutil
 import tempfile
 from pathlib import Path
@@ -171,15 +173,19 @@ def run_training_dry_run(output_root: Path) -> tuple[DoctorStatus, str, dict[str
             / "mock-experiment.yaml"
         )
         output_root.mkdir(parents=True, exist_ok=True)
-        rc = training_main(
-            [
-                "dry-run",
-                str(config_path),
-                "--override",
-                f"runtime.output_root={output_root.as_posix()}",
-                "--json",
-            ]
-        )
+        with (
+            contextlib.redirect_stdout(io.StringIO()),
+            contextlib.redirect_stderr(io.StringIO()),
+        ):
+            rc = training_main(
+                [
+                    "dry-run",
+                    str(config_path),
+                    "--override",
+                    f"runtime.output_root={output_root.as_posix()}",
+                    "--json",
+                ]
+            )
         if rc == 0:
             return (
                 DoctorStatus.PASS,

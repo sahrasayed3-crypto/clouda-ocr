@@ -86,7 +86,8 @@ image_fp.py       text_dup.py     fingerprints (image / text)
 near_index.py     LSH candidate generation (images + text)
          |
          v
-confirm.py        candidate confirmation + deterministic clustering
+near_index.py     candidate confirmation
+exact_dup.py      deterministic duplicate clustering
          |
          v
 leakage.py        L0–L6 cross-partition checks (clouda_contracts.protection)
@@ -256,7 +257,8 @@ recomputed, never trusted.
 
 ## 8. Confirmation and clustering
 
-`confirm.py` assigns levels and clusters deterministically:
+`near_index.py` assigns candidate levels and `exact_dup.py` clusters
+confirmed pairs deterministically:
 
 **Level ladder** (per pair, distances `d_p`/`d_d`/`d_a` = pHash/dHash/aHash
 Hamming, `mad` = 64×64 integer mean absolute difference):

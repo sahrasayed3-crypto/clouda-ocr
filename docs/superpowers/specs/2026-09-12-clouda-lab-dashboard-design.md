@@ -83,7 +83,7 @@ service layer.
 | Lab evaluation/analysis | Existing `clouda_lab` services | Present existing local analysis/results without duplicating algorithms |
 | Benchmarks | Canonical Results Store plus immutable local benchmark manifests | Read existing results only; never run/download benchmarks during navigation |
 | Doctor | `clouda_data.doctor.collect_report` | Run normal/deep checks only on explicit user action and serialize canonical status |
-| Hardware | Doctor/system capability checks and safe optional-import probes | Present CPU/storage/GPU/CUDA capability separately from logical validity |
+| Hardware | `clouda_data.doctor` system/environment/hardware sections | Project the canonical Doctor checks into a capability view; do not create a second hardware detector |
 | Redaction | `clouda_contracts.security`, `clouda_data.doctor.security` | Apply canonical recursive redaction and a route-level final safety pass |
 
 ## Configuration and Discovery
@@ -121,7 +121,7 @@ path or command.
 - `GET /api/lab/datasets`
 - `GET /api/lab/datasets/{dataset_id}`
 - `GET /api/lab/datasets/{dataset_id}/preview?limit=N`
-- `GET /api/lab/quality`
+- `GET /api/lab/quality?dataset_id={dataset_id}`
 - `GET /api/lab/models`
 - `GET /api/lab/planner/options`
 - `GET /api/lab/plans`
@@ -137,9 +137,9 @@ path or command.
 
 ### Explicit action routes
 
-- `POST /api/lab/quality/check`
-- `POST /api/lab/quality/duplicates`
-- `POST /api/lab/quality/derive`
+- `POST /api/lab/quality/check` (body contains a discovered dataset ID and bounded scan options)
+- `POST /api/lab/quality/duplicates` (body contains a discovered dataset ID)
+- `POST /api/lab/quality/derive` (body contains a discovered dataset ID and a safe output label)
 - `POST /api/lab/plans`
 - `POST /api/lab/preflight`
 - `POST /api/lab/runs/{run_id}/resume-check`
@@ -229,6 +229,9 @@ Optional imports occur inside capability probes or operations. Missing Torch,
 Transformers, CUDA, model-specific dependencies, model weights, tokenizer,
 processor, RAQM, or WeasyPrint cannot prevent app startup.
 
+Quality is always scoped to a discovered canonical dataset/manifest. There is
+no fabricated global quality status and no browser-supplied manifest path.
+
 Canonical not-found errors return `404`; invalid supported inputs return `422`;
 protection or compatibility failures return `409`; unavailable optional
 capabilities return `503` only for an explicitly invoked action. Read pages
@@ -287,4 +290,3 @@ perform remote calls, execute real GPU training, or recompute expensive
 benchmarks. The service/page boundaries include capability and action states
 so these can be enabled later through canonical runtime operations without
 redesigning the dashboard.
-

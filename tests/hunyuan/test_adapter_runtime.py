@@ -162,6 +162,7 @@ def test_e2e_mock_hunyuan_through_torch_runtime(tmp_path: Path) -> None:
         processor=processor,
     )
     # Build a mock "model" the backend will optimize
+    torch.manual_seed(17)
     model = MockHunyuanVLForConditionalGeneration()
     adapter.model = model
 

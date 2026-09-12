@@ -189,11 +189,13 @@ def test_similar_texts_agree_on_most_permutations() -> None:
 
 
 def test_lsh_finds_similar_pair() -> None:
-    sigs = {
-        "a": minhash_signature(LONG_BASE),
-        "b": minhash_signature(NOISY),
+    sig_a = minhash_signature(LONG_BASE)
+    sig_b = minhash_signature(NOISY)
+    assert sig_a is not None and sig_b is not None
+    sigs: dict[str, tuple[int, ...]] = {
+        "a": sig_a,
+        "b": sig_b,
     }
-    assert sigs["a"] is not None and sigs["b"] is not None
     pairs, skipped = lsh_candidates(sigs, bands=16, rows=8, owner_cap=20)
     assert skipped == {}
     assert ("a", "b") in pairs

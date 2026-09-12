@@ -132,7 +132,7 @@ def test_final_boundary_mismatch(tmp_path: Path) -> None:
 
 
 def test_malformed_embedded_raw_sample(tmp_path: Path) -> None:
-    bad_inner = {"image_path": [], "conversations": []}
+    bad_inner: dict[str, object] = {"image_path": [], "conversations": []}
     p = _write_jsonl(
         tmp_path / "p.jsonl",
         [_packed(samples=[bad_inner])],

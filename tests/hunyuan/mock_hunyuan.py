@@ -83,10 +83,6 @@ class MockHunyuanVLForConditionalGeneration(torch.nn.Module):
             )
 
         # HF-style output object (attribute access .loss)
-        class Output:
-            pass
+        from types import SimpleNamespace
 
-        out = Output()
-        out.loss = loss
-        out.logits = logits
-        return out
+        return SimpleNamespace(loss=loss, logits=logits)

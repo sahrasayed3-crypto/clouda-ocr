@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -192,16 +193,17 @@ def test_e2e_mock_hunyuan_through_torch_runtime(tmp_path: Path) -> None:
         TrackingSection,
     )
 
-    backend.config = type("C", (), {})()
-    backend.config.training = TrainingSection(
+    backend_any: Any = backend
+    backend_any.config = type("C", (), {})()
+    backend_any.config.training = TrainingSection(
         seed=17,
         max_steps=4,
         batch_size=2,
         learning_rate=0.01,
     )
-    backend.config.checkpoint = CheckpointSection(save_strategy="none")
-    backend.config.tracking = TrackingSection(enabled=True, log_steps=1)
-    backend.config.runtime = RuntimeSection(device="cpu", output_root=tmp_path)
+    backend_any.config.checkpoint = CheckpointSection(save_strategy="none")
+    backend_any.config.tracking = TrackingSection(enabled=True, log_steps=1)
+    backend_any.config.runtime = RuntimeSection(device="cpu", output_root=tmp_path)
     backend.adapter = adapter
     backend.model = model
     backend.device = torch.device("cpu")

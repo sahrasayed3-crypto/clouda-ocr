@@ -111,11 +111,12 @@ def test_gradient_accumulation_matches_reference(torch_config) -> None:
         for p in model.parameters()
     ]
 
-    for micro, full in zip(micro_grads, full_grads):
-        if micro is None or full is None:
+    assert micro_grads is not None
+    for micro_grad, full in zip(micro_grads, full_grads):
+        if micro_grad is None or full is None:
             continue
         assert torch.allclose(
-            micro, full, atol=1e-10
+            micro_grad, full, atol=1e-10
         ), "accumulated gradients diverge from full-batch reference"
 
 

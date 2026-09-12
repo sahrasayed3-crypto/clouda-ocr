@@ -20,6 +20,7 @@ from clouda_training.experiments.config import (
 )
 from clouda_training.planner.models import (
     EstimateSource,
+    ExperimentProfile,
     HardwareEnvelope,
     HardwareFit,
     ParameterMetadata,
@@ -77,7 +78,7 @@ PARAMS = ParameterMetadata(
 )
 
 
-def pilot_profile() -> object:
+def pilot_profile() -> ExperimentProfile:
     profile = default_profile(
         TrainingScale.PILOT, training_mode=TrainingMode.SELECTIVE_FINETUNE
     )
@@ -94,14 +95,14 @@ def pilot_profile() -> object:
 def test_plan_deterministic_identity(base_config: ExperimentConfig) -> None:
     plan = build_experiment_plan(
         base_config,
-        pilot_profile(),  # type: ignore[arg-type]
+        pilot_profile(),
         hardware=HARDWARE,
         parameter_metadata=PARAMS,
         dataset_row_count=5000,
     )
     plan2 = build_experiment_plan(
         base_config,
-        pilot_profile(),  # type: ignore[arg-type]
+        pilot_profile(),
         hardware=HARDWARE,
         parameter_metadata=PARAMS,
         dataset_row_count=5000,
@@ -112,14 +113,14 @@ def test_plan_deterministic_identity(base_config: ExperimentConfig) -> None:
 def test_plan_id_changes_with_hardware(base_config: ExperimentConfig) -> None:
     plan_a = build_experiment_plan(
         base_config,
-        pilot_profile(),  # type: ignore[arg-type]
+        pilot_profile(),
         hardware=HARDWARE,
         parameter_metadata=PARAMS,
         dataset_row_count=5000,
     )
     plan_b = build_experiment_plan(
         base_config,
-        pilot_profile(),  # type: ignore[arg-type]
+        pilot_profile(),
         hardware=HardwareEnvelope(gpu_count=1, per_gpu_vram_gb=96),
         parameter_metadata=PARAMS,
         dataset_row_count=5000,
@@ -130,7 +131,7 @@ def test_plan_id_changes_with_hardware(base_config: ExperimentConfig) -> None:
 def test_plan_id_json_has_no_absolute_paths(base_config: ExperimentConfig) -> None:
     plan = build_experiment_plan(
         base_config,
-        pilot_profile(),  # type: ignore[arg-type]
+        pilot_profile(),
         hardware=HARDWARE,
         parameter_metadata=PARAMS,
         dataset_row_count=5000,
@@ -143,7 +144,7 @@ def test_plan_id_json_has_no_absolute_paths(base_config: ExperimentConfig) -> No
 def test_step_math_matches_preflight(base_config: ExperimentConfig) -> None:
     plan = build_experiment_plan(
         base_config,
-        pilot_profile(),  # type: ignore[arg-type]
+        pilot_profile(),
         hardware=HARDWARE,
         parameter_metadata=PARAMS,
         dataset_row_count=5000,
@@ -160,11 +161,12 @@ def test_step_math_matches_preflight(base_config: ExperimentConfig) -> None:
 def test_vram_components_labeled_honestly(base_config: ExperimentConfig) -> None:
     plan = build_experiment_plan(
         base_config,
-        pilot_profile(),  # type: ignore[arg-type]
+        pilot_profile(),
         hardware=HARDWARE,
         parameter_metadata=PARAMS,
         dataset_row_count=5000,
     )
+    assert plan.resources is not None
     memory = plan.resources.memory
     # 4B params bf16 = 8 GB weights (DERIVED)
     assert memory.weights_bytes.source is EstimateSource.DERIVED
@@ -182,7 +184,7 @@ def test_vram_components_labeled_honestly(base_config: ExperimentConfig) -> None
 def test_assumptions_ledger_populated(base_config: ExperimentConfig) -> None:
     plan = build_experiment_plan(
         base_config,
-        pilot_profile(),  # type: ignore[arg-type]
+        pilot_profile(),
         hardware=HARDWARE,
         parameter_metadata=PARAMS,
         dataset_row_count=5000,
@@ -218,7 +220,7 @@ def test_matrix_small_deterministic(base_config: ExperimentConfig) -> None:
 def test_recommendation_conservative(base_config: ExperimentConfig) -> None:
     plan = build_experiment_plan(
         base_config,
-        pilot_profile(),  # type: ignore[arg-type]
+        pilot_profile(),
         hardware=HARDWARE,
         parameter_metadata=PARAMS,
         dataset_row_count=5000,
@@ -230,7 +232,7 @@ def test_recommendation_conservative(base_config: ExperimentConfig) -> None:
 def test_execution_deferred_without_gpu(base_config: ExperimentConfig) -> None:
     plan = build_experiment_plan(
         base_config,
-        pilot_profile(),  # type: ignore[arg-type]
+        pilot_profile(),
         hardware=HARDWARE,
         parameter_metadata=PARAMS,
         dataset_row_count=5000,
@@ -241,7 +243,7 @@ def test_execution_deferred_without_gpu(base_config: ExperimentConfig) -> None:
 def test_runtime_unknown_without_measurement(base_config: ExperimentConfig) -> None:
     plan = build_experiment_plan(
         base_config,
-        pilot_profile(),  # type: ignore[arg-type]
+        pilot_profile(),
         hardware=HARDWARE,
         parameter_metadata=PARAMS,
         dataset_row_count=5000,
@@ -252,7 +254,7 @@ def test_runtime_unknown_without_measurement(base_config: ExperimentConfig) -> N
 def test_cost_unknown_without_runtime(base_config: ExperimentConfig) -> None:
     plan = build_experiment_plan(
         base_config,
-        pilot_profile(),  # type: ignore[arg-type],
+        pilot_profile(),
         hardware=HardwareEnvelope(
             gpu_count=1,
             per_gpu_vram_gb=48,
@@ -271,7 +273,7 @@ def test_human_report_contains_required_sections(
 ) -> None:
     plan = build_experiment_plan(
         base_config,
-        pilot_profile(),  # type: ignore[arg-type]
+        pilot_profile(),
         hardware=HARDWARE,
         parameter_metadata=PARAMS,
         dataset_row_count=5000,
@@ -293,7 +295,7 @@ def test_human_report_contains_required_sections(
 def test_json_output_serializable(base_config: ExperimentConfig) -> None:
     plan = build_experiment_plan(
         base_config,
-        pilot_profile(),  # type: ignore[arg-type]
+        pilot_profile(),
         hardware=HARDWARE,
         parameter_metadata=PARAMS,
         dataset_row_count=5000,
@@ -316,7 +318,7 @@ def test_generated_config_flows_into_preflight(
 
     plan = build_experiment_plan(
         base_config,
-        pilot_profile(),  # type: ignore[arg-type]
+        pilot_profile(),
         hardware=HARDWARE,
         parameter_metadata=PARAMS,
         dataset_row_count=5000,
@@ -338,7 +340,7 @@ def test_generated_config_carries_profile_math(
 ) -> None:
     plan = build_experiment_plan(
         base_config,
-        pilot_profile(),  # type: ignore[arg-type]
+        pilot_profile(),
         hardware=HARDWARE,
         parameter_metadata=PARAMS,
         dataset_row_count=5000,

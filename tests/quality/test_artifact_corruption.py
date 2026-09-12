@@ -35,4 +35,5 @@ class TestArtifactCorruption:
 
     def test_escape_path_rejected(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
         row = make_row("smp_esc", image_path="../escape.png")
+        assert row.image_path is not None
         assert ".." in row.image_path.split("/")

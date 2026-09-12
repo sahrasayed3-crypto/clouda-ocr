@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -175,15 +176,16 @@ def test_checkpoint_persists_adapter_identity_and_rejects_change(
     # minimal config shim for optimizer construction
     from clouda_training.experiments.config import TrainingSection
 
-    backend.config = type("C", (), {})()
-    backend.config.training = TrainingSection(
+    backend_any: Any = backend
+    backend_any.config = type("C", (), {})()
+    backend_any.config.training = TrainingSection(
         seed=17, max_steps=4, batch_size=2, learning_rate=0.01
     )
     backend._build_optimizer_and_scheduler()
     backend._save_checkpoint(step=3, metrics={"loss": 0.5})
 
     metadata = json.loads(
-        (mgr.latest_info.path / "metadata.json").read_text(encoding="utf-8")
+        (mgr.latest_info.path / "metadata.json").read_text(encoding="utf-8")  # type: ignore[attr-defined]
     )
     assert metadata["adapter_identity"]["adapter_id"] == "hunyuanocr15_sft"
     assert metadata["adapter_identity"]["upstream_revision"] == "c55965d3da1e"

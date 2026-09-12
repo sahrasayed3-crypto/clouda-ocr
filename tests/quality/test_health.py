@@ -194,5 +194,7 @@ class TestComputeHealthSummary:
 
     def test_round_trip(self) -> None:
         summary = compute_health_summary([_sample("t1")])
-        restored = type(summary).from_dict(summary.to_dict())
+        restored = type(summary).from_dict(  # type: ignore[attr-defined]
+            summary.to_dict()  # type: ignore[attr-defined]
+        )
         assert restored == summary

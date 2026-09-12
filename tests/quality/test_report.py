@@ -283,7 +283,7 @@ class TestResultsBridge:
             pass
 
         with pytest.raises(ResultsBridgeError):
-            persist_quality_summary(BadStore(), "run-1", {})
+            persist_quality_summary(BadStore(), "run-1", {})  # type: ignore[arg-type]
 
     def test_metadata_override_preserves_kind(self) -> None:
         summary = quality_summary(

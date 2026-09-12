@@ -34,24 +34,24 @@ def _make_issue(severity: IssueSeverity = IssueSeverity.WARNING) -> QualityIssue
 class TestQualityIssue:
     def test_round_trip_to_dict_from_dict(self) -> None:
         issue = _make_issue()
-        payload = issue.to_dict()
-        restored = QualityIssue.from_dict(payload)
+        payload = issue.to_dict()  # type: ignore[attr-defined]
+        restored = QualityIssue.from_dict(payload)  # type: ignore[attr-defined]
         assert restored == issue
         assert payload["severity"] == "warning"
         assert payload["schema_version"] == "clouda.quality.issue.v1"
         assert payload["sample_ids"] == ("smp_a", "smp_b")
 
     def test_unknown_field_rejected(self) -> None:
-        payload = _make_issue().to_dict()
+        payload = _make_issue().to_dict()  # type: ignore[attr-defined]
         payload["bogus"] = 1
         with pytest.raises(ValueError, match="Unknown fields"):
-            QualityIssue.from_dict(payload)
+            QualityIssue.from_dict(payload)  # type: ignore[attr-defined]
 
     def test_wrong_schema_version_rejected(self) -> None:
-        payload = _make_issue().to_dict()
+        payload = _make_issue().to_dict()  # type: ignore[attr-defined]
         payload["schema_version"] = "clouda.quality.issue.v2"
         with pytest.raises(ValueError, match="Unsupported QualityIssue schema"):
-            QualityIssue.from_dict(payload)
+            QualityIssue.from_dict(payload)  # type: ignore[attr-defined]
 
 
 class TestQualityGateConfig:

@@ -7,8 +7,8 @@ reported as ready when the native library is missing.
 
 from __future__ import annotations
 
-from types import ModuleType
-
+from types import ModuleType, SimpleNamespace
+from typing import Any
 
 import clouda_data.doctor.factory as doctor_factory
 import clouda_data.doctor.training as doctor_training
@@ -250,10 +250,11 @@ def test_gpu_no_torch_is_clean_info(monkeypatch):
 class _FakeTorch(ModuleType):
     """Minimal torch stand-in for CUDA-present / CPU-only scenarios."""
 
+    cuda: Any
+
     def __init__(self, *, cuda_available: bool, devices=None, bf16=False):
         super().__init__("torch")
-        self.version = ModuleType("torch.version")
-        self.version.cuda = "12.4" if cuda_available else None
+        self.version = SimpleNamespace(cuda="12.4" if cuda_available else None)
         self.cuda = self._cuda(cuda_available, devices or [], bf16)
 
     class _cuda:
@@ -276,9 +277,6 @@ class _FakeTorch(ModuleType):
 
         def is_bf16_supported(self):
             return self._bf16
-
-
-from types import SimpleNamespace  # noqa: E402
 
 
 def test_gpu_cpu_only_torch(monkeypatch):

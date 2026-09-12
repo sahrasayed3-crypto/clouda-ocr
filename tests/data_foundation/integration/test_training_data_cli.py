@@ -30,41 +30,6 @@ def sharded(tmp_path):
     return manifest, root, out, out / "shard_index.json"
 
 
-def _cli(*args: str) -> tuple[int, str, str]:
-    buffer_out, buffer_err = _capture()
-    code = main(list(args))
-    return code, buffer_out.getvalue(), buffer_err.getvalue()
-
-
-class _capture:
-    import io
-
-    def __new__(cls):
-        import io
-
-        self = super().__new__(cls)
-        self.out = io.StringIO()
-        self.err = io.StringIO()
-        return self
-
-    def __enter__(self):
-        import contextlib
-
-        self._ctx = contextlib.redirect_stdout(self.out)
-        self._ctx_err = contextlib.redirect_stderr(self.err)
-        self._ctx.__enter__()
-        self._ctx_err.__enter__()
-        return self
-
-    def __exit__(self, *exc):
-        self._ctx.__exit__(*exc)
-        self._ctx_err.__exit__(*exc)
-        return False
-
-    def getvalue(self):
-        return self.out.getvalue()
-
-
 class TestTrainingDataCLI:
     def test_help_lists_commands(self, capsys):
         with pytest.raises(SystemExit):

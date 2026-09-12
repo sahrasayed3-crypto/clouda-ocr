@@ -1,16 +1,14 @@
 # Clouda Dataset Quality Gate
 
-Operator documentation for `clouda_data/quality/` — the dataset-level quality
-gate for Clouda pre-training manifests. Branch
-`feature/dataset-quality-dedup`; spec of record:
-`DESIGN_DECISIONS.md` (Wave-2 contract) and `LEAD_SYNTHESIS.md`.
+Operator documentation for `clouda_data/quality/` — the canonical dataset-level
+quality gate for Clouda pre-training manifests.
 
 Companion documents:
 
 - [Pre-Training Dataset Infrastructure](../pretraining_dataset_infrastructure.md) —
   the manifest producer this gate consumes.
-- [Results Store](data_foundation/RESULTS_STORE.md) — optional summary sink.
-- [VALIDATION_PIPELINE.md](data_foundation/VALIDATION_PIPELINE.md) — the
+- [Results Store](../data_foundation/RESULTS_STORE.md) — optional summary sink.
+- [VALIDATION_PIPELINE.md](../data_foundation/VALIDATION_PIPELINE.md) — the
   sample-level validation the gate extends.
 
 ## Table of contents

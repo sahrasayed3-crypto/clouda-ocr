@@ -59,7 +59,8 @@ Protection and holdout metadata fail closed. Persistent identity and ordering us
 cryptographic canonical serialization, never Python `hash()`. Portable artifacts
 must not contain machine-local absolute paths or configured secret values. Paths
 and artifacts are treated as untrusted input. The integration remains offline and
-CPU-safe: no downloads, real training, CUDA/NCCL benchmark, or model-weight access.
+CPU-safe: integration performs no downloads, no real training, no CUDA/NCCL
+benchmark, and no model-weight access.
 
 The canonical Arabic OCR benchmark manifest must remain byte-identical at SHA-256
 `2a499ed0268a5c583a1b174ef241e05affb9c4ba757593eb9ee3fc6f3e4fb893`.

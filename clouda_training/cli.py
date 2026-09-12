@@ -92,7 +92,7 @@ def build_parser() -> argparse.ArgumentParser:
     validate_config.add_argument("--override", action="append", default=[])
     _machine_flag(validate_config)
     for command, help_text in (
-        ("run", "Run a configured adapter (mock adapters only in this build)."),
+        ("run", "Run a validated configured adapter."),
         ("dry-run", "Run the complete offline mock experiment lifecycle."),
     ):
         run_parser = subparsers.add_parser(command, help=help_text)
@@ -116,7 +116,7 @@ def build_parser() -> argparse.ArgumentParser:
     _runs_root(compare)
     compare.add_argument("--format", choices=["human", "json", "csv"], default="human")
     resume = subparsers.add_parser(
-        "resume", help="Resume an interrupted or failed mock run."
+        "resume", help="Resume an interrupted or failed canonical run."
     )
     resume.add_argument("run_id")
     _runs_root(resume)

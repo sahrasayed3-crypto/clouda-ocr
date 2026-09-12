@@ -65,8 +65,8 @@ artifacts MUST comply with that upstream license. Clouda does not vendor,
 redistribute, or auto-download any upstream code, weights, or data.
 
 ## Exact steps for the FIRST real HunyuanOCR-1.5 training experiment
-Prerequisites: local HunyuanOCR-1.5 weights (operator-supplied, e.g.
-D:\models\HunyuanOCR-1.5), a CUDA GPU with enough VRAM, transformers with
+Prerequisites: local HunyuanOCR-1.5 weights (operator-supplied at
+`<local-model-path>`), a CUDA GPU with enough VRAM, transformers with
 trust_remote_code support for HunYuanVLForConditionalGeneration.
 
 1. Export: `python -m clouda_training.cli hunyuan export <manifest.jsonl>

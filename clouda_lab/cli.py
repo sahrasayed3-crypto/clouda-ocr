@@ -1,13 +1,14 @@
-"""Clouda Lab CLI — minimal backend-exercise commands.
+"""Clouda Lab CLI for local analysis and the isolated dashboard.
 
 Follows the existing ``clouda-training`` CLI conventions (argparse
-subcommands, ``--json`` machine-readable flag, ``Path`` args). These commands
-exercise the backend services only; there is no web/UI layer.
+subcommands, ``--json`` machine-readable flag, ``Path`` args). The ``serve``
+command starts the separate loopback-only dashboard service.
 """
 
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import sys
 from pathlib import Path
@@ -24,6 +25,38 @@ from .error_analysis import analyze_sample
 from .failure_analysis import SampleMetrics, compare_failure
 from .hard_examples import select_hard_examples
 from .io import export_json, load_samples_jsonl
+
+
+def _loopback_host(value: str) -> str:
+    if value == "localhost":
+        return value
+    try:
+        if ipaddress.ip_address(value).is_loopback:
+            return value
+    except ValueError:
+        pass
+    raise argparse.ArgumentTypeError("Clouda Lab may bind only to a loopback host")
+
+
+def _cmd_serve(args: argparse.Namespace) -> int:
+    """Start the isolated local dashboard; imports stay lazy for CLI users."""
+
+    import uvicorn
+
+    from .dashboard.app import create_app
+    from .dashboard.settings import LabSettings
+
+    settings = LabSettings.from_repo(
+        args.repo_root, host=args.host, port=args.port, local_only=True
+    )
+    uvicorn.run(
+        create_app(settings),
+        host=settings.host,
+        port=settings.port,
+        reload=False,
+        access_log=False,
+    )
+    return 0
 
 
 def _load_scores(path: str | None) -> dict[str, float] | None:
@@ -221,6 +254,14 @@ def _cmd_distortion_experiment(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="clouda-lab")
     sub = parser.add_subparsers(dest="command", required=True)
+
+    serve = sub.add_parser(
+        "serve", help="Start the standalone loopback-only Clouda Lab dashboard."
+    )
+    serve.add_argument("--host", type=_loopback_host, default="127.0.0.1")
+    serve.add_argument("--port", type=int, default=8000)
+    serve.add_argument("--repo-root", type=Path, default=Path.cwd())
+    serve.set_defaults(func=_cmd_serve)
 
     page = sub.add_parser("analysis-page", help="Analyze one OCR sample.")
     page.add_argument("--input", required=True, type=Path)

@@ -25,7 +25,7 @@ from clouda_data.pretraining.sources import (
     register_source,
 )
 
-from pretraining_fixture import (
+from tests.pretraining_fixture import (
     ARABIC_TEXT,
     build_tiny_dataset,
 )

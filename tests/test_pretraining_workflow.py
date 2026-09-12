@@ -22,7 +22,7 @@ from clouda_data.pretraining.workflow import (
     resolve_source,
 )
 
-from pretraining_fixture import build_tiny_dataset
+from tests.pretraining_fixture import build_tiny_dataset
 
 
 @pytest.fixture()

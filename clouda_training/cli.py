@@ -16,6 +16,10 @@ from clouda_training.exporter import (
     training_statistics,
 )
 from clouda_training.cli_adapters import _adapters_parser, _adapter_command
+from clouda_training.cli_planner import (
+    _planner_command,
+    _planner_parser,
+)
 from clouda_training.cli_preflight import (
     _preflight_command,
     _preflight_parser,
@@ -126,6 +130,7 @@ def build_parser() -> argparse.ArgumentParser:
     _hunyuan_parser(subparsers)
     _adapters_parser(subparsers)
     _preflight_parser(subparsers)
+    _planner_parser(subparsers)
     return parser
 
 
@@ -354,6 +359,8 @@ def main(argv: list[str] | None = None) -> int:
         return _hunyuan_command(args)
     if args.command == "preflight":
         return _preflight_command(args)
+    if args.command == "experiment-plan":
+        return _planner_command(args)
     if args.command in {
         "validate-config",
         "run",

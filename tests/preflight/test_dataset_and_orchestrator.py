@@ -210,6 +210,7 @@ def test_data_contract_packed_only_adapter_blocks(tmp_path: Path) -> None:
 
     ensure_adapters_registered()
     registry = get_default_registry()
+    registered_here = False
     if not registry.is_registered("packed_only_test"):
         registry.register(
             ModelAdapterDescriptor(
@@ -225,11 +226,18 @@ def test_data_contract_packed_only_adapter_blocks(tmp_path: Path) -> None:
             ),
             lambda **kw: None,
         )
-    config = make_config(
-        model=ModelSection(model_id="m", adapter_type="packed_only_test")
-    )
-    check = check_data_contract(config)
-    assert check.status is PreflightStatus.FAIL and check.blocker
+        registered_here = True
+    try:
+        config = make_config(
+            model=ModelSection(model_id="m", adapter_type="packed_only_test")
+        )
+        check = check_data_contract(config)
+        assert check.status is PreflightStatus.FAIL and check.blocker
+    finally:
+        # The default registry is a process-wide singleton: unregister the
+        # test adapter so other test modules (multimodel) see a clean set.
+        if registered_here:
+            registry.unregister("packed_only_test")
 
 
 # ---------------------------------------------------------------- resume checks

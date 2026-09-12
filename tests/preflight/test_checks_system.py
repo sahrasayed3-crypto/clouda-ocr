@@ -1,7 +1,6 @@
 """Tests for system-level preflight checks (checks_system.py).
 
-Unique basename ``test_checks_system`` per WAVE1_BRIEF (no collection
-clashes). No torch/transformers needed at collection time; torch-dependent
+No torch/transformers are needed at collection time; torch-dependent
 expectations target THIS no-GPU machine (cuda requested -> FAIL).
 """
 

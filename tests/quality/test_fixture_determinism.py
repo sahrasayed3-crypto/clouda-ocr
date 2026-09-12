@@ -1,4 +1,4 @@
-"""Determinism guarantees for the tests/quality fixture helpers (Wave2-Q)."""
+"""Determinism guarantees for the tests/quality fixture helpers."""
 
 from __future__ import annotations
 

@@ -1,15 +1,13 @@
-"""Arabic text normalization + near-text dedupe tests (module pending)."""
+"""Arabic text normalization + near-text dedupe tests."""
 
 from __future__ import annotations
-
-import pytest
 
 from clouda_data.pretraining.normalize import (
     NormalizationPolicy,
     normalize_text,
 )  # noqa: E402
 
-text_dup = pytest.importorskip("clouda_data.quality.text_dup")
+from clouda_data.quality import text_dup
 
 
 def _identity_policy() -> NormalizationPolicy:
@@ -57,7 +55,11 @@ class TestArabicTextNormalization:
 
 class TestTextNearDuplicate:
     def test_identical_text_is_near_family(self) -> None:
-        assert text_dup is not None  # module contract pending (Wave2-G)
+        text = "هذا نص عربي طويل لاختبار كشف الصفحات النصية المتشابهة بدقة"
+        result = text_dup.classify_text_pairs({"smp_a": text, "smp_b": text})
+        assert result.near_text == (("smp_a", "smp_b"),)
 
     def test_short_text_skips_tier2(self) -> None:
-        assert text_dup is not None  # min_text_chars=40 contract (Wave2-G)
+        result = text_dup.classify_text_pairs({"smp_a": "قصير", "smp_b": "نص"})
+        assert result.near_text == ()
+        assert result.skipped_ids == ("smp_a", "smp_b")

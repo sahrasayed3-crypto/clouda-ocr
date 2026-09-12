@@ -1,4 +1,4 @@
-"""Tests for clouda_data.quality.image_fp (Wave2-D, Agent D).
+"""Tests for clouda_data.quality.image_fp.
 
 All checks are CPU-only, offline and deterministic. The thresholds
 asserted here are imported from the module (CONFIRMED_* / BLANK_* /

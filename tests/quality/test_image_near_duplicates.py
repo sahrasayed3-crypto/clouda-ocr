@@ -1,4 +1,4 @@
-"""Image near-duplicate fingerprint + confirmation tests (module pending)."""
+"""Image near-duplicate fingerprint + confirmation tests."""
 
 from __future__ import annotations
 

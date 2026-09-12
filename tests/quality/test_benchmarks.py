@@ -1,4 +1,4 @@
-"""Unit tests for clouda_data.quality.benchmarks (Wave2-P)."""
+"""Unit tests for clouda_data.quality.benchmarks."""
 
 from __future__ import annotations
 

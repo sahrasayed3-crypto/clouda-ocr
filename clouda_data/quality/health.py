@@ -1,4 +1,4 @@
-"""Counts-only dataset health summary (Wave2-J).
+"""Counts-only dataset health summary.
 
 ``compute_health_summary`` aggregates a list of ``DatasetSample`` values over
 eleven count-only dimensions plus two small closed cross-tabs (``source`` x

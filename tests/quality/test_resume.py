@@ -1,24 +1,31 @@
-"""Resume / run-state tests (Wave2-L contract, pending)."""
+"""Resume / run-state identity tests."""
 
 from __future__ import annotations
 
 import pytest
 
-run_state = pytest.importorskip("clouda_data.quality.run_state")
-
-from tests.quality.conftest import make_manifest, make_row  # noqa: E402
+from clouda_data.quality.run_state import (
+    QualityRunState,
+    StaleResumeError,
+    checkpoint,
+    start_or_resume,
+)
 
 
 class TestResume:
     def test_stale_resume_refused(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
-        manifest_path = make_manifest(tmp_path, [make_row("smp_a", text="نص")])
-        assert manifest_path.exists()
-        assert run_state is not None
+        initial = QualityRunState("a" * 64, 1, "config-a", {"gate": "1"})
+        start_or_resume(tmp_path, initial)
+        changed = QualityRunState("b" * 64, 1, "config-a", {"gate": "1"})
+        with pytest.raises(StaleResumeError, match="manifest_sha256"):
+            start_or_resume(tmp_path, changed)
 
     def test_resume_state_matches_identity(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
-        manifest_path = make_manifest(tmp_path, [make_row("smp_a", text="نص")])
-        manifest_again = make_manifest(tmp_path, [make_row("smp_a", text="نص")])
-        assert manifest_path.read_bytes() == manifest_again.read_bytes()
-
-    def test_run_state_module_contract_pending(self) -> None:
-        assert run_state is not None  # StaleResumeError contract (Wave2-L)
+        expected = QualityRunState("a" * 64, 2, "config-a", {"gate": "1"})
+        state, resumed = start_or_resume(tmp_path, expected)
+        assert state == expected and resumed is False
+        checkpoint(tmp_path, "near", {"row": 2}, 2)
+        resumed_state, resumed = start_or_resume(tmp_path, expected)
+        assert resumed is True
+        assert resumed_state.stage == "near"
+        assert resumed_state.processed_count == 2

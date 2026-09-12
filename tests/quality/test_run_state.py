@@ -1,4 +1,4 @@
-"""Tests for clouda_data.quality.run_state (resume state, Agent L)."""
+"""Tests for clouda_data.quality.run_state resume behavior."""
 
 from __future__ import annotations
 

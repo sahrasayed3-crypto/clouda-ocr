@@ -1,4 +1,4 @@
-"""System-level preflight checks (Agent D scope).
+"""System-level preflight checks.
 
 Checks in this module (all fail-closed, never install anything, never
 download, never mutate datasets):

@@ -1,4 +1,4 @@
-"""Tests for clouda_data.quality.manifest_adapter (Wave2-B contract)."""
+"""Tests for clouda_data.quality.manifest_adapter."""
 
 from __future__ import annotations
 

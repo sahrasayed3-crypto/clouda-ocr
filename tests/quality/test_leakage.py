@@ -67,5 +67,12 @@ class TestProtectionRecords:
 
 
 class TestLeakageModule:
-    def test_effective_partition_contract_pending(self) -> None:
-        assert leakage is not None  # Wave2-H contract
+    def test_effective_partition_uses_canonical_split_policy(self) -> None:
+        assert (
+            leakage.effective_partition(make_row("smp_t", target_split="train"))
+            == "TRAIN"
+        )
+        assert (
+            leakage.effective_partition(make_row("smp_h", target_split="holdout"))
+            == "PROTECTED"
+        )

@@ -1,4 +1,4 @@
-"""Human- and machine-readable quality-gate reports (Wave2-M).
+"""Human- and machine-readable quality-gate reports.
 
 ``render_report`` serializes a :class:`QualityGateResult` either as the full
 ``clouda.quality.run.v1`` JSON document or as a human-readable text layout

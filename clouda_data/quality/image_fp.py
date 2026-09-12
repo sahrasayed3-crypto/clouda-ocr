@@ -1,4 +1,4 @@
-"""Deterministic image fingerprinting for the quality gate (Agent D).
+"""Deterministic image fingerprinting for the quality gate.
 
 Integer-only aHash / dHash / pHash over Pillow images plus a shared
 single-decode safe-load helper. No numpy: every reduction is plain
@@ -56,7 +56,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 
 HASH_SIZE = 8
-#: CONFIRMED thresholds (Agent F triple conjunction: d_p<=8 AND d_d<=10 AND d_a<=10)
+#: CONFIRMED thresholds (triple conjunction: d_p<=8 AND d_d<=10 AND d_a<=10)
 CONFIRMED_P_MAX = 8
 CONFIRMED_D_MAX = 10
 CONFIRMED_A_MAX = 10
@@ -85,7 +85,7 @@ _PILLOW_VERSION = Image.__version__
 FINGERPRINT_VERSION = f"clouda.quality.imgfp.v1:pillow=={_PILLOW_VERSION}"
 
 # ---------------------------------------------------------------------------
-# Committed fixed-point DCT cosine table (Agent D spec)
+# Committed fixed-point DCT cosine table
 # ---------------------------------------------------------------------------
 # DCT_TABLE_32[u][x] = round(2048 * c(u) * cos((2x + 1) * u * pi / 32)) with
 # c(0) = 1/sqrt(2) and c(u>0) = 1. The exact mathematical values were rounded

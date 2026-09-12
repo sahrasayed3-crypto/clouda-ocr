@@ -1,4 +1,4 @@
-"""Unit tests for quality models + configuration (Wave2-A)."""
+"""Unit tests for quality models + configuration."""
 
 from __future__ import annotations
 

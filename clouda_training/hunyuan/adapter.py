@@ -1,6 +1,6 @@
 """HunyuanOCR-1.5 SFT model adapter for the Clouda real-training runtime.
 
-Implements the ModelAdapter contract from feature/real-training-runtime.
+Implements the canonical runtime ModelAdapter contract.
 Lazy + optional: the base package imports without transformers/torch.
 Local-only: model/processor load from an operator-supplied local path;
 never downloads weights. Loss extraction fails explicitly when the model

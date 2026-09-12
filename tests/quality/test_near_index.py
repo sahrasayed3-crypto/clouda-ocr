@@ -1,4 +1,4 @@
-"""Tests for clouda_data.quality.near_index (Agent E)."""
+"""Tests for clouda_data.quality.near_index."""
 
 from __future__ import annotations
 

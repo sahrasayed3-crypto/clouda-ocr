@@ -1,4 +1,4 @@
-"""Tests for quality policy + derived manifest (Wave2-K contract)."""
+"""Tests for quality policy + derived manifest."""
 
 from __future__ import annotations
 

@@ -1,7 +1,6 @@
 """Unit tests for the preflight domain model (models.py).
 
-Unique basename ``test_preflight_models`` per WAVE1_BRIEF (no collection
-clashes). Pure domain-model tests: no torch / transformers imports.
+Pure domain-model tests: no torch / transformers imports.
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""Exact-duplicate detection tests (Wave2-C contract, module pending)."""
+"""Exact-duplicate detection tests."""
 
 from __future__ import annotations
 

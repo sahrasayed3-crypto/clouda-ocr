@@ -1,4 +1,4 @@
-"""Derived clean-manifest tests (Wave2-K contract, pending)."""
+"""Derived clean-manifest tests."""
 
 from __future__ import annotations
 

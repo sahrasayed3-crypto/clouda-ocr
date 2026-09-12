@@ -1,4 +1,4 @@
-"""Durable resume state for the dataset quality pipeline (Agent L).
+"""Durable resume state for the dataset quality pipeline.
 
 Persists :class:`QualityRunState` as atomic JSON at
 ``<index_dir>/run_state.json`` so a partially completed quality-gate scan can

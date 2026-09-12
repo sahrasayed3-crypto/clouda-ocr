@@ -1,4 +1,4 @@
-"""Artifact corruption / path-safety tests (module pending)."""
+"""Artifact corruption / path-safety tests."""
 
 from __future__ import annotations
 

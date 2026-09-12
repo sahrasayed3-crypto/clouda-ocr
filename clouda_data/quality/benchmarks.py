@@ -1,4 +1,4 @@
-"""Synthetic-manifest benchmarks for the quality gate (Wave2-P).
+"""Synthetic-manifest benchmarks for the quality gate.
 
 ``build_synthetic_manifest`` writes a deterministic manifest of tiny 64x48
 PNGs with exact duplicates (byte-identical copies) and near-duplicates

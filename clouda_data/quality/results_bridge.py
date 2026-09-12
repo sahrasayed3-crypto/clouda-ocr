@@ -1,4 +1,4 @@
-"""Bridge from quality-gate runs to the results store (Wave2-O).
+"""Bridge from quality-gate runs to the results store.
 
 ``persist_quality_summary`` writes one quality-run summary into any store that
 exposes ``save_summary(run_id, summary)`` (duck-typed via

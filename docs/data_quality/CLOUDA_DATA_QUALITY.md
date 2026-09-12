@@ -117,8 +117,8 @@ symlink refusal **before** any `open`.
 | **Data Factory QC** (`clouda_data.factory`) | Upstream producer. Factory manifests (`clouda_data/factory/manifest`) arrive as canonical pre-training manifests; the gate validates them post-generation. Readability/QC inside the Factory is per-page render QC; the quality gate is dataset-level and independent of it. |
 | **Results Store** (`clouda_data.results`, schema `clouda.ocr.results.v1`) | Optional downstream sink. `results_bridge.persist_quality_summary(store, run_id, summary)` calls `ResultsStore.save_summary` with metadata mark `kind="dataset_quality_run"`. Guarded import; **no schema change** to the store. |
 | **Dataset Selection** (`clouda_lab.dataset_selection`, `clouda.lab.selection.v1`) | Selection reads the same manifests and filters through the holdout guard before writing derived manifests. The gate's exclusion plan and derived manifests follow the same contract: deterministic ordering, lineage in the header, and post-write re-validation via `validate_derived_manifest_for_training`. |
-| **Training Data Loader** | **Deferred — not on main.** `manifest_adapter.py` exposes a documented stub `training_stream_contract()` describing the adapter contract only (a stream of `DatasetSample` rows with resolved artifact paths and protection status). No loader code is imported or built in this wave. |
-| **Environment Doctor** | **Deferred hook — not on main.** A future doctor pass (environment audit, `CLOUDA_DOCTOR_WT`) may consume the quality report as an input; only the hook point is documented here. No code exists. |
+| **Training Data Loader** | Canonical downstream consumer. Quality-derived manifests retain dataset identity and lineage and pass the loader's strict manifest validation; the offline integration E2E exercises this path through deterministic sharding and replay. |
+| **Environment Doctor** | Complementary boundary. Doctor diagnoses project/environment readiness, while training preflight validates a specific planned run and detects the quality and loader capabilities without duplicating them. |
 | **`clouda_contracts.protection`** | Sole protection authority. The gate consumes `record_is_protected`, `protection_metadata_is_malformed`, `is_training_split_eligible`, `string_marks_protected`, `normalize_marker`, `PROTECTED_SPLIT_NAMES`, `PROTECTED_ROLES`. Never re-implemented. |
 | **`clouda_lab.holdout_guard`** | Consumed as-is (facade over protection) for row/header checks. |
 
@@ -297,7 +297,7 @@ A malformed sha256 format, or protection-relevant metadata whose value is
 neither a string nor a boolean, **fails closed** (treated as protected /
 malformed → CRITICAL).
 
-Severity table (per Wave1-B7):
+Severity table:
 
 | Level | Check | Severity |
 |---|---|---|

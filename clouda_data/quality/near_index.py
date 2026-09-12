@@ -1,4 +1,4 @@
-"""Near-duplicate candidate indexing for the dataset quality gate (Agent E).
+"""Near-duplicate candidate indexing for the dataset quality gate.
 
 Two stages over the per-image fingerprints produced by
 :mod:`clouda_data.quality.image_fp`:
@@ -21,12 +21,12 @@ Two stages over the per-image fingerprints produced by
     requirement) is applied on top when page metadata is supplied.
 
 Per-pair Hamming distances are verified only for emitted candidates
-(O(candidates), never O(N^2)). Levels follow the Agent F triple
+(O(candidates), never O(N^2)). Levels follow the canonical triple
 conjunction: CONFIRMED iff ``d_p <= 8 and d_d <= 10 and d_a <= 10``,
 LIKELY iff ``d_p <= 12``, else CANDIDATE.
 
 v1 is in-memory only (fine to ~10k samples); the optional SQLite-backed
-index described in DESIGN_DECISIONS (B8 schema) is deliberately deferred.
+index described in the quality guide is deliberately deferred.
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ from clouda_data.quality.models import (
 )
 
 # Level thresholds: the CONFIRMED triple conjunction lives in image_fp
-# (Agent D owns those constants). The LIKELY pHash ceiling is defined here.
+# (image_fp owns those constants). The LIKELY pHash ceiling is defined here.
 LIKELY_P_MAX = 12
 
 LEVEL_CONFIRMED = "CONFIRMED_NEAR_DUPLICATE"

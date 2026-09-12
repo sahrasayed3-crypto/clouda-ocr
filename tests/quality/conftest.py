@@ -1,4 +1,4 @@
-"""Shared helpers for tests/quality (Wave2-Q, Agent Q).
+"""Shared helpers for tests/quality.
 
 Everything here is CPU-only, offline and deterministic: the same
 ``(seed, layout, text)`` always renders to identical pixels, and

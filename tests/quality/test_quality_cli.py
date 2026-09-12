@@ -1,10 +1,8 @@
-"""CLI tests (Wave2-N contract, pending)."""
+"""CLI tests for the quality entry point."""
 
 from __future__ import annotations
 
-import pytest
-
-cli = pytest.importorskip("clouda_data.quality.cli")
+from clouda_data.quality import cli
 
 from tests.quality.conftest import make_manifest, make_row  # noqa: E402
 
@@ -14,8 +12,12 @@ class TestCli:
         manifest_path = make_manifest(tmp_path, [make_row("smp_a", text="نص")])
         assert manifest_path.name == "manifest.jsonl"
 
-    def test_cli_module_contract_pending(self) -> None:
-        assert cli is not None  # clouda-quality entry point (Wave2-N)
+    def test_cli_parser_routes_scan_command(self) -> None:
+        args = cli.build_parser().parse_args(["scan", "manifest.jsonl"])
+        assert args.func is cli._cmd_scan
 
-    def test_exit_code_vocabulary_pending(self) -> None:
-        assert cli is not None  # 0 PASS / 1 FAIL / 2 config error (Wave2-N)
+    def test_missing_manifest_returns_config_error_exit_code(
+        self, tmp_path, capsys
+    ) -> None:  # type: ignore[no-untyped-def]
+        assert cli.main(["scan", str(tmp_path / "missing.jsonl")]) == 2
+        assert "manifest not found" in capsys.readouterr().err

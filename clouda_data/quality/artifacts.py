@@ -1,4 +1,4 @@
-"""Per-sample artifact integrity validation (Agent I).
+"""Per-sample artifact integrity validation.
 
 ``validate_artifact`` extends the pretraining validation semantics with
 integrity checks that only make sense on disk: zero-byte files, hash

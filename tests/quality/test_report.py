@@ -1,4 +1,4 @@
-"""Unit tests for clouda_data.quality.report and results_bridge (Wave2-M/O)."""
+"""Unit tests for clouda_data.quality.report and results_bridge."""
 
 from __future__ import annotations
 

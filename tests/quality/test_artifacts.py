@@ -1,4 +1,4 @@
-"""Artifact integrity checks (Agent I) over clouda_data.quality.artifacts."""
+"""Artifact integrity checks over clouda_data.quality.artifacts."""
 
 from __future__ import annotations
 

@@ -6,7 +6,7 @@ import pytest
 
 exact_dup = pytest.importorskip("clouda_data.quality.exact_dup")
 
-from conftest import make_row  # noqa: E402
+from tests.quality.conftest import make_row  # noqa: E402
 
 
 class TestExactDuplicates:

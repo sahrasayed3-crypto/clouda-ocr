@@ -9,8 +9,8 @@ Fail-closed semantics
   :attr:`PreflightReport.blockers`? No — it is surfaced in
   :attr:`PreflightReport.warnings` so the operator still sees it.
 - ``UNAVAILABLE`` never blocks by itself; it always yields a warning entry.
-  This keeps the report green-on-capability-missing (e.g. the dataset quality
-  gate is not merged on this branch) while still being loud about it.
+  This keeps the report green-on-capability-missing (e.g. a capability is
+  delegated to another canonical subsystem) while still being loud about it.
 - ``SKIP`` is neutral: it neither blocks nor warns. A report composed only of
   ``SKIP``/``UNAVAILABLE``/``PASS`` checks with no warnings is ``READY``.
 

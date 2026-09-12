@@ -11,6 +11,8 @@ from clouda_contracts.archive_security import ArchiveLimits, validate_zip_archiv
 from clouda_contracts.security import (
     may_use_user_document_for_training,
     redact_mapping,
+    redact_text,
+    redact_value,
 )
 from clouda_data.ingestion.file_inspection import inspect_file
 from pdfword.worker_api import app
@@ -56,6 +58,14 @@ def test_sensitive_logging_fields_are_redacted() -> None:
         "api_key": "[REDACTED]",
         "nested": {"password": "[REDACTED]"},
     }
+
+
+def test_configured_secret_values_are_redacted_from_nested_diagnostics() -> None:
+    environment = {"OPENROUTER_API_KEY": "secret-value-123"}
+    assert redact_text("failed: secret-value-123", environment) == "failed: <redacted>"
+    assert redact_value(
+        {"detail": ["secret-value-123", {"safe": "ok"}]}, environment
+    ) == {"detail": ["<redacted>", {"safe": "ok"}]}
 
 
 def test_user_documents_are_not_training_data_without_both_approvals() -> None:

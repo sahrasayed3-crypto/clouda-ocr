@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from conftest import (
+from tests.quality.conftest import (
     add_noise,
     blank_like,
     brightness,

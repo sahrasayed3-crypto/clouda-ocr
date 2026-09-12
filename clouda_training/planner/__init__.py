@@ -1,19 +1,17 @@
 """Training experiment planner package.
 
-Wave-1 scope: typed planning domain models (``models.py``), transparent
-VRAM framework (``memory.py``), storage/runtime/cost planning
-(``storage_runtime.py``); the orchestrator (``planner.py`` module inside
-this package) lands in a later wave.
+Includes typed planning domain models, transparent VRAM estimates,
+storage/runtime/cost planning, and the canonical planning orchestrator.
 
 Legacy API bridge
 -----------------
 Before this package existed the planner was the single module
 ``clouda_training/planner.py`` exposing ``TrainingPlan`` and
 ``plan_training`` (dataset-inventory planning used by
-``clouda_training.cli`` and ``tests/training/test_planning.py``).  This
-package now shadows that module (Python prefers packages over modules in
-the same namespace), so the legacy API is bridged here by explicitly
-loading the legacy file.  The root package's
+``clouda_training.cli`` and ``tests/training/test_planning.py``). This
+package shadows that module (Python prefers packages over modules in
+the same namespace), so the compatibility API is bridged here by explicitly
+loading the original file. The root package's
 ``from .planner import TrainingPlan, plan_training`` keeps working
 unchanged.
 

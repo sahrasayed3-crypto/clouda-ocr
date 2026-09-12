@@ -8,9 +8,13 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 import pytest
 
+from clouda_contracts.checksums import sha256_file
 from clouda_data.factory.adapters import run_dir_to_dataset_manifest
 from clouda_data.factory.factory import generate_run
 from clouda_data.pretraining.manifest import read_manifest
+from clouda_data.quality.derived import write_clean_manifest
+from clouda_data.quality.gate import run_quality_gate
+from clouda_data.quality.models import GateVerdict
 from clouda_data.results.identity import ArtifactRef
 from clouda_data.results.ingest import training_run_to_model_record
 from clouda_data.results.models import (
@@ -22,7 +26,27 @@ from clouda_data.results.models import (
 from clouda_data.results.service import NewPrediction, ResultsService
 from clouda_lab import SelectionCriteria, StoredResultsAnalysisService
 from clouda_lab.training_orchestrator import TrainingOrchestrator
+from clouda_training.adapters.data_adapter import get_default_data_adapter_registry
+from clouda_training.adapters.registry import get_default_registry
 from clouda_training.experiments import load_experiment_config, run_experiment
+from clouda_training.hunyuan.data_adapter import HUNYUAN_DATA_ADAPTER_TYPE
+from clouda_training.hunyuan.descriptor import HUNYUAN_DESCRIPTOR
+from clouda_training.hunyuan.models import (
+    ARABIC_DOCUMENT_OCR_PROMPT,
+    HunyuanExportConfig,
+)
+from clouda_training.hunyuan.registration import register_hunyuan_adapters
+from clouda_training.planner.models import (
+    ExperimentProfile,
+    TrainingMode,
+    TrainingScale,
+)
+from clouda_training.planner.planner import (
+    build_experiment_plan,
+    generate_training_config,
+)
+from clouda_training.preflight.models import PreflightFinalStatus
+from clouda_training.preflight.orchestrator import run_preflight
 
 
 def _tiny_factory_dataset(tmp_path: Path) -> tuple[Path, dict, dict, str]:
@@ -49,7 +73,7 @@ def _tiny_factory_dataset(tmp_path: Path) -> tuple[Path, dict, dict, str]:
     run_dir = tmp_path / "factory-runs" / metadata["run_id"]
     manifest_path, report, manifest_sha = run_dir_to_dataset_manifest(
         run_dir,
-        tmp_path / "canonical.manifest.jsonl",
+        run_dir / "canonical.manifest.jsonl",
         source_id="clouda-backend-e2e",
     )
     assert report.samples == 1
@@ -60,7 +84,24 @@ def _tiny_factory_dataset(tmp_path: Path) -> tuple[Path, dict, dict, str]:
 def test_tiny_offline_backend_flow_from_factory_to_training_lineage(
     tmp_path: Path,
 ) -> None:
-    manifest_path, header, source_row, manifest_sha = _tiny_factory_dataset(tmp_path)
+    source_manifest, _, _, _ = _tiny_factory_dataset(tmp_path)
+    quality_scan = run_quality_gate(str(source_manifest), no_near_duplicates=True)
+    assert quality_scan.result.verdict is not GateVerdict.FAIL
+    assert not quality_scan.exclusions
+    quality_manifest = source_manifest.with_name("quality-clean.manifest.jsonl")
+    quality_result = write_clean_manifest(
+        source_manifest,
+        quality_scan.samples,
+        quality_scan.exclusions,
+        quality_scan.quarantine_ids,
+        quality_scan.run,
+        quality_manifest,
+    )
+    header, quality_rows = read_manifest(quality_manifest)
+    source_row = quality_rows[0]
+    manifest_sha = sha256_file(quality_manifest)
+    assert Path(quality_result["clean_manifest_path"]) == quality_manifest
+    assert header["source_manifest_sha256"] == quality_scan.manifest_sha256
     assert source_row["target_split"] == "train"
     page_id = source_row["sample_id"]
     raw_text = source_row["raw_text"]
@@ -155,14 +196,69 @@ def test_tiny_offline_backend_flow_from_factory_to_training_lineage(
     )
     loader = orchestrator.create_training_data_loader(prepared["training_data"])
     assert list(loader.iter_sample_ids(epoch=0)) == [page_id]
-    config = load_experiment_config(Path(prepared["experiment_config_path"]))
+
+    # The selected dataset feeds the canonical planner and preflight before
+    # the exact generated config is handed to the runtime.
+    base_config = load_experiment_config(Path(prepared["experiment_config_path"]))
+    profile = ExperimentProfile(
+        scale=TrainingScale.SMOKE,
+        sample_count=1,
+        epochs=1,
+        max_steps=4,
+        micro_batch=1,
+        gradient_accumulation=1,
+        world_size=1,
+        precision="float32",
+        training_mode=TrainingMode.FULL_FINETUNE,
+        checkpoint_interval=2,
+    )
+    plan = build_experiment_plan(base_config, profile, dataset_row_count=1)
+    assert (
+        plan.plan_id
+        == build_experiment_plan(base_config, profile, dataset_row_count=1).plan_id
+    )
+    config = generate_training_config(plan, base_config=base_config)
+    preflight = run_preflight(config, dataset_row_count=1, write_probe=False)
+    assert preflight.final_status() in {
+        PreflightFinalStatus.READY,
+        PreflightFinalStatus.READY_WITH_WARNINGS,
+    }, [blocker.reason for blocker in preflight.blockers]
+
+    # Registry selection and the Hunyuan data bridge operate on the same Lab
+    # derived rows without importing/downloading a real model stack.
+    register_hunyuan_adapters()
+    assert (
+        get_default_registry().get(HUNYUAN_DESCRIPTOR.adapter_type)
+        == HUNYUAN_DESCRIPTOR
+    )
+    hunyuan_data_adapter = get_default_data_adapter_registry().create(
+        HUNYUAN_DATA_ADAPTER_TYPE
+    )
+    _, selected_rows = read_manifest(Path(prepared["derived_manifest"]))
+    hunyuan_config = HunyuanExportConfig(
+        dataset_id=prepared["training_data"]["dataset_id"],
+        dataset_version=prepared["training_data"]["dataset_version"],
+        manifest_path=prepared["derived_manifest"],
+        manifest_hash=prepared["derived_manifest_sha256"],
+        split="train",
+        image_root=str(quality_manifest.parent.resolve()),
+        prompt_profile=ARABIC_DOCUMENT_OCR_PROMPT,
+    )
+    hunyuan_records = hunyuan_data_adapter.export(selected_rows, hunyuan_config)
+    assert hunyuan_data_adapter.validate(hunyuan_records)["valid"] is True
+    assert Path(hunyuan_records[0]["image_path"][0]).is_file()
+    assert (
+        hunyuan_data_adapter.last_lineage_report["manifest_sha256"]
+        == prepared["derived_manifest_sha256"]
+    )
+
     interrupted_loader = orchestrator.create_training_data_loader(
         prepared["training_data"]
     )
     with pytest.raises(KeyboardInterrupt):
         run_experiment(config, interrupt_at_step=3, data_loader=interrupted_loader)
     interrupted_path = next(
-        (tmp_path / "training-runs" / "clouda-backend-e2e").iterdir()
+        (tmp_path / "training-runs" / config.experiment.name).iterdir()
     )
     interrupted_state = json.loads(
         (interrupted_path / "checkpoints" / "step-00000002" / "state.json").read_text(
@@ -175,8 +271,8 @@ def test_tiny_offline_backend_flow_from_factory_to_training_lineage(
         interrupted_path.name, training_data=prepared["training_data"]
     )
     assert training_run["status"] == "COMPLETED"
-    assert prepared["experiment_config"]["runtime"]["dry_run"] is True
-    assert prepared["experiment_config"]["model"]["adapter_type"] == "mock"
+    assert config.runtime.dry_run is True
+    assert config.model.adapter_type == "mock"
     run_path = Path(training_run["path"])
     run_metadata = json.loads((run_path / "metadata.json").read_text(encoding="utf-8"))
     assert (

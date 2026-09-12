@@ -17,7 +17,7 @@ from clouda_data.quality.near_index import (
     candidate_pairs_with_summary,
     page_index_meta,
 )
-from conftest import (  # noqa: E402
+from tests.quality.conftest import (  # noqa: E402
     blank_like,
     brightness,
     make_row,

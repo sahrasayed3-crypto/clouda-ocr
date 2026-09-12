@@ -8,7 +8,7 @@ import pytest
 
 confirm = pytest.importorskip("clouda_data.quality.confirm")
 
-from conftest import make_row  # noqa: E402
+from tests.quality.conftest import make_row  # noqa: E402
 
 
 class TestClusteringDeterminism:

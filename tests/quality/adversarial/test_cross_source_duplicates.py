@@ -8,7 +8,7 @@ models stay well-formed.
 
 from __future__ import annotations
 
-from conftest import make_manifest, make_row
+from tests.quality.conftest import make_manifest, make_row
 from clouda_data.quality.gate import run_quality_gate
 
 

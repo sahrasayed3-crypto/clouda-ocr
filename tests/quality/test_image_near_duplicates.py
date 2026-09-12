@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import (
+from tests.quality.conftest import (
     add_noise,
     make_row,
     recompress,

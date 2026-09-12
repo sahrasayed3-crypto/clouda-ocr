@@ -6,7 +6,7 @@ import pytest
 
 cli = pytest.importorskip("clouda_data.quality.cli")
 
-from conftest import make_manifest, make_row  # noqa: E402
+from tests.quality.conftest import make_manifest, make_row  # noqa: E402
 
 
 class TestCli:

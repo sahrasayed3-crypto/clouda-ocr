@@ -12,7 +12,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from conftest import make_manifest, make_row
+from tests.quality.conftest import make_manifest, make_row
 from clouda_data.quality import cli
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]

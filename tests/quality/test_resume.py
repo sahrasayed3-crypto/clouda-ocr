@@ -6,7 +6,7 @@ import pytest
 
 run_state = pytest.importorskip("clouda_data.quality.run_state")
 
-from conftest import make_manifest, make_row  # noqa: E402
+from tests.quality.conftest import make_manifest, make_row  # noqa: E402
 
 
 class TestResume:

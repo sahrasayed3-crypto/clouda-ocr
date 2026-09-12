@@ -14,7 +14,7 @@ from clouda_data.quality.manifest_adapter import (
     run_identity,
     training_stream_contract,
 )
-from conftest import make_manifest, make_row
+from tests.quality.conftest import make_manifest, make_row
 
 
 class TestLoadManifest:

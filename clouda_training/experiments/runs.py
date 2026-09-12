@@ -12,6 +12,7 @@ from typing import Any
 
 import yaml
 from clouda_contracts.checksums import sha256_file
+from clouda_contracts.security import redact_text, redact_value
 
 from .checkpoints import CheckpointManager, list_checkpoints
 from .config import ExperimentConfig, config_from_dict
@@ -262,13 +263,16 @@ def _execute(
         )
         raise
     except Exception as exc:
+        safe_message = redact_text(str(exc))
         _status(
             run_path,
             RunStatus.FAILED,
             end_timestamp=utc_now(),
             error_type=type(exc).__name__,
-            error_message=str(exc),
+            error_message=safe_message,
         )
+        if safe_message != str(exc):
+            raise RuntimeError(safe_message) from exc
         raise
 
 
@@ -303,7 +307,10 @@ def run_experiment(
     if config.model.adapter_type not in {"mock", "dry_run", "torch"} and not (
         config.runtime.offline
     ):
-        raise RuntimeError("Real training adapters are not enabled; use mock/dry_run")
+        raise RuntimeError(
+            "Registered model adapters require runtime.offline=true in the "
+            "canonical runtime"
+        )
     experiment_root = config.runtime.output_root / config.experiment.name
     experiment_root.mkdir(parents=True, exist_ok=True)
     for _ in range(10):
@@ -348,7 +355,7 @@ def run_experiment(
         },
         "preprocessing_version": config.dataset.preprocessing_version,
         "code_version": commit,
-        "command_line": sys.argv,
+        "command_line": redact_value(sys.argv),
         "resume_source": config.checkpoint.resume_from,
         "tags": list(config.experiment.tags),
     }
@@ -364,13 +371,16 @@ def run_experiment(
         )
         atomic_write_json(run_path / "environment.json", capture_environment())
     except Exception as exc:
+        safe_message = redact_text(str(exc))
         _status(
             run_path,
             RunStatus.FAILED,
             end_timestamp=utc_now(),
             error_type=type(exc).__name__,
-            error_message=str(exc),
+            error_message=safe_message,
         )
+        if safe_message != str(exc):
+            raise RuntimeError(safe_message) from exc
         raise
     return _execute(
         run_path,

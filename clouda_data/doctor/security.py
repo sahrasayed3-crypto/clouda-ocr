@@ -17,6 +17,9 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
+from clouda_contracts.security import redact_text as _redact_text
+from clouda_contracts.security import redact_value as _redact_value
+
 # Names discovered by scanning os.environ/getenv usage across the canonical
 # repository (clouda_data, clouda_training, clouda_contracts, clouda_models,
 # pdfword, tools). Only SET/NOT-SET is ever reported for these.
@@ -88,25 +91,13 @@ def is_secret_var(name: str) -> bool:
 
 
 def redact_text(text: str, environment: Mapping[str, str] | None = None) -> str:
-    """Replace configured secret values without exposing them to callers."""
-    env = os.environ if environment is None else environment
-    redacted = text
-    for name, raw in env.items():
-        if not is_secret_var(name) or not isinstance(raw, str) or len(raw) < 4:
-            continue
-        redacted = redacted.replace(raw, "<redacted>")
-    return redacted
+    """Use the canonical contracts-layer diagnostic redaction policy."""
+    return _redact_text(text, environment)
 
 
 def redact_value(value: Any) -> Any:
-    """Recursively sanitize a JSON-compatible diagnostic payload."""
-    if isinstance(value, str):
-        return redact_text(value)
-    if isinstance(value, dict):
-        return {key: redact_value(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple, set)):
-        return [redact_value(item) for item in value]
-    return value
+    """Use the canonical contracts-layer recursive redaction policy."""
+    return _redact_value(value)
 
 
 def build_env_report(environment: dict[str, str] | None = None) -> list[dict[str, Any]]:

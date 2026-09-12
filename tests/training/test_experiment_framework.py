@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sys
 
 import pytest
 
@@ -442,6 +443,35 @@ def test_initialization_failure_leaves_a_failed_audit_record(
         run_experiment(config)
     failed = list_runs(tmp_path / "runs", status=RunStatus.FAILED)
     assert len(failed) == 1
+
+
+def test_run_audit_and_exception_redact_configured_secrets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    secret = "training-secret-12345"
+    monkeypatch.setenv("OPENROUTER_API_KEY", secret)
+    monkeypatch.setattr(sys, "argv", ["clouda", "training", "--token", secret])
+    config = load_experiment_config(
+        _config(
+            tmp_path / "experiment.json",
+            _manifest(tmp_path / "manifest.jsonl"),
+            tmp_path / "runs",
+        )
+    )
+
+    def fail_capture() -> dict:
+        raise RuntimeError(f"environment failure carried {secret}")
+
+    monkeypatch.setattr(runs_module, "capture_environment", fail_capture)
+    with pytest.raises(RuntimeError) as raised:
+        run_experiment(config)
+    failed = list_runs(tmp_path / "runs", status=RunStatus.FAILED)[0]
+    metadata = json.loads((failed.path / "metadata.json").read_text(encoding="utf-8"))
+    status = json.loads((failed.path / "status.json").read_text(encoding="utf-8"))
+    serialized = json.dumps({"metadata": metadata, "status": status})
+    assert secret not in serialized
+    assert secret not in str(raised.value)
+    assert "<redacted>" in serialized
 
 
 def test_checkpoint_retention_best_and_resume(tmp_path: Path) -> None:

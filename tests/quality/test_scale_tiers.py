@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from conftest import make_manifest, make_row, render_arabic_page
+from tests.quality.conftest import make_manifest, make_row, render_arabic_page
 
 
 def _synthetic_rows(n: int) -> list:

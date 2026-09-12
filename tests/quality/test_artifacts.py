@@ -11,7 +11,7 @@ from clouda_data.quality.config import HeuristicsPolicy
 from clouda_data.quality.models import IssueCode, IssueSeverity
 from clouda_data.pretraining.hashing import sha256_file
 
-from conftest import render_arabic_page, save_png
+from tests.quality.conftest import render_arabic_page, save_png
 
 from clouda_data.quality.artifacts import validate_artifact
 from clouda_data.pretraining.schema import DatasetSample

@@ -24,7 +24,7 @@ from clouda_data.quality.policy import (
     quarantine_sample_ids,
 )
 from clouda_data.training_data.input_contract import validate_canonical_manifest
-from conftest import make_manifest, make_row
+from tests.quality.conftest import make_manifest, make_row
 
 
 @dataclass(frozen=True)

@@ -7,9 +7,12 @@ end-to-end (gate -> derived clean manifest -> re-validation).
 
 from __future__ import annotations
 
-from conftest import make_manifest, make_row
+from PIL import Image
+
+from tests.quality.conftest import make_manifest, make_row, save_png
 from clouda_data.quality.derived import revalidate_derived, write_clean_manifest
 from clouda_data.quality.gate import run_quality_gate
+from clouda_data.pretraining.hashing import sha256_file
 
 
 def test_header_only_empty_manifest_gate_passes(tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -48,3 +51,25 @@ def test_unicode_sample_ids_end_to_end(tmp_path) -> None:  # type: ignore[no-unt
     )
     assert result["clean_row_count"] >= 1
     revalidate_derived(result["clean_manifest_path"], set(scan.excluded_ids))
+
+
+def test_gate_defaults_artifact_root_to_manifest_parent(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    root = tmp_path / "portable"
+    image_path = save_png(Image.new("RGB", (64, 64), "white"), root / "images/p.png")
+    manifest = make_manifest(
+        root,
+        [
+            make_row(
+                "smp_relative",
+                image_path="images/p.png",
+                text="نص عربي كاف للاختبار",
+                width=64,
+                height=64,
+                file_sha256=sha256_file(image_path),
+            )
+        ],
+    )
+
+    scan = run_quality_gate(str(manifest), no_near_duplicates=True)
+
+    assert not any("not found" in issue.message.lower() for issue in scan.result.issues)

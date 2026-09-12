@@ -6,7 +6,7 @@ import pytest
 
 derived = pytest.importorskip("clouda_data.quality.derived")
 
-from conftest import make_manifest, make_row  # noqa: E402
+from tests.quality.conftest import make_manifest, make_row  # noqa: E402
 
 
 class TestDerivedManifest:

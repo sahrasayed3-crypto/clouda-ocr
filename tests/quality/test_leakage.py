@@ -17,7 +17,7 @@ from clouda_contracts.protection import (  # noqa: E402
     string_marks_protected,
 )
 
-from conftest import make_row  # noqa: E402
+from tests.quality.conftest import make_row  # noqa: E402
 
 
 class TestAdversarialSplitMarkers:

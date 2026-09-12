@@ -13,8 +13,8 @@ WHY explicit registration (and no plugin discovery):
 Heavy dependencies (torch, transformers) are never imported here.  The
 ``factory`` argument is a lazy callable; concrete adapters import their
 heavyweight internals inside the factory body so that merely importing this
-module stays cheap.  Concrete adapters (hunyuanocr15_sft, qwen_vl_sft)
-register themselves inside their own packages in a later wave.
+module stays cheap. Concrete adapters (hunyuanocr15_sft, qwen_vl_sft)
+register explicitly through their package registration functions.
 """
 
 from __future__ import annotations
@@ -218,9 +218,9 @@ def get_default_registry() -> ModelAdapterRegistry:
     registry instance through every call site.
 
     The default registry starts EMPTY: concrete adapters
-    (``hunyuanocr15_sft``, ``qwen_vl_sft``) register themselves inside their
-    own packages in a later wave, which keeps this module importable without
-    torch/transformers and avoids import-order coupling.
+    (``hunyuanocr15_sft``, ``qwen_vl_sft``) are registered explicitly by the
+    preflight, CLI, or runtime boundary. This keeps this module importable
+    without torch/transformers and avoids import-order coupling.
     """
     global _DEFAULT_REGISTRY
     if _DEFAULT_REGISTRY is None:

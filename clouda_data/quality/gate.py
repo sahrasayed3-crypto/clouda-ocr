@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from clouda_data.pretraining.schema import DatasetSample
@@ -121,7 +122,7 @@ def run_quality_gate(
     manifest_sha = manifest_adapter.manifest_sha256(manifest_path)
     if max_samples > 0:
         samples = samples[:max_samples]
-    artifact_root = root or str(manifest_path)
+    artifact_root = root or str(Path(manifest_path).resolve().parent)
     identity = manifest_adapter.run_identity(
         manifest_sha,
         cfg.identity(),

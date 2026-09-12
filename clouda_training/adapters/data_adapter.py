@@ -238,9 +238,8 @@ def get_default_data_adapter_registry() -> DataAdapterRegistry:
     """Return the process-wide default :class:`DataAdapterRegistry`.
 
     Starts EMPTY for the same reason as the model-adapter default registry:
-    concrete data adapters register themselves inside their own packages in
-    a later wave, keeping this module free of heavy imports and of
-    import-order coupling.
+    concrete data adapters use their explicit package registration functions,
+    keeping this module free of heavy imports and import-order coupling.
     """
     global _DEFAULT_DATA_REGISTRY
     if _DEFAULT_DATA_REGISTRY is None:

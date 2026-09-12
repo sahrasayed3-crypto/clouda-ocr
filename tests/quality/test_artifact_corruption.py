@@ -6,7 +6,7 @@ import pytest
 
 artifacts = pytest.importorskip("clouda_data.quality.artifacts")
 
-from conftest import make_row, render_arabic_page, save_png  # noqa: E402
+from tests.quality.conftest import make_row, render_arabic_page, save_png  # noqa: E402
 
 
 class TestArtifactCorruption:

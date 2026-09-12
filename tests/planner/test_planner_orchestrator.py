@@ -19,7 +19,6 @@ from clouda_training.experiments.config import (
     TrainingSection,
 )
 from clouda_training.planner.models import (
-    EstimateConfidence,
     EstimateSource,
     HardwareEnvelope,
     HardwareFit,

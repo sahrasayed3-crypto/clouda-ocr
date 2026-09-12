@@ -5,8 +5,7 @@ from __future__ import annotations
 from clouda_data.pretraining.normalize import (
     NormalizationPolicy,
     normalize_text,
-)  # noqa: E402
-
+)
 from clouda_data.quality import text_dup
 
 

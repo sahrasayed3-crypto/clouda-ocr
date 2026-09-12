@@ -22,12 +22,18 @@ def test_registered_adapter_capabilities_are_honest_and_path_free(tmp_path: Path
     hunyuan = models["hunyuanocr15_sft"]
     assert hunyuan["code_integration"] == "PASS"
     assert hunyuan["upstream_repository"] == "Tencent-Hunyuan/HunyuanOCR"
-    assert hunyuan["weights"] == "NOT INSTALLED"
-    assert hunyuan["processor"] == "NOT INSTALLED"
+    assert hunyuan["asset_status"] == "NOT CONFIGURED"
+    assert hunyuan["available"] is False
+    assert "installed" not in hunyuan
+    assert "weights" not in hunyuan
+    assert "tokenizer" not in hunyuan
+    assert "processor" not in hunyuan
+    assert hunyuan["dependency_check"]["status"] in {"PASS", "FAIL"}
     assert hunyuan["gpu_validation"] == "DEFERRED"
     assert hunyuan["real_training"] == "NOT VALIDATED"
     assert hunyuan["capabilities"]["supports_resume"] is True
     assert str(tmp_path) not in repr(models)
+    assert "[REDACTED]" not in repr(models)
 
 
 def test_plan_identity_is_deterministic_and_config_is_inspectable(tmp_path: Path):
@@ -35,7 +41,6 @@ def test_plan_identity_is_deterministic_and_config_is_inspectable(tmp_path: Path
     payload = {
         "experiment_name": "safe-plan",
         "adapter_type": "hunyuanocr15_sft",
-        "model_id": "Tencent-Hunyuan/HunyuanOCR-1.5",
         "dataset_id": "safe-set",
         "precision": "bf16",
         "seed": 42,
@@ -53,6 +58,7 @@ def test_plan_identity_is_deterministic_and_config_is_inspectable(tmp_path: Path
     assert first["plan_id"] == second["plan_id"]
     assert first["config_id"] == second["config_id"]
     assert first["dataset_id"] == "safe-set@v1"
+    assert first["model_id"] == "Tencent-Hunyuan/HunyuanOCR"
     assert first["expected_runtime_backend"] == "cuda"
     assert first["config"]["runtime"]["offline"] is True
     assert first["config"]["runtime"]["dry_run"] is True
@@ -67,7 +73,6 @@ def test_preflight_preserves_canonical_sections_and_no_gpu_failure(tmp_path: Pat
         {
             "experiment_name": "gpu-inspection",
             "adapter_type": "qwen_vl_sft",
-            "model_id": "Qwen/Qwen3-VL",
             "dataset_id": "safe-set",
             "precision": "bf16",
             "max_steps": 2,
@@ -105,6 +110,50 @@ def test_plan_rejects_unknown_adapter_and_protected_dataset(tmp_path: Path):
             pass
         else:
             raise AssertionError(f"unsafe plan accepted: {payload}")
+
+
+def test_plan_rejects_browser_supplied_model_identity(tmp_path: Path):
+    service = _service(tmp_path)
+
+    with pytest.raises(ValueError, match="controlled by the registered adapter"):
+        service.create_plan(
+            {
+                "adapter_type": "hunyuanocr15_sft",
+                "model_id": "C:/private/operator/model",
+                "dataset_id": "safe-set",
+            }
+        )
+
+
+def test_plan_records_canonical_detected_no_gpu_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    class NoGpuSection:
+        @staticmethod
+        def to_dict():
+            return {
+                "checks": [
+                    {
+                        "id": "gpu.cuda",
+                        "details": {"cuda_available": False},
+                        "message": "No CUDA device detected",
+                    }
+                ]
+            }
+
+    monkeypatch.setattr("clouda_data.doctor.training.check_gpu", lambda: NoGpuSection())
+    service = _service(tmp_path)
+
+    plan = service.create_plan(
+        {
+            "adapter_type": "hunyuanocr15_sft",
+            "dataset_id": "safe-set",
+            "max_steps": 2,
+        }
+    )
+
+    assert plan["plan"]["hardware"]["gpu_count"] == 0
+    assert plan["plan"]["hardware"]["per_gpu_vram_gb"] is None
 
 
 def test_runs_checkpoints_and_resume_validation_use_canonical_framework(

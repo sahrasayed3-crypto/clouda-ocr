@@ -11,6 +11,7 @@ def _write_dataset(
     version: str,
     protected: bool = False,
     rows: int = 3,
+    adapter_type: str = "hunyuanocr15_sft",
 ) -> None:
     training = repo / "configs" / "training"
     training.mkdir(parents=True, exist_ok=True)
@@ -40,7 +41,10 @@ def _write_dataset(
     config = {
         "schema_version": 1,
         "experiment": {"name": f"inspect-{dataset_id}"},
-        "model": {"model_id": "mock/clouda", "adapter_type": "mock"},
+        "model": {
+            "model_id": "Tencent-Hunyuan/HunyuanOCR",
+            "adapter_type": adapter_type,
+        },
         "dataset": {
             "dataset_id": dataset_id,
             "dataset_version": version,
@@ -167,6 +171,30 @@ def test_catalog_includes_results_store_dataset_metadata_without_enabling_traini
     assert result["identity"] == "results-only@r1"
     assert result["safety"]["training_allowed"] is False
     assert result["loader"]["compatible"] is False
+    assert "Results Store" not in result["lineage"]
+    assert result["lineage"] == ["results-only@r1"]
+
+
+def test_catalog_excludes_mock_runtime_configs_from_visible_datasets(
+    tmp_path: Path,
+):
+    from clouda_lab.dashboard.catalog import DatasetCatalog
+    from clouda_lab.dashboard.settings import LabSettings
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "runs").mkdir()
+    (repo / "benchmarks").mkdir()
+    _write_dataset(
+        repo,
+        dataset_id="mock-dashboard-fixture",
+        version="fixture-v1",
+        adapter_type="mock",
+    )
+
+    catalog = DatasetCatalog(LabSettings.from_repo(repo))
+
+    assert catalog.list_datasets() == []
 
 
 def test_dataset_source_registry_is_read_only_and_does_not_expose_download_targets(

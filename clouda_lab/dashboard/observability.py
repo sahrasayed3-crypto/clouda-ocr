@@ -224,6 +224,7 @@ class ObservabilityService:
     def overview(self) -> dict[str, Any]:
         datasets = self.catalog.list_datasets()
         runs = self.training.list_runs()
+        models = self.training.list_models()
         statuses: dict[str, int] = {}
         for run in runs:
             status = str(run.get("status", "UNKNOWN"))
@@ -233,7 +234,12 @@ class ObservabilityService:
         doctor = self.latest_doctor()
         return {
             "schema_version": "clouda.lab.overview.v1",
-            "repository": "AVAILABLE",
+            "repository": (
+                "AVAILABLE"
+                if self.settings.repo_root.is_dir()
+                and (self.settings.repo_root / "pyproject.toml").is_file()
+                else "UNAVAILABLE"
+            ),
             "datasets": len(datasets),
             "derived_datasets": sum(
                 bool(item.get("parent_datasets")) for item in datasets
@@ -246,12 +252,16 @@ class ObservabilityService:
                 }
             ),
             "runs": statuses,
-            "available_model_adapters": sum(
-                item["available"] for item in self.training.list_models()
-            ),
+            "available_model_adapters": sum(bool(item["available"]) for item in models),
             "gpu": hardware["gpu"]["status"],
             "training_readiness": (
-                "DEFERRED" if not hardware["gpu"]["available"] else "READY"
+                "READY"
+                if hardware["gpu"]["available"]
+                and any(item["available"] for item in models)
+                and any(
+                    item.get("safety", {}).get("training_allowed") for item in datasets
+                )
+                else "DEFERRED"
             ),
             "doctor": doctor.get("overall_status", doctor.get("status", "NOT RUN")),
             "benchmark": {

@@ -51,8 +51,6 @@ def test_client_covers_required_pages_and_honest_disabled_actions():
     for phrase in (
         "Protected Holdout",
         "Training Allowed",
-        "Model weights not installed",
-        "No compatible GPU is currently available",
         "Start Real Training",
         "Resume Blocked",
         "Run Quality Check",
@@ -67,6 +65,16 @@ def test_client_covers_required_pages_and_honest_disabled_actions():
     assert 'querySelector("[data-runtime-loading]")?.remove()' in script
     assert "new AbortController()" in script
     assert "requestController?.abort()" in script
+    assert '["Raw Source", "Training Dataset"]' not in script
+    assert '"Checkpoint", "Resume"' not in script
+    assert 'value: "clouda-lab-plan"' not in script
+    assert 'value: "clean-derived"' not in script
+    assert '"Model weights not installed"' not in script
+    assert 'title: "No compatible GPU is currently available"' not in script
+    assert 'text: "GPU unavailable is a valid operating state.' not in script
+    assert "No datasets found." in script
+    assert "No training runs recorded." in script
+    assert "No benchmark result is available for this filter." in script
 
 
 def test_styles_define_statuses_tables_lineage_and_responsive_layout():

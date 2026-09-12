@@ -107,6 +107,7 @@ def test_doctor_hardware_and_overview_preserve_canonical_status(tmp_path: Path):
 
     overview = service.overview()
     assert overview["datasets"] == 2
+    assert overview["repository"] == "UNAVAILABLE"
     assert overview["gpu"] in {"UNAVAILABLE", "AVAILABLE", "DEFERRED"}
     assert overview["offline"] == "ACTIVE"
     assert overview["doctor"] == report["overall_status"]

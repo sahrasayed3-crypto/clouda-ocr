@@ -50,7 +50,7 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .status-pass, .status-ready, .status-available, .status-completed, .status-active { color: #8cf1b3; border-color: #2c7150; background: #123222; }
 .status-warn, .status-deferred, .status-running, .status-partial, .status-ready-with-warnings { color: #ffe083; border-color: #735e28; background: #332b15; }
 .status-fail, .status-unavailable, .status-interrupted, .status-blocked, .status-not-ready, .status-not-validated, .status-not-installed { color: #ff9ca6; border-color: #7b343d; background: #35191e; }
-.status-info, .status-not-run, .status-skip { color: #9fc7ff; border-color: #345b89; background: #162b43; }
+.status-info, .status-not-run, .status-skip, .status-declared, .status-not-declared { color: #9fc7ff; border-color: #345b89; background: #162b43; }
 .table-wrap { width: 100%; overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
 table { width: 100%; border-collapse: collapse; min-width: 680px; font-size: 12px; }
 th { padding: 9px 11px; color: var(--muted); background: #0d141c; text-align: left; font-size: 10px; text-transform: uppercase; }

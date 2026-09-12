@@ -64,6 +64,8 @@ class DatasetCatalog:
                 config = load_experiment_config(path)
             except Exception:
                 continue
+            if config.model.adapter_type in {"mock", "dry_run", "torch"}:
+                continue
             manifest = config.dataset.manifest_path.resolve(strict=False)
             if not manifest.is_file():
                 continue
@@ -132,12 +134,29 @@ class DatasetCatalog:
     def _results_detail(self, payload: dict[str, Any]) -> dict[str, Any]:
         dataset_id = str(payload["dataset_id"])
         version = str(payload.get("version", "1"))
+        identity = f"{dataset_id}@{version}"
         metadata = payload.get("metadata") or {}
         protected = record_is_protected(payload) or record_is_protected(metadata)
+        recorded_lineage = metadata.get("lineage")
+        lineage = (
+            [str(item) for item in recorded_lineage if item]
+            if isinstance(recorded_lineage, list)
+            else []
+        )
+        lineage.extend(
+            str(item)
+            for item in metadata.get("parent_datasets", [])
+            if item and str(item) not in lineage
+        )
+        source_id = metadata.get("source_id")
+        if source_id and str(source_id) not in lineage:
+            lineage.insert(0, str(source_id))
+        if identity not in lineage:
+            lineage.append(identity)
         return browser_safe(
             {
                 "dataset_id": dataset_id,
-                "identity": f"{dataset_id}@{version}",
+                "identity": identity,
                 "version": version,
                 "name": payload.get("name"),
                 "description": payload.get("description"),
@@ -165,7 +184,7 @@ class DatasetCatalog:
                     "compatible": False,
                     "reason": "Results Store metadata is not a training manifest",
                 },
-                "lineage": [f"{dataset_id}@{version}", "Results Store"],
+                "lineage": lineage,
                 "parent_datasets": metadata.get("parent_datasets", []),
             },
             (self.settings.repo_root,),

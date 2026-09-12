@@ -41,7 +41,6 @@ class DeriveRequest(StrictRequest):
 class PlanRequest(StrictRequest):
     experiment_name: str | None = None
     adapter_type: str
-    model_id: str | None = None
     dataset_id: str
     precision: str = "bf16"
     seed: int = 20260723
@@ -150,6 +149,7 @@ def create_app(settings: LabSettings | None = None) -> FastAPI:
             "automatic_model_download": False,
             "automatic_dataset_download": False,
             "remote_provider_calls": False,
+            "binding": "loopback-only" if resolved.local_only else "configured",
         }
 
     @app.get("/api/lab/session")

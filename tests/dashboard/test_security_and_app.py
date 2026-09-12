@@ -37,6 +37,7 @@ def test_lab_shell_and_offline_status_are_local_and_self_contained(tmp_path: Pat
         "automatic_model_download": False,
         "automatic_dataset_download": False,
         "remote_provider_calls": False,
+        "binding": "loopback-only",
     }
 
 
@@ -159,7 +160,6 @@ def test_domain_api_routes_use_real_services_and_protect_actions(tmp_path: Path)
     body = {
         "experiment_name": "api-plan",
         "adapter_type": "hunyuanocr15_sft",
-        "model_id": "Tencent-Hunyuan/HunyuanOCR-1.5",
         "dataset_id": "safe-set",
         "precision": "bf16",
         "max_steps": 2,
@@ -185,3 +185,26 @@ def test_domain_api_routes_use_real_services_and_protect_actions(tmp_path: Path)
         ).status_code
         == 200
     )
+
+
+def test_api_rejects_browser_supplied_model_paths(tmp_path: Path):
+    from tests.dashboard.test_catalog import _write_dataset
+
+    from clouda_lab.dashboard.app import create_app
+
+    settings = _settings(tmp_path)
+    _write_dataset(settings.repo_root, dataset_id="safe-set", version="v1")
+    client = TestClient(create_app(settings))
+    token = client.get("/api/lab/session").json()["action_token"]
+
+    response = client.post(
+        "/api/lab/plans",
+        json={
+            "adapter_type": "hunyuanocr15_sft",
+            "model_id": "C:/private/operator/model",
+            "dataset_id": "safe-set",
+        },
+        headers={"X-Clouda-Lab-Action": token},
+    )
+
+    assert response.status_code == 422

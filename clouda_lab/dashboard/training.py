@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import importlib.util
 import json
 import re
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Mapping
 
 import yaml
@@ -61,27 +61,17 @@ class TrainingService:
         return get_default_registry()
 
     def list_models(self) -> list[dict[str, Any]]:
+        from clouda_training.preflight.checks_system import check_dependencies
+
         registry = self._registry()
         models: list[dict[str, Any]] = []
         for adapter_id in registry.list_adapters():
             descriptor = registry.get(adapter_id)
-            dependencies = []
-            for requirement in descriptor.required_optional_dependencies:
-                module = re.split(r"[<>=!~]", requirement, maxsplit=1)[0]
-                if module == "trust_remote_code":
-                    available: bool | None = None
-                else:
-                    available = (
-                        importlib.util.find_spec(module.replace("-", "_")) is not None
-                    )
-                dependencies.append(
-                    {"requirement": requirement, "available": available}
-                )
-            missing = [
-                item["requirement"]
-                for item in dependencies
-                if item["available"] is False
-            ]
+            dependency_check = check_dependencies(
+                SimpleNamespace(model=SimpleNamespace(adapter_type=adapter_id))
+            ).to_dict()
+            dependencies_installed = dependency_check["status"] == "PASS"
+            asset_status = "NOT CONFIGURED"
             models.append(
                 {
                     "name": descriptor.model_family,
@@ -90,20 +80,18 @@ class TrainingService:
                     "adapter_id": adapter_id,
                     "adapter_version": descriptor.adapter_version,
                     "code_integration": "PASS",
-                    "installed": not missing,
-                    "available": not missing,
-                    "weights": "NOT INSTALLED",
-                    "tokenizer": "NOT INSTALLED",
-                    "processor": "NOT INSTALLED",
+                    "dependencies_installed": dependencies_installed,
+                    "dependency_check": dependency_check,
+                    "asset_status": asset_status,
+                    "available": False,
                     "training_capability": any(
                         (
                             descriptor.capabilities.supports_full_finetune,
                             descriptor.capabilities.supports_selective_finetune,
                         )
                     ),
-                    "inference_capability": False,
                     "cpu_compatibility": descriptor.capabilities.supports_cpu_smoke,
-                    "gpu_requirement": True,
+                    "gpu_requirement": "cuda" in descriptor.supported_devices,
                     "gpu_validation": (
                         "PASS" if descriptor.capabilities.gpu_validated else "DEFERRED"
                     ),
@@ -114,16 +102,43 @@ class TrainingService:
                     ),
                     "supported_precision": list(descriptor.supported_precision),
                     "supported_devices": list(descriptor.supported_devices),
-                    "dependencies": dependencies,
+                    "dependencies": list(descriptor.required_optional_dependencies),
                     "capabilities": descriptor.capabilities.summary(),
                     "availability_reason": (
-                        f"Missing optional dependencies: {', '.join(missing)}"
-                        if missing
-                        else "Code dependencies available; local model assets are not configured"
+                        f"{dependency_check['detail']}; no canonical local model "
+                        "asset is configured"
                     ),
                 }
             )
-        return models
+        return browser_safe(models, (self.settings.repo_root,))
+
+    @staticmethod
+    def _detected_hardware() -> HardwareEnvelope:
+        from clouda_data.doctor.training import check_gpu
+
+        section = check_gpu().to_dict()
+        cuda = next(
+            (
+                check
+                for check in section.get("checks", [])
+                if check.get("id") == "gpu.cuda"
+            ),
+            None,
+        )
+        details = dict(cuda.get("details", {})) if cuda else {}
+        available = bool(details.get("cuda_available", False))
+        devices = details.get("devices", []) if available else []
+        gpu_count = int(details.get("device_count") or len(devices)) if available else 0
+        memory_values = [
+            float(device["total_memory_gb"])
+            for device in devices
+            if device.get("total_memory_gb") is not None
+        ]
+        return HardwareEnvelope(
+            gpu_count=gpu_count,
+            per_gpu_vram_gb=min(memory_values) if memory_values else None,
+            storage_kind=StorageKind.UNKNOWN,
+        )
 
     def planner_options(self) -> dict[str, Any]:
         datasets = self.catalog.list_datasets()
@@ -167,9 +182,12 @@ class TrainingService:
         experiment_name = str(payload.get("experiment_name") or f"lab-{dataset_id}")
         if not _EXPERIMENT.fullmatch(experiment_name):
             raise ValueError("invalid experiment name")
-        model_id = str(payload.get("model_id") or descriptor.upstream_repository)
-        if not model_id or len(model_id) > 512 or ".." in model_id:
-            raise ValueError("invalid model identity")
+        requested_model_id = payload.get("model_id")
+        if requested_model_id not in (None, "", descriptor.upstream_repository):
+            raise ValueError("model identity is controlled by the registered adapter")
+        model_id = descriptor.upstream_repository
+        if not model_id:
+            raise ValueError("registered adapter has no model identity")
         precision = str(payload.get("precision", "bf16"))
         if precision not in descriptor.supported_precision:
             raise ValueError(
@@ -237,11 +255,7 @@ class TrainingService:
         plan = build_experiment_plan(
             config,
             profile,
-            hardware=HardwareEnvelope(
-                gpu_count=1,
-                per_gpu_vram_gb=None,
-                storage_kind=StorageKind.UNKNOWN,
-            ),
+            hardware=self._detected_hardware(),
             parameter_metadata=ParameterMetadata(),
             dataset_row_count=int(dataset["row_count"]),
         )

@@ -35,6 +35,13 @@ def _make_hunyuan_adapter(**kwargs: Any) -> Any:
     """Lazy model-adapter factory: heavy imports stay inside the adapter."""
     from clouda_training.hunyuan.adapter import HunyuanOCR15SFTAdapter
 
+    config = kwargs.pop("config", None)
+    if config is not None:
+        kwargs.setdefault("local_model_path", config.model.model_id)
+        kwargs.setdefault(
+            "gradient_checkpointing", config.training.gradient_checkpointing
+        )
+        kwargs.setdefault("trust_remote_code", config.model.trust_remote_code)
     return HunyuanOCR15SFTAdapter(**kwargs)
 
 

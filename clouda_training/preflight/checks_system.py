@@ -30,10 +30,10 @@ download, never mutate datasets):
   ``output_root`` equals the dataset manifest's parent directory (protected
   input overlap); reports free disk space via ``shutil.disk_usage`` (UNKNOWN
   is reported, never fabricated).
-* :func:`check_capability_hooks` — returns the three UNAVAILABLE checks
-  verbatim (dataset quality gate, training data loader, environment doctor
-  are not merged on this branch). Status UNAVAILABLE, ``blocker=False`` —
-  warnings only, never blocking.
+* :func:`check_capability_hooks` — detects the integrated Dataset Quality and
+  Training Data Loader entry points without running them, and delegates broad
+  project/environment diagnosis to Environment Doctor instead of duplicating
+  it.
 
 No torch/transformers import happens at module import time.
 """
@@ -67,28 +67,6 @@ __all__ = [
 
 #: Adapter types that carry no model-specific descriptor semantics.
 NON_MODEL_ADAPTER_TYPES = ("mock", "torch")
-
-#: Capability hooks NOT merged on this branch (verbatim UNAVAILABLE checks).
-CAPABILITY_HOOK_CHECKS: tuple[PreflightCheck, ...] = (
-    PreflightCheck(
-        name="DATASET QUALITY CHECK",
-        status=PreflightStatus.UNAVAILABLE,
-        detail="UNAVAILABLE",
-        blocker=False,
-    ),
-    PreflightCheck(
-        name="TRAINING DATA LOADER CHECK",
-        status=PreflightStatus.UNAVAILABLE,
-        detail="TRAINING DATA LOADER CHECK: CAPABILITY NOT AVAILABLE ON THIS BRANCH",
-        blocker=False,
-    ),
-    PreflightCheck(
-        name="ENVIRONMENT DOCTOR",
-        status=PreflightStatus.UNAVAILABLE,
-        detail="UNAVAILABLE",
-        blocker=False,
-    ),
-)
 
 _PROBE_PREFIX = ".preflight_probe_"
 
@@ -610,10 +588,65 @@ def check_output_storage(config: Any) -> PreflightCheck:
 
 
 def check_capability_hooks() -> tuple[PreflightCheck, ...]:
-    """Report the three not-merged capability hooks, verbatim.
+    """Detect integrated capabilities without duplicating their validation."""
 
-    Status UNAVAILABLE with ``blocker=False`` — warnings only, never blocking
-    (dataset quality gate, training data loader, and environment doctor are
-    not on this branch; they must not be reimplemented here).
-    """
-    return CAPABILITY_HOOK_CHECKS
+    checks: list[PreflightCheck] = []
+    for name, module_name, symbol in (
+        (
+            "DATASET QUALITY CHECK",
+            "clouda_data.quality.gate",
+            "run_quality_gate",
+        ),
+        (
+            "TRAINING DATA LOADER CHECK",
+            "clouda_data.training_data.loader",
+            "StreamingTrainingDataLoader",
+        ),
+    ):
+        try:
+            module = importlib.import_module(module_name)
+            getattr(module, symbol)
+        except (ImportError, AttributeError) as exc:
+            checks.append(
+                PreflightCheck(
+                    name=name,
+                    status=PreflightStatus.UNAVAILABLE,
+                    detail=f"capability unavailable: {exc}",
+                    blocker=False,
+                )
+            )
+        else:
+            checks.append(
+                PreflightCheck(
+                    name=name,
+                    status=PreflightStatus.PASS,
+                    detail=(
+                        f"capability available via {module_name}.{symbol}; "
+                        "run-specific manifest checks remain in this preflight"
+                    ),
+                    blocker=False,
+                )
+            )
+
+    try:
+        doctor = importlib.import_module("clouda_data.doctor")
+        getattr(doctor, "collect_report")
+    except (ImportError, AttributeError) as exc:
+        doctor_check = PreflightCheck(
+            name="ENVIRONMENT DOCTOR",
+            status=PreflightStatus.UNAVAILABLE,
+            detail=f"Environment Doctor unavailable: {exc}",
+            blocker=False,
+        )
+    else:
+        doctor_check = PreflightCheck(
+            name="ENVIRONMENT DOCTOR",
+            status=PreflightStatus.SKIP,
+            detail=(
+                "Environment Doctor is available for project/environment "
+                "diagnosis; preflight does not duplicate or invoke it"
+            ),
+            blocker=False,
+        )
+    checks.append(doctor_check)
+    return tuple(checks)

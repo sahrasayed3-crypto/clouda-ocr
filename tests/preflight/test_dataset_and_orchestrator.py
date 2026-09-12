@@ -392,7 +392,9 @@ def test_orchestrator_not_ready_never_runs_training(tmp_path: Path) -> None:
     assert not (tmp_path / "out" / "logs").exists()
 
 
-def test_orchestrator_unavailable_hooks_warn_not_block(tmp_path: Path) -> None:
+def test_orchestrator_integrated_hooks_are_truthful_and_nonblocking(
+    tmp_path: Path,
+) -> None:
     manifest = write_manifest(tmp_path, clean_rows())
     config = make_config(
         dataset=DatasetSection(
@@ -404,11 +406,22 @@ def test_orchestrator_unavailable_hooks_warn_not_block(tmp_path: Path) -> None:
         runtime=RuntimeSection(output_root=tmp_path / "out"),
     )
     report = run_preflight(config, dataset_row_count=2)
-    unavailable = [
-        c for c in report.all_checks() if c.status is PreflightStatus.UNAVAILABLE
+    capability_checks = [
+        c
+        for c in report.all_checks()
+        if c.name
+        in {
+            "DATASET QUALITY CHECK",
+            "TRAINING DATA LOADER CHECK",
+            "ENVIRONMENT DOCTOR",
+        }
     ]
-    assert len(unavailable) == 3  # quality gate, data loader, env doctor
-    # and they are warnings, not blockers
+    assert [check.status for check in capability_checks] == [
+        PreflightStatus.PASS,
+        PreflightStatus.PASS,
+        PreflightStatus.SKIP,
+    ]
+    assert all(not check.blocker for check in capability_checks)
     assert report.final_status() is not PreflightFinalStatus.NOT_READY
 
 

@@ -200,18 +200,25 @@ def _execute(
     manager = CheckpointManager(run_path, run_path.name, config)
     metric_logger = MetricLogger(run_path / "metrics.jsonl", run_path.name)
     trainer: Any
-    if config.model.adapter_type == "torch":
+    if config.model.adapter_type not in {"mock", "dry_run"}:
         if not torch_available():
             raise ImportError(
-                "adapter_type='torch' requires PyTorch. Install with: "
+                f"adapter_type={config.model.adapter_type!r} requires PyTorch. "
+                "Install with: "
                 "pip install clouda-pdf[training-torch]  (or: pip install torch)"
             )
         from clouda_training.runtime.torch_backend import TorchTrainerBackend
 
+        adapter = (
+            None
+            if config.model.adapter_type == "torch"
+            else _create_registered_model_adapter(config)
+        )
         trainer = TorchTrainerBackend(
             config,
             metric_logger,
             manager,
+            adapter=adapter,
             fail_at_step=fail_at_step,
             interrupt_at_step=interrupt_at_step,
         )
@@ -278,10 +285,24 @@ def run_experiment(
             raise RuntimeError(
                 "Real torch training requested but PyTorch is not installed"
             )
-    elif not config.runtime.dry_run or config.model.adapter_type not in {
-        "mock",
-        "dry_run",
-    }:
+    elif config.model.adapter_type in {"mock", "dry_run"}:
+        if not config.runtime.dry_run:
+            raise RuntimeError("Mock adapters require runtime.dry_run=true")
+    else:
+        _validate_registered_model_adapter(config)
+        if config.runtime.dry_run:
+            raise RuntimeError(
+                "Registered model adapters require runtime.dry_run=false; "
+                "use preflight before execution"
+            )
+        if not torch_available():
+            raise RuntimeError(
+                f"Real adapter {config.model.adapter_type!r} requires PyTorch"
+            )
+
+    if config.model.adapter_type not in {"mock", "dry_run", "torch"} and not (
+        config.runtime.offline
+    ):
         raise RuntimeError("Real training adapters are not enabled; use mock/dry_run")
     experiment_root = config.runtime.output_root / config.experiment.name
     experiment_root.mkdir(parents=True, exist_ok=True)
@@ -424,6 +445,47 @@ def _training_data_identity(data_loader: Any) -> dict[str, Any]:
         "shard_index_sha256": sha256_file(data_loader.index_path),
         "shard_ids": [entry.shard_id for entry in data_loader.index.shards],
     }
+
+
+def _registered_model_registry() -> Any:
+    """Return the canonical registry after lazy built-in registration."""
+
+    from clouda_training.adapters.registry import get_default_registry
+    from clouda_training.hunyuan.registration import register_hunyuan_adapters
+    from clouda_training.qwen.registration import register_qwen_adapters
+
+    register_hunyuan_adapters()
+    register_qwen_adapters()
+    return get_default_registry()
+
+
+def _validate_registered_model_adapter(config: ExperimentConfig) -> None:
+    descriptor = _registered_model_registry().get(config.model.adapter_type)
+    if descriptor.supported_devices and config.runtime.device not in {
+        str(device) for device in descriptor.supported_devices
+    }:
+        raise RuntimeError(
+            f"adapter {config.model.adapter_type!r} does not support device "
+            f"{config.runtime.device!r}"
+        )
+    precision_aliases = {
+        "float32": {"float32", "fp32"},
+        "fp32": {"float32", "fp32"},
+        "float16": {"float16", "fp16"},
+        "fp16": {"float16", "fp16"},
+    }
+    accepted = precision_aliases.get(config.model.precision, {config.model.precision})
+    supported = {str(item) for item in descriptor.supported_precision}
+    if supported and accepted.isdisjoint(supported):
+        raise RuntimeError(
+            f"adapter {config.model.adapter_type!r} does not support precision "
+            f"{config.model.precision!r}"
+        )
+
+
+def _create_registered_model_adapter(config: ExperimentConfig) -> Any:
+    _validate_registered_model_adapter(config)
+    return _registered_model_registry().create(config.model.adapter_type, config=config)
 
 
 def list_runs(

@@ -435,7 +435,7 @@ class TestCheckOutputStorage:
 
 
 class TestCapabilityHooks:
-    def test_three_unavailable_checks_verbatim(self) -> None:
+    def test_integrated_capability_hooks_report_current_stack(self) -> None:
         checks = check_capability_hooks()
         assert len(checks) == 3
         names = [c.name for c in checks]
@@ -444,16 +444,15 @@ class TestCapabilityHooks:
             "TRAINING DATA LOADER CHECK",
             "ENVIRONMENT DOCTOR",
         ]
-        details = [c.detail for c in checks]
-        assert "DATASET QUALITY CHECK: UNAVAILABLE" in details[0] or details[0] == (
-            "UNAVAILABLE"
-        )
-        assert details[1] == (
-            "TRAINING DATA LOADER CHECK: CAPABILITY NOT AVAILABLE ON THIS BRANCH"
-        )
-        assert details[2] == "UNAVAILABLE"
+        assert [c.status for c in checks] == [
+            PreflightStatus.PASS,
+            PreflightStatus.PASS,
+            PreflightStatus.SKIP,
+        ]
+        assert "available" in checks[0].detail
+        assert "available" in checks[1].detail
+        assert "Environment Doctor" in checks[2].detail
 
-    def test_unavailable_never_blocks(self) -> None:
+    def test_integrated_capability_hooks_never_duplicate_run_validation(self) -> None:
         for check in check_capability_hooks():
-            assert check.status is PreflightStatus.UNAVAILABLE
             assert check.blocker is False

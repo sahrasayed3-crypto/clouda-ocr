@@ -34,6 +34,12 @@ def _make_qwen_adapter(**kwargs: Any) -> Any:
     """Lazy model-adapter factory: heavy imports stay inside QwenVLSFTAdapter."""
     from clouda_training.qwen.adapter import QwenVLSFTAdapter
 
+    config = kwargs.pop("config", None)
+    if config is not None:
+        kwargs.setdefault("local_model_path", config.model.model_id)
+        kwargs.setdefault(
+            "gradient_checkpointing", config.training.gradient_checkpointing
+        )
     return QwenVLSFTAdapter(**kwargs)
 
 

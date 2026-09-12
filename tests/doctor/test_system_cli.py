@@ -108,7 +108,7 @@ def test_git_clean_vs_dirty(tmp_path):
 # ---------------------------------------------------------------------------
 
 SECRET_TEST_ENV = {
-    "OPENROUTER_API_KEY": "sk-super-secret-value-123",
+    "OPENROUTER_API_KEY": "doctor-test-super-secret-value-123",
     "WORKER_API_KEY": "hunter2-password",
     "REDIS_URL": "redis://user:pass@host:6379",
     "CLOUDA_PROJECT_ROOT": "F:/path/is/not/secret",
@@ -119,7 +119,7 @@ SECRET_TEST_ENV = {
 def test_env_report_never_contains_values():
     entries = build_env_report(SECRET_TEST_ENV)
     blob = json.dumps(entries)
-    assert "sk-super-secret-value-123" not in blob
+    assert "doctor-test-super-secret-value-123" not in blob
     assert "hunter2-password" not in blob
     assert "redis://user:pass@host:6379" not in blob
 
@@ -161,7 +161,7 @@ def test_secret_values_never_in_any_output(monkeypatch, clean_worktree_root):
 
 
 def test_check_exception_payloads_are_redacted_from_all_output(monkeypatch):
-    secret = "sk-live-check-exception-secret"
+    secret = "doctor-test-live-check-exception-secret"
     monkeypatch.setenv("OPENROUTER_API_KEY", secret)
     check = DoctorCheck(
         id="secret.failure",
@@ -198,7 +198,7 @@ def test_doctor_cli_redacts_secret_from_top_level_exception(monkeypatch, capsys)
     import clouda_data.doctor as doctor_package
     from clouda_data.pipeline.cli import doctor_cli
 
-    secret = "sk-doctor-exception-secret"
+    secret = "doctor-test-top-level-exception-secret"
 
     def fail_report(**_kwargs):
         raise RuntimeError(f"provider rejected {secret}")

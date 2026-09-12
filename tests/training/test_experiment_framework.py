@@ -448,7 +448,7 @@ def test_initialization_failure_leaves_a_failed_audit_record(
 def test_run_audit_and_exception_redact_configured_secrets(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    secret = "training-secret-12345"
+    secret = "test-placeholder-training-secret-12345"
     monkeypatch.setenv("OPENROUTER_API_KEY", secret)
     monkeypatch.setattr(sys, "argv", ["clouda", "training", "--token", secret])
     config = load_experiment_config(

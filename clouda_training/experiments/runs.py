@@ -19,7 +19,8 @@ from .dataset import validate_training_dataset
 from .environment import apply_seed, capture_environment
 from .io import atomic_write_json, read_json
 from .metrics import MetricLogger, read_metrics, utc_now
-from .trainer import MockTrainer
+from clouda_training.runtime.backend import torch_available
+from clouda_training.runtime.mock_backend import MockTrainerBackend
 
 
 class RunStatus(StrEnum):
@@ -197,14 +198,32 @@ def _execute(
     metadata["determinism"] = seed_details
     atomic_write_json(run_path / "metadata.json", metadata)
     manager = CheckpointManager(run_path, run_path.name, config)
-    trainer = MockTrainer(
-        config,
-        MetricLogger(run_path / "metrics.jsonl", run_path.name),
-        manager,
-        fail_at_step=fail_at_step,
-        interrupt_at_step=interrupt_at_step,
-        data_loader=data_loader,
-    )
+    metric_logger = MetricLogger(run_path / "metrics.jsonl", run_path.name)
+    trainer: Any
+    if config.model.adapter_type == "torch":
+        if not torch_available():
+            raise ImportError(
+                "adapter_type='torch' requires PyTorch. Install with: "
+                "pip install clouda-pdf[training-torch]  (or: pip install torch)"
+            )
+        from clouda_training.runtime.torch_backend import TorchTrainerBackend
+
+        trainer = TorchTrainerBackend(
+            config,
+            metric_logger,
+            manager,
+            fail_at_step=fail_at_step,
+            interrupt_at_step=interrupt_at_step,
+        )
+    else:
+        trainer = MockTrainerBackend(
+            config,
+            metric_logger,
+            manager,
+            fail_at_step=fail_at_step,
+            interrupt_at_step=interrupt_at_step,
+            data_loader=data_loader,
+        )
     try:
         result = trainer.train(start_step=start_step)
         summary = _summarize(
@@ -254,7 +273,12 @@ def run_experiment(
     data_loader: Any | None = None,
 ) -> RunHandle:
     identity = validate_training_dataset(config.dataset)
-    if not config.runtime.dry_run or config.model.adapter_type not in {
+    if config.model.adapter_type == "torch":
+        if not torch_available():
+            raise RuntimeError(
+                "Real torch training requested but PyTorch is not installed"
+            )
+    elif not config.runtime.dry_run or config.model.adapter_type not in {
         "mock",
         "dry_run",
     }:

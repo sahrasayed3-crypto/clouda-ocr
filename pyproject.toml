@@ -56,6 +56,9 @@ lab = [
 training-data = [
   "Pillow>=10.4.0"
 ]
+training-torch = [
+  "torch>=2.2"
+]
 models = [
   "requests>=2.32.0"
 ]

@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 
+from clouda_data.pretraining.manifest import read_manifest, write_manifest
 from clouda_data.pretraining.schema import DuplicateState, ValidationStatus
 from clouda_data.quality import manifest_adapter
 from clouda_data.quality.derived import (
@@ -22,6 +23,7 @@ from clouda_data.quality.policy import (
     exclusion_report,
     quarantine_sample_ids,
 )
+from clouda_data.training_data.input_contract import validate_canonical_manifest
 from conftest import make_manifest, make_row
 
 
@@ -229,6 +231,44 @@ class TestDerivedManifest:
         assert '"exclusion_report_sha256"' in header_line
         assert '"verdict": "PASS"' in header_line
         assert result["clean_row_count"] == 1
+
+    def test_clean_manifest_is_accepted_by_training_loader_contract(
+        self, tmp_path
+    ) -> None:  # type: ignore[no-untyped-def]
+        rows = [make_row("smp_train", target_split="train", text="نص تدريب")]
+        source = tmp_path / "src" / "manifest.jsonl"
+        write_manifest(
+            source,
+            [row.to_dict() for row in rows],
+            metadata={"dataset_id": "ocr-source", "dataset_version": "v3"},
+        )
+        source_sha = manifest_adapter.manifest_sha256(source)
+        output = tmp_path / "out" / "clean.jsonl"
+
+        result = write_clean_manifest(
+            source,
+            rows,
+            [],
+            (),
+            make_run(source_sha),
+            output,
+        )
+
+        expected_version = f"derived-1.0.0+{source_sha[:12]}"
+        identity = validate_canonical_manifest(
+            output,
+            dataset_id="ocr-source",
+            dataset_version=expected_version,
+        )
+        header, written_rows = read_manifest(output)
+        assert identity.dataset_id == "ocr-source"
+        assert identity.dataset_version == expected_version
+        assert header["source_dataset_version"] == "v3"
+        assert header["source_manifest_sha256"] == source_sha
+        assert result["dataset_id"] == "ocr-source"
+        assert result["dataset_version"] == expected_version
+        assert written_rows[0]["dataset_id"] == "ocr-source"
+        assert written_rows[0]["dataset_version"] == expected_version
 
     def test_revalidate_catches_injected_protected_row(
         self, tmp_path

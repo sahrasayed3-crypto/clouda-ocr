@@ -87,6 +87,7 @@ def write_clean_manifest(
 
     source_path = Path(source_manifest_path)
     source_sha_before = _hash_file(source_path)
+    source_header, _source_rows = read_manifest(source_path)
 
     output = Path(output_path)
     # R4-H1 fix: refuse any output that would overwrite the source manifest
@@ -102,8 +103,30 @@ def write_clean_manifest(
             f"{sorted(overlap)}"
         )
 
+    source_dataset_id = source_header.get("dataset_id")
+    if source_dataset_id is None:
+        source_dataset_id = f"quality-{source_sha_before[:16]}"
+    if not isinstance(source_dataset_id, str) or not source_dataset_id.strip():
+        raise ValueError("Source manifest dataset_id must be a non-empty string")
+    source_dataset_id = source_dataset_id.strip()
+
+    source_dataset_version = source_header.get("dataset_version")
+    if source_dataset_version is None:
+        source_dataset_version = "unversioned"
+    if (
+        not isinstance(source_dataset_version, str)
+        or not source_dataset_version.strip()
+    ):
+        raise ValueError("Source manifest dataset_version must be a non-empty string")
+    source_dataset_version = source_dataset_version.strip()
+
+    derived_version = f"{DERIVED_DATASET_VERSION_PREFIX}{source_sha_before[:12]}"
     clean_rows = [
-        sample.to_dict()
+        {
+            **sample.to_dict(),
+            "dataset_id": source_dataset_id,
+            "dataset_version": derived_version,
+        }
         for sample in sorted(samples, key=lambda sample: sample.sample_id)
         if sample.sample_id not in excluded_ids
         and sample.sample_id not in quarantine_set
@@ -121,12 +144,13 @@ def write_clean_manifest(
     )
     report_text = json.dumps(report, ensure_ascii=False, sort_keys=True)
     report_sha = _sha256_text(report_text)
-    derived_version = f"{DERIVED_DATASET_VERSION_PREFIX}{source_sha_before[:12]}"
-
     written = write_manifest(
         output_path,
         clean_rows,
         metadata={
+            "dataset_id": source_dataset_id,
+            "dataset_version": derived_version,
+            "source_dataset_version": source_dataset_version,
             "source_manifest_sha256": source_sha_before,
             "quality_run_id": run_id,
             "config_identity": config_identity,
@@ -158,6 +182,9 @@ def write_clean_manifest(
         "clean_manifest_path": str(written),
         "exclusion_report_path": str(report_path),
         "source_manifest_sha256": source_sha_before,
+        "dataset_id": source_dataset_id,
+        "dataset_version": derived_version,
+        "source_dataset_version": source_dataset_version,
         "quality_run_id": run_id,
         "config_identity": config_identity,
         "derived_dataset_version": derived_version,
@@ -225,7 +252,13 @@ def revalidate_derived(
         sample_id = str(row.get("sample_id", f"<row {index}>"))
         # Strict re-parse: an unknown field or schema drift must fail here.
         try:
-            DatasetSample.from_dict(row)
+            DatasetSample.from_dict(
+                {
+                    key: value
+                    for key, value in row.items()
+                    if key not in {"dataset_id", "dataset_version"}
+                }
+            )
         except (TypeError, ValueError) as exc:
             violations.append(f"{sample_id}: strict parse failed ({exc})")
             continue

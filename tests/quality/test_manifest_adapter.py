@@ -97,8 +97,10 @@ class TestRunIdentity:
 
 
 class TestTrainingStreamContract:
-    def test_deferred_documented(self) -> None:
+    def test_canonical_loader_handoff_documented(self) -> None:
         contract = training_stream_contract()
         assert isinstance(contract, str)
-        assert "DEFERRED" in contract
+        assert "CANONICAL" in contract
+        assert "validate_canonical_manifest" in contract
+        assert "StreamingTrainingDataLoader" in contract
         assert "derived" in contract

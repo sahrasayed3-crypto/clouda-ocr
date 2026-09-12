@@ -6,10 +6,9 @@ resolution flows through here so the safety rules (canonical relative paths,
 containment under the configured root, symlink refusal before any open) are
 applied exactly once.
 
-Loader adapter boundary: the Training Data Loader integration is **deferred**
-(NOT on main). Until it lands, the clean derived manifest produced by
-:mod:`clouda_data.quality.derived` is the input contract for training; see
-:func:`training_stream_contract`.
+Loader adapter boundary: the clean derived manifest produced by
+:mod:`clouda_data.quality.derived` is accepted directly by the canonical
+Training Data Loader input contract; see :func:`training_stream_contract`.
 """
 
 from __future__ import annotations
@@ -127,24 +126,26 @@ def run_identity(
 
 
 TRAINING_STREAM_CONTRACT = """\
-Training Data Loader connection: DEFERRED (not on main).
+Training Data Loader connection: CANONICAL.
 
-Until the loader adapter lands, the input contract for any training run is
-the clean derived manifest written by clouda_data.quality.derived:
+The input contract for a training run is the clean derived manifest written
+by clouda_data.quality.derived:
 
 1. The derived manifest is a canonical ``clouda.pretraining.manifest.v1``
    JSONL file written by ``pretraining.manifest.write_manifest`` (atomic,
    canonically sorted rows).
-2. Its header carries full lineage: ``source_manifest_sha256``,
+2. Its header carries ``dataset_id`` and the derived ``dataset_version`` plus
+   full lineage: ``source_dataset_version``, ``source_manifest_sha256``,
    ``quality_run_id``, ``config_identity``, ``derived_dataset_version``,
    ``exclusion_report_sha256``, and the gate ``verdict``.
 3. It contains no excluded sample IDs, no protected rows (fail-closed
    re-validation via ``revalidate_derived``), and is disjoint from the
    quarantine manifest.
-4. Consumers MUST re-check protection at read time (fail-closed) exactly as
-   ``clouda_lab.dataset_selection.validate_derived_manifest_for_training``
-   does; a future Training Data Loader adapter must honor the same contract
-   before yielding any row.
+4. Consumers MUST re-check protection at read time. The canonical
+   ``validate_canonical_manifest`` check in
+   ``clouda_data.training_data.input_contract`` enforces identity, integrity,
+   explicit train eligibility, and fail-closed protection before
+   ``StreamingTrainingDataLoader`` yields any row.
 """
 
 

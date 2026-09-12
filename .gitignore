@@ -183,6 +183,8 @@ adapters/
 !clouda_models/adapters/**
 clouda_training/adapters/__pycache__/
 clouda_training/adapters/**/*.py[cod]
+clouda_contracts/adapters/__pycache__/
+clouda_contracts/adapters/**/*.py[cod]
 clouda_models/adapters/__pycache__/
 clouda_models/adapters/**/*.py[cod]
 lora_adapters/

@@ -10,10 +10,15 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
+from .benchmarks import BenchmarkWorkspaceService
 from .catalog import DatasetCatalog
+from .datasets import DatasetOperationsService
+from .models import ModelCatalogService
 from .observability import ObservabilityService
 from .security import browser_safe, require_loopback
 from .settings import LabSettings
+from .storage import StorageService
+from .tasks import OperationTaskService
 from .training import TrainingService
 
 _STATIC = Path(__file__).with_name("static")
@@ -61,6 +66,23 @@ class DoctorRequest(StrictRequest):
     deep: bool = False
 
 
+class EmptyRequest(StrictRequest):
+    pass
+
+
+class ConfirmationRequest(StrictRequest):
+    plan_id: str
+    confirmation: str
+
+
+class ModelAssetRequest(StrictRequest):
+    asset_id: str
+
+
+class BenchmarkPlanRequest(StrictRequest):
+    model_ids: list[str] = Field(min_length=1, max_length=8)
+
+
 def create_app(settings: LabSettings | None = None) -> FastAPI:
     resolved = settings or LabSettings.from_repo(Path.cwd())
     app = FastAPI(
@@ -72,10 +94,22 @@ def create_app(settings: LabSettings | None = None) -> FastAPI:
     )
     app.state.lab_settings = resolved
     catalog = DatasetCatalog(resolved)
-    training = TrainingService(resolved, catalog)
-    observability = ObservabilityService(resolved, catalog, training)
+    tasks = OperationTaskService(
+        resolved.tasks_root, browser_roots=(resolved.repo_root,), max_workers=2
+    )
+    dataset_operations = DatasetOperationsService(resolved, tasks)
+    model_catalog = ModelCatalogService(resolved, tasks)
+    training = TrainingService(resolved, catalog, tasks=tasks, models=model_catalog)
+    storage = StorageService(resolved, tasks=tasks)
+    benchmark_workspace = BenchmarkWorkspaceService(resolved, model_catalog)
+    observability = ObservabilityService(resolved, catalog, training, storage=storage)
     app.state.lab_catalog = catalog
+    app.state.lab_tasks = tasks
+    app.state.lab_dataset_operations = dataset_operations
+    app.state.lab_model_catalog = model_catalog
     app.state.lab_training = training
+    app.state.lab_storage = storage
+    app.state.lab_benchmark_workspace = benchmark_workspace
     app.state.lab_observability = observability
     app.state.lab_action_token = secrets.token_urlsafe(32)
 
@@ -160,6 +194,92 @@ def create_app(settings: LabSettings | None = None) -> FastAPI:
     def overview() -> dict[str, Any]:
         return observability.overview()
 
+    @app.get("/api/lab/tasks")
+    def operation_tasks(
+        kind: str | None = None,
+        limit: int = Query(default=200, ge=1, le=500),
+    ) -> dict[str, Any]:
+        return {"tasks": tasks.list_tasks(kind=kind)[:limit]}
+
+    @app.get("/api/lab/tasks/{task_id}")
+    def operation_task(task_id: str) -> dict[str, Any]:
+        return tasks.get_task(task_id)
+
+    @app.post(
+        "/api/lab/tasks/{task_id}/cancel",
+        dependencies=[Depends(require_action_token)],
+    )
+    def cancel_operation(task_id: str, _payload: EmptyRequest) -> dict[str, Any]:
+        return tasks.cancel(task_id)
+
+    @app.get("/api/lab/downloads")
+    def downloads(limit: int = Query(default=200, ge=1, le=500)) -> dict[str, Any]:
+        return {
+            "downloads": tasks.list_tasks(kind="DATASET_DOWNLOAD")[:limit],
+            "automatic_downloads": False,
+        }
+
+    @app.get("/api/lab/sources")
+    def operational_sources() -> dict[str, Any]:
+        return {"sources": dataset_operations.list_sources()}
+
+    @app.get("/api/lab/sources/{source_id}")
+    def operational_source(source_id: str) -> dict[str, Any]:
+        return dataset_operations.source_detail(source_id)
+
+    @app.post(
+        "/api/lab/sources/{source_id}/download-plan",
+        dependencies=[Depends(require_action_token)],
+    )
+    def dataset_download_plan(source_id: str, _payload: EmptyRequest) -> dict[str, Any]:
+        return dataset_operations.create_download_plan(source_id)
+
+    @app.post(
+        "/api/lab/dataset-downloads",
+        dependencies=[Depends(require_action_token)],
+    )
+    def start_dataset_download(payload: ConfirmationRequest) -> dict[str, Any]:
+        return dataset_operations.start_download(payload.plan_id, payload.confirmation)
+
+    @app.post(
+        "/api/lab/sources/{source_id}/verify",
+        dependencies=[Depends(require_action_token)],
+    )
+    def verify_dataset_source(source_id: str, _payload: EmptyRequest) -> dict[str, Any]:
+        return dataset_operations.verify_source(source_id)
+
+    @app.post(
+        "/api/lab/sources/{source_id}/removal-plan",
+        dependencies=[Depends(require_action_token)],
+    )
+    def dataset_removal_plan(source_id: str, _payload: EmptyRequest) -> dict[str, Any]:
+        return dataset_operations.create_removal_plan(source_id)
+
+    @app.post(
+        "/api/lab/dataset-removals",
+        dependencies=[Depends(require_action_token)],
+    )
+    def remove_dataset_download(payload: ConfirmationRequest) -> dict[str, Any]:
+        return dataset_operations.remove_download(payload.plan_id, payload.confirmation)
+
+    @app.get("/api/lab/imports")
+    def imports() -> dict[str, Any]:
+        return {"imports": dataset_operations.list_imports()}
+
+    @app.post(
+        "/api/lab/imports/{import_id}/validate",
+        dependencies=[Depends(require_action_token)],
+    )
+    def validate_import(import_id: str, _payload: EmptyRequest) -> dict[str, Any]:
+        return dataset_operations.validate_import(import_id)
+
+    @app.post(
+        "/api/lab/imports/{import_id}/register",
+        dependencies=[Depends(require_action_token)],
+    )
+    def register_import(import_id: str, _payload: EmptyRequest) -> dict[str, Any]:
+        return dataset_operations.register_import(import_id)
+
     @app.get("/api/lab/datasets")
     def datasets(limit: int = Query(default=200, ge=1, le=500)) -> dict[str, Any]:
         return {"datasets": catalog.list_datasets()[:limit]}
@@ -207,6 +327,48 @@ def create_app(settings: LabSettings | None = None) -> FastAPI:
     def models(limit: int = Query(default=100, ge=1, le=200)) -> dict[str, Any]:
         return {"models": training.list_models()[:limit]}
 
+    @app.get("/api/lab/model-catalog")
+    def published_model_catalog() -> dict[str, Any]:
+        return {"models": model_catalog.list_models()}
+
+    @app.get("/api/lab/model-catalog/{catalog_id}")
+    def published_model_detail(catalog_id: str) -> dict[str, Any]:
+        return model_catalog.get_model(catalog_id)
+
+    @app.post(
+        "/api/lab/model-catalog/{catalog_id}/assets",
+        dependencies=[Depends(require_action_token)],
+    )
+    def configure_model_assets(
+        catalog_id: str, payload: ModelAssetRequest
+    ) -> dict[str, Any]:
+        return model_catalog.configure_assets(catalog_id, payload.asset_id)
+
+    @app.post(
+        "/api/lab/model-catalog/{catalog_id}/verify",
+        dependencies=[Depends(require_action_token)],
+    )
+    def verify_model_assets(catalog_id: str, _payload: EmptyRequest) -> dict[str, Any]:
+        return model_catalog.verify_assets(catalog_id)
+
+    @app.post(
+        "/api/lab/model-catalog/{catalog_id}/removal-plan",
+        dependencies=[Depends(require_action_token)],
+    )
+    def model_removal_plan(catalog_id: str, _payload: EmptyRequest) -> dict[str, Any]:
+        return model_catalog.create_removal_plan(catalog_id)
+
+    @app.post(
+        "/api/lab/model-removals",
+        dependencies=[Depends(require_action_token)],
+    )
+    def remove_model_assets(payload: ConfirmationRequest) -> dict[str, Any]:
+        return model_catalog.remove_assets(payload.plan_id, payload.confirmation)
+
+    @app.get("/api/lab/storage")
+    def storage_status() -> dict[str, Any]:
+        return storage.status()
+
     @app.get("/api/lab/planner/options")
     def planner_options() -> dict[str, Any]:
         return training.planner_options()
@@ -227,6 +389,17 @@ def create_app(settings: LabSettings | None = None) -> FastAPI:
     def preflight(payload: PreflightRequest) -> dict[str, Any]:
         return training.run_preflight(payload.plan_id, write_probe=payload.write_probe)
 
+    @app.post(
+        "/api/lab/training/{plan_id}/start",
+        dependencies=[Depends(require_action_token)],
+    )
+    def start_training(plan_id: str, _payload: EmptyRequest) -> dict[str, Any]:
+        return training.start_training(plan_id)
+
+    @app.get("/api/lab/training/capabilities")
+    def training_capabilities() -> dict[str, Any]:
+        return {"stop": training.stop_capability()}
+
     @app.get("/api/lab/runs")
     def runs(limit: int = Query(default=200, ge=1, le=500)) -> dict[str, Any]:
         return {"runs": training.list_runs()[:limit]}
@@ -245,6 +418,13 @@ def create_app(settings: LabSettings | None = None) -> FastAPI:
     )
     def resume_check(run_id: str) -> dict[str, Any]:
         return training.resume_check(run_id)
+
+    @app.post(
+        "/api/lab/runs/{run_id}/resume",
+        dependencies=[Depends(require_action_token)],
+    )
+    def resume_training(run_id: str, _payload: EmptyRequest) -> dict[str, Any]:
+        return training.resume_training(run_id)
 
     @app.get("/api/lab/results")
     def results(
@@ -283,6 +463,29 @@ def create_app(settings: LabSettings | None = None) -> FastAPI:
         return observability.benchmarks(
             {"model": model, "status": status, "limit": str(limit)}
         )
+
+    @app.get("/api/lab/benchmark-workspace")
+    def benchmark_inventory() -> dict[str, Any]:
+        return benchmark_workspace.inventory()
+
+    @app.get("/api/lab/benchmark-results")
+    def benchmark_results() -> dict[str, Any]:
+        return benchmark_workspace.results()
+
+    @app.post(
+        "/api/lab/benchmark-plans",
+        dependencies=[Depends(require_action_token)],
+    )
+    def create_benchmark_plan(payload: BenchmarkPlanRequest) -> dict[str, Any]:
+        return benchmark_workspace.create_plan(payload.model_dump())
+
+    @app.get("/api/lab/benchmark-plans/{plan_id}")
+    def benchmark_plan(plan_id: str) -> dict[str, Any]:
+        return benchmark_workspace.get_plan(plan_id)
+
+    @app.get("/api/lab/benchmark-comparison")
+    def benchmark_comparison(left: str, right: str) -> dict[str, Any]:
+        return benchmark_workspace.compare(left, right)
 
     @app.get("/api/lab/doctor/latest")
     def doctor_latest() -> dict[str, Any]:

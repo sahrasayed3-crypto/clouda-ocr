@@ -11,6 +11,7 @@ from clouda_data.results.service import ResultsService
 from .catalog import DatasetCatalog
 from .security import browser_safe, safe_identifier
 from .settings import LabSettings
+from .storage import StorageService
 from .training import TrainingService
 
 
@@ -20,10 +21,12 @@ class ObservabilityService:
         settings: LabSettings,
         catalog: DatasetCatalog,
         training: TrainingService,
+        storage: StorageService | None = None,
     ) -> None:
         self.settings = settings
         self.catalog = catalog
         self.training = training
+        self.storage = storage or StorageService(settings)
         self._doctor_snapshot: dict[str, Any] | None = None
         self._hardware_snapshot: dict[str, Any] | None = None
 
@@ -232,6 +235,7 @@ class ObservabilityService:
         hardware = self.hardware()
         benchmark = self.benchmarks({})
         doctor = self.latest_doctor()
+        storage = self.storage.status()
         return {
             "schema_version": "clouda.lab.overview.v1",
             "repository": (
@@ -269,6 +273,13 @@ class ObservabilityService:
                 "results": len(benchmark.get("results", [])),
             },
             "offline": "ACTIVE",
+            "network_policy": storage["network_policy"],
+            "storage": {
+                "status": storage["disk"]["status"],
+                "free_bytes": storage["disk"]["free_bytes"],
+                "pending_tasks": storage["tasks"]["pending"],
+                "pending_downloads": storage["tasks"]["pending_downloads"],
+            },
         }
 
 

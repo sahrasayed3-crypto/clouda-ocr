@@ -23,6 +23,37 @@ from clouda_training.experiments import (
 SCHEMA = "clouda.pretraining.manifest.v1"
 
 
+def test_real_start_rejects_dry_run_and_delegates_non_dry_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    calls = []
+    dry = type("Config", (), {"runtime": type("Runtime", (), {"dry_run": True})()})()
+    real = type("Config", (), {"runtime": type("Runtime", (), {"dry_run": False})()})()
+    monkeypatch.setattr(
+        "clouda_lab.training_orchestrator.load_experiment_config", lambda path: dry
+    )
+    orchestrator = TrainingOrchestrator(tmp_path / "runs")
+    with pytest.raises(ConfigError, match="non-dry-run"):
+        orchestrator.start(tmp_path / "plan.yaml")
+
+    monkeypatch.setattr(
+        "clouda_lab.training_orchestrator.load_experiment_config", lambda path: real
+    )
+
+    class Handle:
+        @staticmethod
+        def to_dict():
+            return {"run_id": "real-run", "status": "COMPLETED"}
+
+    def fake_run(config, **kwargs):
+        calls.append(config)
+        return Handle()
+
+    monkeypatch.setattr("clouda_lab.training_orchestrator.run_experiment", fake_run)
+    assert orchestrator.start(tmp_path / "plan.yaml")["run_id"] == "real-run"
+    assert calls == [real]
+
+
 def _write_manifest(path: Path, rows: list[dict]) -> Path:
     lines = [
         json.dumps(

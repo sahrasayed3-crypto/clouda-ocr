@@ -5,7 +5,7 @@ import re
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Mapping
 
 import yaml
 
@@ -43,13 +43,26 @@ from .security import (
 )
 from .settings import LabSettings
 
+if TYPE_CHECKING:
+    from .models import ModelCatalogService
+    from .tasks import OperationTaskService
+
 _EXPERIMENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 
 
 class TrainingService:
-    def __init__(self, settings: LabSettings, catalog: DatasetCatalog) -> None:
+    def __init__(
+        self,
+        settings: LabSettings,
+        catalog: DatasetCatalog,
+        *,
+        tasks: OperationTaskService | None = None,
+        models: ModelCatalogService | None = None,
+    ) -> None:
         self.settings = settings
         self.catalog = catalog
+        self.tasks = tasks
+        self.models = models
 
     @staticmethod
     def _registry():
@@ -185,9 +198,28 @@ class TrainingService:
         requested_model_id = payload.get("model_id")
         if requested_model_id not in (None, "", descriptor.upstream_repository):
             raise ValueError("model identity is controlled by the registered adapter")
-        model_id = descriptor.upstream_repository
-        if not model_id:
+        published_model_id = descriptor.upstream_repository
+        if not published_model_id:
             raise ValueError("registered adapter has no model identity")
+        model_id = published_model_id
+        managed_asset: dict[str, Any] | None = None
+        if self.models is not None:
+            managed_asset = next(
+                (
+                    item
+                    for item in self.models.list_models()
+                    if item.get("training_adapter") == adapter_type
+                ),
+                None,
+            )
+            assets = dict((managed_asset or {}).get("assets") or {})
+            if assets.get("status") == "VERIFIED" and assets.get("asset_id"):
+                asset_id = safe_identifier(str(assets["asset_id"]))
+                asset_root = (self.settings.models_root / asset_id).resolve()
+                asset_root.relative_to(self.settings.models_root.resolve())
+                if not asset_root.is_dir() or asset_root.is_symlink():
+                    raise FileNotFoundError("verified managed model assets are missing")
+                model_id = str(asset_root)
         precision = str(payload.get("precision", "bf16"))
         if precision not in descriptor.supported_precision:
             raise ValueError(
@@ -233,7 +265,7 @@ class TrainingService:
             runtime=RuntimeSection(
                 device="cuda",
                 output_root=self.settings.runs_root,
-                dry_run=True,
+                dry_run=managed_asset is None or model_id == published_model_id,
                 offline=True,
                 deterministic=True,
             ),
@@ -264,7 +296,19 @@ class TrainingService:
             "schema_version": "clouda.lab.plan.v1",
             "plan_id": plan.plan_id,
             "config_id": config.hash,
-            "model_id": model_id,
+            "model_id": published_model_id,
+            "model_asset": {
+                "status": (
+                    (managed_asset or {})
+                    .get("assets", {})
+                    .get("status", "NOT_CONFIGURED")
+                ),
+                "location": (
+                    safe_relative_label(model_id, (self.settings.repo_root,))
+                    if model_id != published_model_id
+                    else None
+                ),
+            },
             "adapter_id": adapter_type,
             "dataset_id": dataset["identity"],
             "expected_runtime_backend": config.runtime.device,
@@ -295,6 +339,10 @@ class TrainingService:
         result["runtime"]["output_root"] = safe_relative_label(
             result["runtime"]["output_root"], (self.settings.repo_root,)
         )
+        if Path(str(result["model"]["model_id"])).is_absolute():
+            result["model"]["model_id"] = safe_relative_label(
+                result["model"]["model_id"], (self.settings.repo_root,)
+            )
         return sanitize_payload(result)
 
     def list_plans(self) -> list[dict[str, Any]]:
@@ -341,7 +389,77 @@ class TrainingService:
             context["output_root"] = safe_relative_label(
                 context.get("output_root", ""), (self.settings.repo_root,)
             )
-        return browser_safe(report, (self.settings.repo_root,))
+        public_report = browser_safe(report, (self.settings.repo_root,))
+        plan["preflight"] = public_report
+        plan["execution_capability"] = {
+            "available": (
+                public_report.get("final_status") != "NOT_READY"
+                and not config.runtime.dry_run
+            ),
+            "reason": (
+                "Canonical preflight has blockers"
+                if public_report.get("final_status") == "NOT_READY"
+                else (
+                    "The plan has no verified managed model assets"
+                    if config.runtime.dry_run
+                    else None
+                )
+            ),
+        }
+        atomic_write_text(
+            self.settings.plans_root / f"{plan_id}.plan.json",
+            json.dumps(plan, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        )
+        return public_report
+
+    def start_training(self, plan_id: str) -> dict[str, Any]:
+        """Start only a server-owned, non-dry plan that passes preflight."""
+        from clouda_lab.training_orchestrator import TrainingOrchestrator
+
+        safe_identifier(plan_id)
+        self.get_plan(plan_id)
+        config = self._config(plan_id)
+        report = self.run_preflight(plan_id, write_probe=True)
+        if report.get("final_status") == "NOT_READY":
+            raise PermissionError("canonical preflight blocked training execution")
+        if config.runtime.dry_run:
+            raise PermissionError("training plan has no verified managed model assets")
+        if self.tasks is None:
+            raise RuntimeError("operation task service is unavailable")
+        config_path = self.settings.plans_root / f"{plan_id}.config.yaml"
+
+        def worker(context):
+            context.update(phase="TRAINING")
+            return TrainingOrchestrator(self.settings.runs_root).start(config_path)
+
+        return self.tasks.enqueue("TRAINING_START", plan_id, worker)
+
+    def resume_training(self, run_id: str) -> dict[str, Any]:
+        """Resume through canonical checkpoint integrity and runtime semantics."""
+        from clouda_lab.training_orchestrator import TrainingOrchestrator
+
+        safe_identifier(run_id)
+        check = self.resume_check(run_id)
+        if not check.get("compatible"):
+            raise PermissionError("canonical resume validation blocked execution")
+        if self.tasks is None:
+            raise RuntimeError("operation task service is unavailable")
+
+        def worker(context):
+            context.update(phase="RESUMING")
+            return TrainingOrchestrator(self.settings.runs_root).resume(run_id)
+
+        return self.tasks.enqueue("TRAINING_RESUME", run_id, worker)
+
+    @staticmethod
+    def stop_capability() -> dict[str, Any]:
+        return {
+            "available": False,
+            "reason": (
+                "The canonical training runtime has no cooperative stop callback; "
+                "process termination is not exposed"
+            ),
+        }
 
     def list_runs(self) -> list[dict[str, Any]]:
         from clouda_lab.training_orchestrator import TrainingOrchestrator
@@ -445,16 +563,20 @@ class TrainingService:
             )
         return browser_safe(
             {
-                "available": False,
+                "available": self.tasks is not None,
                 "compatible": True,
-                "status": "BLOCKED",
+                "status": "AVAILABLE" if self.tasks is not None else "BLOCKED",
                 "checkpoint": latest.to_dict(),
                 "integrity": "PASS",
                 "configuration_match": "PASS",
                 "dataset_match": "PASS",
                 "model_match": "PASS",
-                "execution": "DISABLED",
-                "execution_reason": "Real training and resume execution are deferred until compatible GPU assets are available",
+                "execution": "ENABLED" if self.tasks is not None else "DISABLED",
+                "execution_reason": (
+                    None
+                    if self.tasks is not None
+                    else "The operation task service is unavailable"
+                ),
             },
             (self.settings.repo_root,),
         )

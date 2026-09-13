@@ -15,6 +15,11 @@ def test_dashboard_shell_contains_complete_accessible_navigation():
         "Experiment Planner",
         "Preflight",
         "Model Adapters",
+        "Downloads",
+        "Tasks",
+        "Model Catalog",
+        "Benchmark Workspace",
+        "Storage",
         "Training Runs",
         "Results Store",
         "Benchmarks",
@@ -46,6 +51,11 @@ def test_client_covers_required_pages_and_honest_disabled_actions():
         "doctor",
         "hardware",
         "offline",
+        "downloads",
+        "tasks",
+        "model-catalog",
+        "benchmark-workspace",
+        "storage",
     ):
         assert f'"{route}"' in script
     for phrase in (
@@ -56,6 +66,10 @@ def test_client_covers_required_pages_and_honest_disabled_actions():
         "Run Quality Check",
         "Analyze Duplicates",
         "Create Derived Dataset",
+        "Confirm Download",
+        "Verify Assets",
+        "Create Benchmark Plan",
+        "Refresh Tasks",
     ):
         assert phrase in script
     assert "innerHTML" not in script
@@ -64,6 +78,8 @@ def test_client_covers_required_pages_and_honest_disabled_actions():
     assert '"data-runtime-loading": "true"' in script
     assert 'querySelector("[data-runtime-loading]")?.remove()' in script
     assert "new AbortController()" in script
+    assert "setTimeout" in script
+    assert "window.confirm" in script
     assert "requestController?.abort()" in script
     assert '["Raw Source", "Training Dataset"]' not in script
     assert '"Checkpoint", "Resume"' not in script
@@ -75,6 +91,7 @@ def test_client_covers_required_pages_and_honest_disabled_actions():
     assert "No datasets found." in script
     assert "No training runs recorded." in script
     assert "No benchmark result is available for this filter." in script
+    assert "No approved model download manifest" in script
 
 
 def test_styles_define_statuses_tables_lineage_and_responsive_layout():

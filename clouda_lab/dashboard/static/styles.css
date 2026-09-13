@@ -39,10 +39,13 @@ main { min-width: 0; padding: 0 28px 42px; }
 .panel:first-child { margin-top: 0; }
 .panel h3 { margin: 0 0 13px; font-size: 13px; }
 .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.toolbar.compact { margin-bottom: 0; flex-wrap: nowrap; }
 .toolbar input, .toolbar select { min-width: 180px; }
 input, select { border: 1px solid #344456; background: #0c1219; color: #e8edf3; border-radius: 6px; padding: 8px 10px; font-size: 12px; }
 label { display: grid; gap: 6px; color: var(--muted); font-size: 11px; text-transform: capitalize; }
 .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.check-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 8px; }
+.check-item { display: flex; align-items: center; gap: 8px; min-height: 38px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: #0c1219; color: #d6e0ea; text-transform: none; }
 button { border: 1px solid #34766e; background: #123c37; color: #baf9ef; border-radius: 6px; padding: 8px 12px; cursor: pointer; font-size: 12px; }
 button.secondary { border-color: #3c4c5d; background: #17212c; color: #d7e0ea; }
 button:disabled { cursor: not-allowed; opacity: .48; }

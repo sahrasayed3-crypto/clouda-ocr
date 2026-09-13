@@ -174,6 +174,7 @@ class DatasetOperationsService:
         if not source.get("sample_assets"):
             raise PermissionError("download blocked: no canonical sample assets")
         destination = self.settings.dataset_downloads_root / source_id
+        free_bytes = disk_free_bytes(self.settings.repo_root)
         details = {
             "item": source.get("name"),
             "item_type": "dataset",
@@ -187,13 +188,13 @@ class DatasetOperationsService:
                 for asset in source.get("sample_assets", [])
             ],
             "destination": destination.relative_to(self.settings.repo_root).as_posix(),
-            "disk_free_bytes": disk_free_bytes(self.settings.repo_root),
+            "disk_free_bytes": free_bytes,
             "authentication_required": bool(
                 source.get("requires_authentication") or source.get("requires_account")
             ),
             "usage_restrictions": list(source.get("license_notes", [])),
         }
-        if details["disk_free_bytes"] < max_bytes:
+        if free_bytes < max_bytes:
             raise OSError("insufficient free disk space for canonical download limit")
         return self.confirmations.issue("DATASET_DOWNLOAD", source_id, details)
 

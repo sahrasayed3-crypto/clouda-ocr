@@ -163,11 +163,16 @@ def test_training_start_requires_expiring_single_use_confirmation(
         "_config",
         lambda plan_id: SimpleNamespace(runtime=SimpleNamespace(dry_run=False)),
     )
-    started = []
+    started: list[str] = []
+
+    def fake_start(plan_id: str):
+        started.append(plan_id)
+        return {"task_id": "task-real"}
+
     monkeypatch.setattr(
         service,
         "start_training",
-        lambda plan_id: started.append(plan_id) or {"task_id": "task-real"},
+        fake_start,
     )
 
     plan = service.create_start_plan("plan-safe")

@@ -45,8 +45,10 @@ def model_class_available() -> bool:
     if not transformers_available():
         return False
     try:
-        from transformers import HunYuanVLForConditionalGeneration  # noqa: F401
-    except ImportError:
+        import transformers
+
+        getattr(transformers, "HunYuanVLForConditionalGeneration")
+    except (ImportError, AttributeError):
         return False
     return True
 
@@ -120,11 +122,10 @@ class HunyuanOCR15SFTAdapter:
         self._require_local_path()
         require_transformers()
         import torch
-        from transformers import (
-            AutoProcessor,
-            AutoTokenizer,
-            HunYuanVLForConditionalGeneration,
-        )
+        import transformers
+        from transformers import AutoProcessor, AutoTokenizer
+
+        model_class = getattr(transformers, "HunYuanVLForConditionalGeneration")
 
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.local_model_path,
@@ -136,7 +137,7 @@ class HunyuanOCR15SFTAdapter:
             trust_remote_code=self.trust_remote_code,
             local_files_only=True,
         )
-        self.model = HunYuanVLForConditionalGeneration.from_pretrained(
+        self.model = model_class.from_pretrained(
             self.local_model_path,
             torch_dtype=torch.float32,
             trust_remote_code=self.trust_remote_code,

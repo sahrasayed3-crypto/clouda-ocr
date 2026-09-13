@@ -4,7 +4,7 @@ import json
 import re
 from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Mapping
+from typing import TYPE_CHECKING, Any, Mapping, Protocol
 
 import yaml
 
@@ -44,8 +44,12 @@ from .security import (
 from .settings import LabSettings
 
 if TYPE_CHECKING:
-    from .models import ModelCatalogService
     from .tasks import OperationTaskService
+
+
+class ModelCatalogProtocol(Protocol):
+    def list_models(self) -> list[dict[str, Any]]: ...
+
 
 _EXPERIMENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 
@@ -57,7 +61,7 @@ class TrainingService:
         catalog: DatasetCatalog,
         *,
         tasks: OperationTaskService | None = None,
-        models: ModelCatalogService | None = None,
+        models: ModelCatalogProtocol | None = None,
     ) -> None:
         self.settings = settings
         self.catalog = catalog

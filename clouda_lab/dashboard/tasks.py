@@ -67,6 +67,8 @@ class TaskContext:
         progress: float | None = None,
         completed_bytes: int | None = None,
         total_bytes: int | None = None,
+        speed_bytes_per_second: float | None = None,
+        checksum_status: str | None = None,
         detail: str | None = None,
     ) -> dict[str, Any]:
         changes: dict[str, Any] = {}
@@ -78,6 +80,10 @@ class TaskContext:
             changes["completed_bytes"] = max(0, int(completed_bytes))
         if total_bytes is not None:
             changes["total_bytes"] = max(0, int(total_bytes))
+        if speed_bytes_per_second is not None:
+            changes["speed_bytes_per_second"] = max(0.0, float(speed_bytes_per_second))
+        if checksum_status is not None:
+            changes["checksum_status"] = str(checksum_status)
         if detail is not None:
             changes["detail"] = str(detail)
         return self._service._update(self.task_id, **changes)
@@ -118,7 +124,11 @@ class OperationTaskService:
             return read_json(path)
 
     def _write(self, payload: dict[str, Any]) -> None:
-        atomic_write_json(self._path(str(payload["task_id"])), payload)
+        # Task records are a browser-facing audit surface, not an execution
+        # descriptor. Persist the same redacted representation we return so a
+        # worker exception can never leave secrets or private paths on disk.
+        safe_payload = browser_safe(payload, self.browser_roots)
+        atomic_write_json(self._path(str(safe_payload["task_id"])), safe_payload)
 
     def _update(self, task_id: str, **changes: Any) -> dict[str, Any]:
         with self._lock:
@@ -177,6 +187,8 @@ class OperationTaskService:
             "progress": 0.0,
             "completed_bytes": 0,
             "total_bytes": None,
+            "speed_bytes_per_second": None,
+            "checksum_status": "NOT_STARTED",
             "detail": None,
             "metadata": dict(metadata or {}),
             "result": None,

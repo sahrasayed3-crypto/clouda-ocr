@@ -137,8 +137,25 @@ the repository root:
 
 Open `http://127.0.0.1:8000/lab`. The command rejects non-loopback bind
 addresses. Normal navigation is offline-only and never downloads datasets,
-models, checkpoints, or benchmark assets. Real training remains disabled;
-missing GPU, dependencies, and model assets are shown as capability states.
+models, checkpoints, or benchmark assets. Dataset sample downloads are limited
+to approved canonical manifests and require a review plus a short-lived,
+single-use confirmation. Model downloads, dependency installation, and
+published-model benchmark execution are not exposed.
+
+The dashboard stores persistent operation records under `runs/.lab-tasks`,
+managed model selections under `runs/.lab-models`, deterministic plans under
+`runs/.lab-plans` and `runs/.lab-benchmark-plans`, and recoverable removals
+under `runs/.lab-trash`. It accepts managed IDs only: dataset imports resolve
+under `data/imports`, downloaded samples under `data/downloads`, and model
+assets under `data/models`.
+
+Real training is conditionally available only when a managed model asset has
+passed canonical verification and the canonical preflight reports no blockers.
+The no-GPU/no-model state is fully usable for catalog, quality, planning,
+results, benchmark metadata, Doctor, task, and storage inspection. Training
+stop remains unavailable until the canonical runtime provides cooperative
+cancellation; checkpoint resume uses the canonical integrity and identity
+checks.
 
 ### Pre-training stage status
 

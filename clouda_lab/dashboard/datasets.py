@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import shutil
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -100,6 +102,23 @@ class DatasetOperationsService:
         license_result = verify_license(source)
         local_root = self.settings.dataset_downloads_root / source_id
         manifest = self.settings.download_manifests_root / f"{source_id}.json"
+        manifest_ok = False
+        if manifest.is_file():
+            try:
+                manifest_ok = bool(
+                    json.loads(manifest.read_text(encoding="utf-8")).get("ok")
+                )
+            except (OSError, json.JSONDecodeError):
+                manifest_ok = False
+        local_state = (
+            "VERIFIED"
+            if manifest_ok
+            else (
+                "FAILED"
+                if manifest.is_file()
+                else ("PARTIAL" if local_root.exists() else "NOT_DOWNLOADED")
+            )
+        )
         download_available = bool(
             license_result["sample_download_allowed"]
             and source.get("sample_assets")
@@ -136,7 +155,7 @@ class DatasetOperationsService:
             "authentication_required": bool(
                 source.get("requires_authentication") or source.get("requires_account")
             ),
-            "local_state": "DOWNLOADED" if local_root.is_dir() else "NOT_DOWNLOADED",
+            "local_state": local_state,
             "download_manifest_present": manifest.is_file(),
             "download": {
                 "available": download_available,
@@ -185,6 +204,7 @@ class DatasetOperationsService:
         source_id = str(plan["target_id"])
 
         def worker(context: TaskContext) -> dict[str, Any]:
+            started = time.monotonic()
             context.update(
                 phase="CHECKING",
                 total_bytes=plan.get("estimated_bytes"),
@@ -198,6 +218,9 @@ class DatasetOperationsService:
                     completed_bytes=completed,
                     total_bytes=total,
                     progress=(completed / total if total else 0.0),
+                    speed_bytes_per_second=(
+                        completed / max(time.monotonic() - started, 0.001)
+                    ),
                 )
 
             try:
@@ -211,11 +234,16 @@ class DatasetOperationsService:
                 )
             except DownloadCancelled as exc:
                 raise OperationCancelled(str(exc)) from exc
-            context.update(phase="VERIFYING", detail="Verifying downloaded files")
+            context.update(
+                phase="VERIFYING",
+                checksum_status="VERIFYING",
+                detail="Verifying downloaded files",
+            )
             if not result.ok:
                 raise RuntimeError(
                     "; ".join(result.issues) or "dataset download failed"
                 )
+            context.update(checksum_status="VERIFIED")
             return result_to_dict(result)
 
         return self.tasks.enqueue(

@@ -294,7 +294,12 @@ class ModelCatalogService:
         configured = self._state().get("models", {}).get(catalog_id)
         if not configured:
             raise ValueError("model assets are not configured")
-        root = (self.settings.models_root / str(configured["asset_id"])).resolve()
+        asset_id = safe_identifier(str(configured["asset_id"]))
+        root = (self.settings.models_root / asset_id).resolve()
+        try:
+            root.relative_to(self.settings.models_root.resolve())
+        except ValueError as exc:
+            raise PermissionError("configured model escaped managed root") from exc
         if not root.is_dir() or root.is_symlink():
             raise FileNotFoundError("configured model assets are missing")
         return model, root

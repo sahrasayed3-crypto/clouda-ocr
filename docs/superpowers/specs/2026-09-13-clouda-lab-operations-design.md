@@ -138,12 +138,13 @@ New resources are domain-specific:
 - `/api/lab/tasks` and `/api/lab/tasks/{id}` for persisted task state and
   cancellation.
 - `/api/lab/downloads` for download tasks.
-- `/api/lab/dataset-sources/{id}` plus download/verify/import/remove plan and
+- `/api/lab/sources/{id}` plus download/verify/remove plan and
   execution routes.
 - `/api/lab/imports` for managed local import candidates.
-- `/api/lab/models/{id}` plus configure/verify/remove routes.
+- `/api/lab/model-catalog/{id}` plus configure/verify/remove routes; the
+  existing `/api/lab/models` remains the training-adapter compatibility view.
 - `/api/lab/storage` for managed storage state.
-- `/api/lab/training/plans/{id}/start` and run resume routes, gated by canonical
+- `/api/lab/training/{id}/start` and run resume routes, gated by canonical
   preflight.
 - `/api/lab/benchmark-plans` for deterministic, non-executing plans until a
   canonical runner is available.

@@ -102,7 +102,9 @@ def create_app(settings: LabSettings | None = None) -> FastAPI:
     training = TrainingService(resolved, catalog, tasks=tasks, models=model_catalog)
     storage = StorageService(resolved, tasks=tasks)
     benchmark_workspace = BenchmarkWorkspaceService(resolved, model_catalog)
-    observability = ObservabilityService(resolved, catalog, training, storage=storage)
+    observability = ObservabilityService(
+        resolved, catalog, training, storage=storage, tasks=tasks
+    )
     app.state.lab_catalog = catalog
     app.state.lab_tasks = tasks
     app.state.lab_dataset_operations = dataset_operations
@@ -307,21 +309,50 @@ def create_app(settings: LabSettings | None = None) -> FastAPI:
 
     @app.post("/api/lab/quality/check", dependencies=[Depends(require_action_token)])
     def quality_check(payload: QualityRequest) -> dict[str, Any]:
-        return catalog.run_quality(
-            payload.dataset_id, max_samples=payload.max_samples, duplicates_only=False
-        )
+        catalog.get_dataset(payload.dataset_id)
+
+        def worker(context):
+            context.update(phase="ANALYZING", detail="Running canonical quality gate")
+            return catalog.run_quality(
+                payload.dataset_id,
+                max_samples=payload.max_samples,
+                duplicates_only=False,
+            )
+
+        return tasks.enqueue("DATASET_QUALITY", payload.dataset_id, worker)
 
     @app.post(
         "/api/lab/quality/duplicates", dependencies=[Depends(require_action_token)]
     )
     def quality_duplicates(payload: QualityRequest) -> dict[str, Any]:
-        return catalog.run_quality(
-            payload.dataset_id, max_samples=payload.max_samples, duplicates_only=True
-        )
+        catalog.get_dataset(payload.dataset_id)
+
+        def worker(context):
+            context.update(phase="DEDUPLICATING", detail="Running canonical dedup")
+            return catalog.run_quality(
+                payload.dataset_id,
+                max_samples=payload.max_samples,
+                duplicates_only=True,
+            )
+
+        return tasks.enqueue("DATASET_DEDUP", payload.dataset_id, worker)
 
     @app.post("/api/lab/quality/derive", dependencies=[Depends(require_action_token)])
     def quality_derive(payload: DeriveRequest) -> dict[str, Any]:
-        return catalog.derive(payload.dataset_id, payload.output_label)
+        catalog.get_dataset(payload.dataset_id)
+
+        def worker(context):
+            context.update(
+                phase="DERIVING", detail="Creating immutable canonical derived dataset"
+            )
+            return catalog.derive(payload.dataset_id, payload.output_label)
+
+        return tasks.enqueue(
+            "DATASET_DERIVE",
+            payload.dataset_id,
+            worker,
+            metadata={"output_label": payload.output_label},
+        )
 
     @app.get("/api/lab/models")
     def models(limit: int = Query(default=100, ge=1, le=200)) -> dict[str, Any]:
@@ -390,11 +421,18 @@ def create_app(settings: LabSettings | None = None) -> FastAPI:
         return training.run_preflight(payload.plan_id, write_probe=payload.write_probe)
 
     @app.post(
-        "/api/lab/training/{plan_id}/start",
+        "/api/lab/training/{plan_id}/start-plan",
         dependencies=[Depends(require_action_token)],
     )
-    def start_training(plan_id: str, _payload: EmptyRequest) -> dict[str, Any]:
-        return training.start_training(plan_id)
+    def training_start_plan(plan_id: str, _payload: EmptyRequest) -> dict[str, Any]:
+        return training.create_start_plan(plan_id)
+
+    @app.post(
+        "/api/lab/training-starts",
+        dependencies=[Depends(require_action_token)],
+    )
+    def start_training(payload: ConfirmationRequest) -> dict[str, Any]:
+        return training.confirm_start(payload.plan_id, payload.confirmation)
 
     @app.get("/api/lab/training/capabilities")
     def training_capabilities() -> dict[str, Any]:
@@ -430,6 +468,7 @@ def create_app(settings: LabSettings | None = None) -> FastAPI:
     def results(
         model: str | None = None,
         dataset: str | None = None,
+        run_type: str | None = None,
         experiment: str | None = None,
         benchmark: str | None = None,
         date: str | None = None,
@@ -440,6 +479,7 @@ def create_app(settings: LabSettings | None = None) -> FastAPI:
             {
                 "model": model,
                 "dataset": dataset,
+                "run_type": run_type,
                 "experiment": experiment,
                 "benchmark": benchmark,
                 "date": date,
@@ -498,6 +538,13 @@ def create_app(settings: LabSettings | None = None) -> FastAPI:
     @app.get("/api/lab/hardware")
     def hardware() -> dict[str, Any]:
         return observability.hardware()
+
+    @app.post(
+        "/api/lab/hardware/validate",
+        dependencies=[Depends(require_action_token)],
+    )
+    def validate_hardware(_payload: EmptyRequest) -> dict[str, Any]:
+        return observability.validate_hardware()
 
     @app.get("/lab", include_in_schema=False)
     @app.get("/lab/{page:path}", include_in_schema=False)

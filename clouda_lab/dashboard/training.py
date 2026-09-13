@@ -4,7 +4,6 @@ import json
 import re
 from dataclasses import replace
 from pathlib import Path
-from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Mapping
 
 import yaml
@@ -35,6 +34,7 @@ from clouda_training.planner.planner import build_experiment_plan
 from clouda_training.preflight.orchestrator import run_preflight
 
 from .catalog import DatasetCatalog
+from .confirmations import ConfirmationStore
 from .security import (
     browser_safe,
     safe_identifier,
@@ -63,6 +63,9 @@ class TrainingService:
         self.catalog = catalog
         self.tasks = tasks
         self.models = models
+        self.confirmations = ConfirmationStore(
+            settings.confirmations_root, browser_roots=(settings.repo_root,)
+        )
 
     @staticmethod
     def _registry():
@@ -74,16 +77,19 @@ class TrainingService:
         return get_default_registry()
 
     def list_models(self) -> list[dict[str, Any]]:
-        from clouda_training.preflight.checks_system import check_dependencies
-
         registry = self._registry()
         models: list[dict[str, Any]] = []
         for adapter_id in registry.list_adapters():
             descriptor = registry.get(adapter_id)
-            dependency_check = check_dependencies(
-                SimpleNamespace(model=SimpleNamespace(adapter_type=adapter_id))
-            ).to_dict()
-            dependencies_installed = dependency_check["status"] == "PASS"
+            dependency_check = {
+                "name": "dependencies",
+                "status": "UNCHECKED",
+                "detail": (
+                    "Canonical import probes run during preflight, not page navigation"
+                ),
+                "blocker": False,
+            }
+            dependencies_installed = False
             asset_status = "NOT CONFIGURED"
             models.append(
                 {
@@ -179,6 +185,13 @@ class TrainingService:
             "devices": ["cuda"],
             "offline": True,
             "execution": "DEFERRED",
+            "dataset_composition": {
+                "available": False,
+                "reason": (
+                    "The canonical planner and loader currently represent one dataset; "
+                    "no weighted composition contract is registered"
+                ),
+            },
         }
 
     def create_plan(self, payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -433,6 +446,40 @@ class TrainingService:
             return TrainingOrchestrator(self.settings.runs_root).start(config_path)
 
         return self.tasks.enqueue("TRAINING_START", plan_id, worker)
+
+    def create_start_plan(self, plan_id: str) -> dict[str, Any]:
+        """Build the final operator confirmation from canonical plan state."""
+        plan = self.get_plan(plan_id)
+        report = self.run_preflight(plan_id, write_probe=False)
+        config = self._config(plan_id)
+        if report.get("final_status") == "NOT_READY":
+            raise PermissionError("canonical preflight blocked training execution")
+        if config.runtime.dry_run:
+            raise PermissionError("training plan has no verified managed model assets")
+        return self.confirmations.issue(
+            "TRAINING_START",
+            plan_id,
+            {
+                "item": plan.get("config", {}).get("experiment", {}).get("name"),
+                "item_type": "training",
+                "model": plan.get("model_id"),
+                "dataset": plan.get("dataset_id"),
+                "configuration_id": plan.get("config_id"),
+                "max_steps": plan.get("config", {})
+                .get("training", {})
+                .get("max_steps"),
+                "checkpoint_policy": plan.get("checkpoint_policy"),
+                "hardware": plan.get("plan", {}).get("hardware"),
+                "destination": plan.get("output_path"),
+                "preflight_status": report.get("final_status"),
+            },
+        )
+
+    def confirm_start(self, confirmation_plan_id: str, confirmation: str):
+        plan = self.confirmations.consume(
+            confirmation_plan_id, confirmation, kind="TRAINING_START"
+        )
+        return self.start_training(str(plan["target_id"]))
 
     def resume_training(self, run_id: str) -> dict[str, Any]:
         """Resume through canonical checkpoint integrity and runtime semantics."""

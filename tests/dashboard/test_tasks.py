@@ -30,6 +30,8 @@ def test_task_records_progress_result_and_survives_service_restart(tmp_path: Pat
             completed_bytes=5,
             total_bytes=10,
             detail="checking",
+            speed_bytes_per_second=25.0,
+            checksum_status="VERIFYING",
         )
         return {"artifact": str(tmp_path / "managed" / "result.json")}
 
@@ -41,6 +43,8 @@ def test_task_records_progress_result_and_survives_service_restart(tmp_path: Pat
     assert completed["progress"] == 1.0
     assert completed["completed_bytes"] == 5
     assert completed["total_bytes"] == 10
+    assert completed["speed_bytes_per_second"] == 25.0
+    assert completed["checksum_status"] == "VERIFYING"
     assert completed["result"] == {"artifact": "managed/result.json"}
 
     reopened = OperationTaskService(root, browser_roots=(tmp_path,), max_workers=1)
@@ -94,6 +98,11 @@ def test_task_errors_are_sanitized_and_unknown_kinds_are_rejected(tmp_path: Path
 
     assert "super-secret" not in repr(failed)
     assert str(tmp_path) not in repr(failed)
+    persisted = (tmp_path / "tasks" / f"{task['task_id']}.json").read_text(
+        encoding="utf-8"
+    )
+    assert "super-secret" not in persisted
+    assert str(tmp_path) not in persisted
     assert failed["error"]["code"] == "RuntimeError"
     assert failed["error"]["message"].startswith("token=[REDACTED]")
 

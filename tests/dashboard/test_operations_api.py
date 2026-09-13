@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 def _client(tmp_path: Path):
     from clouda_lab.dashboard.app import create_app
     from clouda_lab.dashboard.settings import LabSettings
+    from tests.dashboard.test_catalog import _write_dataset
 
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -17,6 +18,7 @@ def _client(tmp_path: Path):
     target = repo / "benchmarks" / "ocr_arabic"
     target.parent.mkdir(parents=True)
     shutil.copytree(source, target)
+    _write_dataset(repo, dataset_id="safe-set", version="v1")
     settings = LabSettings.from_repo(repo)
     return TestClient(create_app(settings)), settings
 
@@ -57,6 +59,7 @@ def test_operational_reads_are_real_and_actions_require_token(tmp_path: Path):
         ).status_code
         == 403
     )
+    assert client.post("/api/lab/hardware/validate", json={}).status_code == 403
 
 
 def test_model_asset_lifecycle_uses_managed_ids_and_two_phase_removal(tmp_path: Path):
@@ -141,3 +144,18 @@ def test_benchmark_plan_and_comparison_are_metadata_only(tmp_path: Path):
     )
     assert comparison.status_code == 200
     assert comparison.json()["winner"] is None
+
+
+def test_quality_operations_return_persistent_real_tasks(tmp_path: Path):
+    client, _settings = _client(tmp_path)
+    token = client.get("/api/lab/session").json()["action_token"]
+    response = client.post(
+        "/api/lab/quality/check",
+        json={"dataset_id": "safe-set", "max_samples": 10},
+        headers={"X-Clouda-Lab-Action": token},
+    )
+
+    assert response.status_code == 200
+    task = _wait(client, response.json()["task_id"])
+    assert task["kind"] == "DATASET_QUALITY"
+    assert task["status"] == "COMPLETED"

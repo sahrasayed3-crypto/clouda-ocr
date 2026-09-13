@@ -25,7 +25,7 @@ def test_dashboard_shell_contains_complete_accessible_navigation():
         "Benchmarks",
         "Doctor",
         "Hardware",
-        "Offline Status",
+        "System &amp; Network Policy",
     ):
         assert label in html
     assert 'aria-label="Primary navigation"' in html

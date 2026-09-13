@@ -131,3 +131,52 @@ def test_verified_managed_assets_produce_non_dry_server_owned_plan(tmp_path: Pat
     assert plan["config"]["model"]["model_id"] == "data/models/hunyuan-local"
     assert plan["model_id"] == "Tencent-Hunyuan/HunyuanOCR"
     assert str(tmp_path) not in repr(plan)
+
+
+def test_training_start_requires_expiring_single_use_confirmation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    service, tasks = _service(tmp_path)
+    monkeypatch.setattr(
+        service,
+        "get_plan",
+        lambda plan_id: {
+            "plan_id": plan_id,
+            "config_id": "config-safe",
+            "model_id": "published-model",
+            "dataset_id": "safe-set@v1",
+            "output_path": "runs",
+            "config": {
+                "experiment": {"name": "safe-experiment"},
+                "training": {"max_steps": 2},
+            },
+            "plan": {"hardware": {"gpu_count": 1}},
+        },
+    )
+    monkeypatch.setattr(
+        service,
+        "run_preflight",
+        lambda plan_id, write_probe=False: {"final_status": "READY"},
+    )
+    monkeypatch.setattr(
+        service,
+        "_config",
+        lambda plan_id: SimpleNamespace(runtime=SimpleNamespace(dry_run=False)),
+    )
+    started = []
+    monkeypatch.setattr(
+        service,
+        "start_training",
+        lambda plan_id: started.append(plan_id) or {"task_id": "task-real"},
+    )
+
+    plan = service.create_start_plan("plan-safe")
+    with pytest.raises(PermissionError, match="confirmation"):
+        service.confirm_start(plan["plan_id"], "wrong")
+    assert service.confirm_start(plan["plan_id"], plan["confirmation_token"]) == {
+        "task_id": "task-real"
+    }
+    with pytest.raises(PermissionError, match="already used"):
+        service.confirm_start(plan["plan_id"], plan["confirmation_token"])
+    tasks.shutdown()
+    assert started == ["plan-safe"]

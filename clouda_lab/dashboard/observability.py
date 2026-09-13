@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 import json
 from itertools import islice
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Mapping
 
 from clouda_contracts.checksums import sha256_file
 from clouda_data.results.service import ResultsService
@@ -14,6 +14,9 @@ from .settings import LabSettings
 from .storage import StorageService
 from .training import TrainingService
 
+if TYPE_CHECKING:
+    from .tasks import OperationTaskService
+
 
 class ObservabilityService:
     def __init__(
@@ -22,11 +25,13 @@ class ObservabilityService:
         catalog: DatasetCatalog,
         training: TrainingService,
         storage: StorageService | None = None,
+        tasks: OperationTaskService | None = None,
     ) -> None:
         self.settings = settings
         self.catalog = catalog
         self.training = training
         self.storage = storage or StorageService(settings)
+        self.tasks = tasks
         self._doctor_snapshot: dict[str, Any] | None = None
         self._hardware_snapshot: dict[str, Any] | None = None
 
@@ -45,6 +50,19 @@ class ObservabilityService:
             dataset_id=str(dataset_id) if dataset_id else None,
             status=str(status) if status else None,
         )
+        typed_runs = []
+        for raw_run in runs:
+            run = dict(raw_run)
+            metadata = run.get("metadata") or {}
+            run["run_type"] = str(
+                metadata.get("run_type")
+                or ("benchmark" if metadata.get("benchmark_id") else "training")
+            ).lower()
+            typed_runs.append(run)
+        runs = typed_runs
+        run_type = str(filters.get("run_type") or "").strip().lower()
+        if run_type:
+            runs = [run for run in runs if run.get("run_type") == run_type]
         experiment = str(filters.get("experiment") or "").strip().lower()
         benchmark = str(filters.get("benchmark") or "").strip().lower()
         date = str(filters.get("date") or "").strip()
@@ -207,6 +225,10 @@ class ObservabilityService:
                     "platform": runtime.get("platform"),
                     "status": "AVAILABLE" if runtime else "DEFERRED",
                 },
+                "system_memory": {
+                    "status": "NOT_REPORTED",
+                    "reason": "Clouda Doctor has no canonical system RAM check",
+                },
                 "storage": storage,
                 "gpu": {
                     "available": available,
@@ -216,6 +238,16 @@ class ObservabilityService:
                     "devices": details.get("devices", []),
                     "bf16_supported": details.get("bf16_supported"),
                     "reason": details.get("reason") or (cuda or {}).get("message"),
+                    "device_count": int(details.get("device_count") or 0),
+                    "multi_gpu": (
+                        "DETECTED"
+                        if int(details.get("device_count") or 0) > 1
+                        else "NOT_DETECTED"
+                    ),
+                    "nccl": {
+                        "status": "NOT_REPORTED",
+                        "reason": "Clouda Doctor has no canonical NCCL check",
+                    },
                 },
                 "logical_validation_separate": True,
                 "source": "Clouda Doctor GPU capability check",
@@ -223,6 +255,20 @@ class ObservabilityService:
             (self.settings.repo_root,),
         )
         return self._hardware_snapshot
+
+    def validate_hardware(self) -> dict[str, Any]:
+        if self.tasks is None:
+            raise RuntimeError("operation task service is unavailable")
+
+        def worker(context):
+            from clouda_data.doctor.training import check_gpu
+
+            context.update(phase="VALIDATING", detail="Running canonical GPU checks")
+            report = check_gpu().to_dict()
+            self._hardware_snapshot = None
+            return report
+
+        return self.tasks.enqueue("HARDWARE_VALIDATE", "local-hardware", worker)
 
     def overview(self) -> dict[str, Any]:
         datasets = self.catalog.list_datasets()

@@ -41,7 +41,7 @@
 
 **Files:**
 - Modify: `clouda_data/datasets/downloader.py`
-- Test: `tests/datasets/test_downloader.py`
+- Test: `tests/data_foundation/unit/test_dataset_downloader.py`
 
 **Interfaces:**
 - Produces backward-compatible optional `progress_callback` and `cancellation_check` parameters on `download_http()` and `download_dataset_sample()`.

@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 from tarfile import is_tarfile
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urljoin, urlparse
 
 from .registry import assert_source_download_allowed, get_source
@@ -26,6 +26,13 @@ TWO_GB = 2 * 1024 * 1024 * 1024
 DEFAULT_SAMPLE_LIMIT = 100 * 1024 * 1024
 PRIVATE_DOWNLOAD_ENV = "CLOUDA_ALLOW_PRIVATE_DOWNLOADS"
 INSECURE_DOWNLOAD_ENV = "CLOUDA_ALLOW_INSECURE_DOWNLOADS"
+
+ProgressCallback = Callable[[int, int | None], None]
+CancellationCheck = Callable[[], bool]
+
+
+class DownloadCancelled(RuntimeError):
+    """Raised when a caller explicitly cancels an in-progress transfer."""
 
 
 @dataclass(frozen=True)
@@ -197,6 +204,8 @@ def download_http(
     retries: int = 3,
     backoff_seconds: float = 0.25,
     expected_sha256: str | None = None,
+    progress_callback: ProgressCallback | None = None,
+    cancellation_check: CancellationCheck | None = None,
 ) -> DownloadedFile:
     validate_download_url(url)
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -205,25 +214,40 @@ def download_http(
     if remote_size is not None and remote_size > max_bytes:
         raise PermissionError(f"Remote file exceeds limit: {remote_size} > {max_bytes}")
     downloaded = partial.stat().st_size if partial.exists() else 0
+    if progress_callback is not None:
+        progress_callback(downloaded, remote_size)
     headers = {"User-Agent": "arabic-ocr-dataset-prep/0.1"}
     if downloaded:
         headers["Range"] = f"bytes={downloaded}-"
     for attempt in range(retries):
         try:
+            if cancellation_check is not None and cancellation_check():
+                raise DownloadCancelled("Dataset download cancelled by the user")
             request = urllib.request.Request(url, headers=headers)
             with _urlopen(request, timeout=30) as response:
                 append = bool(downloaded and getattr(response, "status", None) == 206)
                 with partial.open("ab" if append else "wb") as handle:
                     if downloaded and not append:
                         downloaded = 0
+                        if progress_callback is not None:
+                            progress_callback(downloaded, remote_size)
                     while True:
+                        if cancellation_check is not None and cancellation_check():
+                            raise DownloadCancelled(
+                                "Dataset download cancelled by the user"
+                            )
                         chunk = response.read(1024 * 256)
                         if not chunk:
                             break
                         handle.write(chunk)
-                        if partial.stat().st_size > max_bytes:
+                        downloaded += len(chunk)
+                        if downloaded > max_bytes:
                             raise PermissionError("Download exceeded byte limit.")
+                        if progress_callback is not None:
+                            progress_callback(downloaded, remote_size)
             break
+        except DownloadCancelled:
+            raise
         except (urllib.error.URLError, TimeoutError, PermissionError):
             if attempt == retries - 1:
                 raise
@@ -235,6 +259,8 @@ def download_http(
     if expected_sha256 and expected_sha256 != actual_sha:
         raise ValueError("Downloaded checksum mismatch.")
     partial.replace(destination)
+    if progress_callback is not None:
+        progress_callback(actual_size, actual_size)
     return DownloadedFile(
         url=url,
         path=str(destination),
@@ -267,6 +293,8 @@ def download_dataset_sample(
     registry_path: str | Path = "data/manifests/dataset_registry.json",
     max_bytes: int = DEFAULT_SAMPLE_LIMIT,
     dry_run: bool = False,
+    progress_callback: ProgressCallback | None = None,
+    cancellation_check: CancellationCheck | None = None,
 ) -> DownloadResult:
     if max_bytes > TWO_GB:
         raise PermissionError("Hard safety limit: max_bytes cannot exceed 2 GB.")
@@ -286,21 +314,35 @@ def download_dataset_sample(
     existing = _existing_checksums(project_root)
     files: list[DownloadedFile] = []
     issues: list[str] = []
+    completed_before = 0
     for asset in assets:
         url = _asset_url(source, asset)
         destination = destination_root / safe_filename(asset.get("filename") or url)
         try:
+
+            def report_asset_progress(
+                completed: int, total: int | None, *, offset: int = completed_before
+            ) -> None:
+                if progress_callback is not None:
+                    aggregate_total = offset + total if total is not None else None
+                    progress_callback(offset + completed, aggregate_total)
+
             downloaded = download_http(
                 url,
                 destination,
                 max_bytes=max_bytes,
                 expected_sha256=asset.get("sha256"),
+                progress_callback=report_asset_progress,
+                cancellation_check=cancellation_check,
             )
             duplicate_of = existing.get(downloaded.checksum_sha256)
             files.append(
                 DownloadedFile(**{**asdict(downloaded), "duplicate_of": duplicate_of})
             )
             existing.setdefault(downloaded.checksum_sha256, downloaded.path)
+            completed_before += downloaded.size_bytes
+        except DownloadCancelled:
+            raise
         except Exception as exc:
             issues.append(f"{url}: {exc}")
             quarantine = project_root / "data/quarantine/downloads" / source_id

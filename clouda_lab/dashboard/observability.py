@@ -54,10 +54,16 @@ class ObservabilityService:
         for raw_run in runs:
             run = dict(raw_run)
             metadata = run.get("metadata") or {}
-            run["run_type"] = str(
-                metadata.get("run_type")
-                or ("benchmark" if metadata.get("benchmark_id") else "training")
-            ).lower()
+            explicit_type = metadata.get("run_type")
+            if explicit_type:
+                run_type_value = str(explicit_type).lower()
+            elif metadata.get("benchmark_id"):
+                run_type_value = "benchmark"
+            elif metadata.get("experiment_id") or metadata.get("experiment_name"):
+                run_type_value = "training"
+            else:
+                run_type_value = "unknown"
+            run["run_type"] = run_type_value
             typed_runs.append(run)
         runs = typed_runs
         run_type = str(filters.get("run_type") or "").strip().lower()

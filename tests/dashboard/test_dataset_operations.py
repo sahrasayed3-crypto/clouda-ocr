@@ -147,6 +147,12 @@ def test_download_requires_server_plan_exact_confirmation_and_is_single_use(
     assert plan["expected_files"] == ["sample.txt"]
     assert plan["license"] == "Apache-2.0"
     assert plan["confirmation_token"]
+    persisted_plan = next(settings.confirmations_root.glob("*.json")).read_text(
+        encoding="utf-8"
+    )
+    assert plan["confirmation_token"] not in persisted_plan
+    assert "confirmation_digest" in persisted_plan
+    assert "confirmation_token" not in persisted_plan
 
     with pytest.raises(PermissionError, match="confirmation"):
         service.start_download(plan["plan_id"], "wrong")

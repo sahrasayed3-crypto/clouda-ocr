@@ -18,6 +18,15 @@ class LabSettings:
     plans_root: Path
     quality_root: Path
     benchmarks_root: Path
+    tasks_root: Path
+    confirmations_root: Path
+    dataset_downloads_root: Path
+    download_manifests_root: Path
+    dataset_imports_root: Path
+    models_root: Path
+    model_state_root: Path
+    benchmark_plans_root: Path
+    trash_root: Path
     host: str = "127.0.0.1"
     port: int = 8000
     local_only: bool = True
@@ -41,6 +50,15 @@ class LabSettings:
             plans_root=root / "runs" / ".lab-plans",
             quality_root=root / "runs" / ".lab-quality",
             benchmarks_root=root / "benchmarks",
+            tasks_root=root / "runs" / ".lab-tasks",
+            confirmations_root=root / "runs" / ".lab-confirmations",
+            dataset_downloads_root=root / "data" / "downloads",
+            download_manifests_root=root / "data" / "manifests" / "download_manifests",
+            dataset_imports_root=root / "data" / "imports",
+            models_root=root / "data" / "models",
+            model_state_root=root / "runs" / ".lab-models",
+            benchmark_plans_root=root / "runs" / ".lab-benchmark-plans",
+            trash_root=root / "runs" / ".lab-trash",
             host=host,
             port=port,
             local_only=local_only,

@@ -1,5 +1,7 @@
 # Clouda PDF
 
+[![Build with Ona](https://ona.com/build-with-ona.svg)](https://app.ona.com/#https://github.com/sahrasayed3-crypto/clouda-ocr)
+
 > The repository now includes the production runtime plus isolated data,
 > training-planning, model-registry, and shared-contract subsystems. The
 > pre-training dataset-preparation infrastructure is ready and frozen pending

@@ -22,7 +22,7 @@
 1. **Project identity confusion.** The README is titled "Clouda PDF", the repository is `clouda-ocr`, `NOTICE` says "Clouda OCR", the installed package is `clouda-pdf`, and the GitHub description says "OCR … framework". A reviewer spending two minutes cannot tell what the product is called.
 2. **The README opens like an internal status report.** The first content block is a dense blockquote about merged subsystems and disabled defaults — a changelog voice, not a product voice.
 3. **Stale historical test claim.** `docs/TESTING.md` presents "145 passed" (dated 2026-07-14) as the "Latest verified result" while the suite has since grown by an order of magnitude. Presented as *latest*, this understates the project and risks looking stale or cherry-picked.
-4. **One leaked local path.** `docs/superpowers/plans/2026-09-09-pretraining-infrastructure-hardening.md` contains `C:/Users/Ahmed/.codex/attachments/...` — a personal machine path in a public repository.
+4. **One leaked local path.** `docs/superpowers/plans/2026-09-09-pretraining-infrastructure-hardening.md` contains a personal machine path (a local AI-tool attachments directory under the developer's user profile) — scrubbed on the hardening branch.
 5. **Empty GitHub topics and zero releases/tags**, despite version `0.2.0` in `pyproject.toml` and a green pipeline. The repository is invisible in topic search and offers no pinned, citable revision.
 
 ### Top 5 highest-impact improvements
@@ -102,7 +102,7 @@ STRONG. Apache-2.0 for original code only, explicit carve-outs, OFL 1.1 font not
 
 | Finding | File | Severity | Action |
 |---|---|---|---|
-| Personal local path `C:/Users/Ahmed/.codex/attachments/...` | `docs/superpowers/plans/2026-09-09-pretraining-infrastructure-hardening.md` | P1 | Scrub path; keep content (done on hardening branch) |
+| Personal local machine path (an AI-tool attachments directory under the developer's user profile) | `docs/superpowers/plans/2026-09-09-pretraining-infrastructure-hardening.md` | P1 | Scrub path; keep content (done on hardening branch) |
 | Stale "145 passed" labeled as latest result | `docs/TESTING.md` | P1 | Reframe as dated historical snapshot + live static counts (done) |
 | AI-session plan/spec docs public under `docs/superpowers/` | `docs/superpowers/` | P2 | Defensible as development-history evidence of disciplined planning; keep, but scrub local paths and consider a one-line README inside the folder explaining its purpose |
 | "Build with Ona" badge | README line 3 | P2 | Owner decision; removed on hardening branch in favor of a live CI badge (owner should verify the badge renders green) |

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import math
+import os
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
@@ -43,6 +44,13 @@ class OCRPageState(StrEnum):
     REVIEW_REQUIRED = "review_required"
     PENDING_OCR_MODEL = "pending_ocr_model"
     OCR_FAILED = "ocr_failed"
+
+
+@dataclass(frozen=True)
+class CudaSmokeResult:
+    state: str
+    reason: str
+    device_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -227,7 +235,10 @@ def regions_from_ocr_boxes(
             or metadata.get("image_height_px") != render.height_px
         ):
             continue
-        if any(not isinstance(value, (int, float)) or not math.isfinite(value) for value in box.bbox):
+        if any(
+            not isinstance(value, (int, float)) or not math.isfinite(value)
+            for value in box.bbox
+        ):
             continue
         x0, y0, x1, y1 = box.bbox
         region = ReviewRegion(
@@ -269,7 +280,9 @@ def _valid_region(
     ):
         return False
     coordinates = region.bbox_px
-    if any(not isinstance(value, int) or isinstance(value, bool) for value in coordinates):
+    if any(
+        not isinstance(value, int) or isinstance(value, bool) for value in coordinates
+    ):
         return False
     x0, y0, x1, y1 = coordinates
     if x0 < 0 or y0 < 0 or x1 > render.width_px or y1 > render.height_px:
@@ -285,7 +298,9 @@ def validate_and_bound_regions(
     accepted: list[ReviewRegion] = []
     pixels = 0
     for region in regions:
-        if len(accepted) >= budget.max_regions or not _valid_region(region, render, budget):
+        if len(accepted) >= budget.max_regions or not _valid_region(
+            region, render, budget
+        ):
             continue
         area = (region.bbox_px[2] - region.bbox_px[0]) * (
             region.bbox_px[3] - region.bbox_px[1]
@@ -331,7 +346,9 @@ def reconcile_ocr_results(
             OCRPageState.REVIEW_REQUIRED,
             "",
             review.issue_codes,
-            unresolved_regions=tuple(region.region_id for region in review.suspicious_regions),
+            unresolved_regions=tuple(
+                region.region_id for region in review.suspicious_regions
+            ),
             review_required=True,
         )
     by_region = {item.region_id: item for item in rereads}
@@ -350,7 +367,11 @@ def reconcile_ocr_results(
             return OCRReconciliationResult(
                 OCRPageState.REVIEW_REQUIRED,
                 "",
-                tuple(dict.fromkeys((*review.issue_codes, OCRIssueCode.REREAD_DISAGREEMENT))),
+                tuple(
+                    dict.fromkeys(
+                        (*review.issue_codes, OCRIssueCode.REREAD_DISAGREEMENT)
+                    )
+                ),
                 unresolved_regions=(region.region_id,),
                 review_required=True,
             )
@@ -363,3 +384,22 @@ def reconcile_ocr_results(
         accepted_replacements=tuple(accepted),
         provenance=tuple(f"selective_reread:{region_id}" for region_id in accepted),
     )
+
+
+def run_cuda_smoke() -> CudaSmokeResult:
+    if os.getenv("CLOUDA_CUDA_SMOKE", "").lower() not in {"1", "true", "yes", "on"}:
+        return CudaSmokeResult("skipped", "not_enabled")
+    try:
+        import torch
+
+        if not torch.cuda.is_available():
+            return CudaSmokeResult("skipped", "cuda_unavailable")
+        device = torch.device("cuda:0")
+        tensor = torch.zeros(1, device=device)
+        del tensor
+        torch.cuda.empty_cache()
+        return CudaSmokeResult(
+            "passed", "tiny_allocation", torch.cuda.get_device_name(device)
+        )
+    except Exception as exc:
+        return CudaSmokeResult("failed", type(exc).__name__)

@@ -101,9 +101,11 @@ async function renderDocumentIntelligence() {
       const reasons = node("div", { class: "toolbar" }, (page.reason_codes || []).map((reason) => badge(reason)));
       const evidence = page.evidence || {};
       const safeEvidence = kv({ "Embedded text": evidence.embedded_text_present ? "YES" : "NO", "Blank evidence": evidence.blank_evidence ? "YES" : "NO", "Near-blank evidence": evidence.near_blank_evidence ? "YES" : "NO" });
-      return [page.page_number, badge(page.decision), badge(page.gate_verdict), badge(page.next_path), reasons, page.ocr_pending ? badge("OCR pending") : badge("NO"), safeEvidence];
+      const review = page.ocr_self_review || {};
+      const safeReview = kv({ "First pass": badge(review.first_pass_state || "not_applicable"), "Review verdict": badge(review.review_verdict || "not_applicable"), "Final state": badge(review.final_state || "not_applicable"), "Re-read attempts": review.reread_attempt_count || 0, "Unresolved review": review.unresolved_review ? "YES" : "NO" });
+      return [page.page_number, badge(page.decision), badge(page.gate_verdict), badge(page.next_path), reasons, page.ocr_pending ? badge("OCR pending") : badge("NO"), safeEvidence, safeReview];
     });
-    result.append(panel("Page routing", [table(["Page", "Decision", "Gate verdict", "Next path", "Reason codes", "OCR pending", "Safe evidence"], rows)]));
+    result.append(panel("Page routing", [table(["Page", "Decision", "Gate verdict", "Next path", "Reason codes", "OCR pending", "Safe evidence", "OCR self-review"], rows)]));
   }
   app.append(pageHead("Document Intelligence", "Select a PDF to inspect categorical page-routing decisions. The file stays in memory and is not retained.", [file, button("Analyze PDF", analyze)]), result);
 }

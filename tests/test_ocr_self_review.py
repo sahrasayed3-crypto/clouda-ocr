@@ -13,7 +13,6 @@ from pdfword.ocr_self_review import (
     OCRPageState,
     ReReadResult,
     ReReadBudget,
-    RenderedPageContext,
     ReviewRegion,
     make_rendered_page_context,
     crop_review_region,
@@ -220,8 +219,14 @@ def test_reread_without_a_verified_text_boundary_requires_review() -> None:
         issue_codes=(OCRIssueCode.UNICODE_CORRUPTION,),
         suspicious_regions=(
             ReviewRegion(
-                "r1", 1, (1, 1, 30, 40), "render", 40, 60,
-                (OCRIssueCode.UNICODE_CORRUPTION,), "high",
+                "r1",
+                1,
+                (1, 1, 30, 40),
+                "render",
+                40,
+                60,
+                (OCRIssueCode.UNICODE_CORRUPTION,),
+                "high",
             ),
         ),
         safe_diagnostics=(),
@@ -229,7 +234,9 @@ def test_reread_without_a_verified_text_boundary_requires_review() -> None:
         manual_review_required=False,
     )
 
-    result = reconcile_ocr_results("bad \ufffd", review, (ReReadResult("r1", "fake", True, "fixed"),))
+    result = reconcile_ocr_results(
+        "bad \ufffd", review, (ReReadResult("r1", "fake", True, "fixed"),)
+    )
 
     assert result.state is OCRPageState.REVIEW_REQUIRED
     assert OCRIssueCode.REREAD_DISAGREEMENT in result.reason_codes

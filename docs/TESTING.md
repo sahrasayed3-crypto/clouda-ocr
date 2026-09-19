@@ -14,6 +14,12 @@ Run the suite and coverage report:
 
 The report intentionally does not treat `pending_ocr_model` as OCR success or as a final processing failure.
 
+OCR self-review tests use deterministic local fakes. They cover optional native
+confidence, exact render-bound crop geometry, conservative replacement
+provenance, review boundaries, and the opt-in CUDA plumbing smoke. The smoke
+skips unless `CLOUDA_CUDA_SMOKE=1`; it does not establish OCR quality or future
+model fit.
+
 Routing tests assert the canonical sequence `Page Analyzer -> Trusted Digital
 Text Gate -> Page Decision Engine`. A legitimate short-text page must not be
 classified as `near_blank` from character count alone. Direct extraction uses

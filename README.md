@@ -26,6 +26,7 @@ Researchers, publishers, and archives need editable documents without silently l
 - Preserve short page-number text rather than discarding it.
 - Use a model-agnostic `ExtractionEngine` and `EngineRegistry` for a future OCR integration.
 - Keep scanned, low-quality, and image-only pages in an explicit review state instead of claiming unmeasured OCR accuracy.
+- Self-review configured local OCR categorically and re-read only verified, bounded image regions; unresolved OCR remains review-required.
 
 ```mermaid
 flowchart LR

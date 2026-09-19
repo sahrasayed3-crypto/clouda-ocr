@@ -51,6 +51,21 @@ class DigitalTextGateVerdict(StrEnum):
     UNCERTAIN = "uncertain"
 
 
+class PageDecision(StrEnum):
+    TRUSTED_DIGITAL_TEXT = "trusted_digital_text"
+    OCR_REQUIRED = "ocr_required"
+    REVIEW_REQUIRED = "review_required"
+    BLANK_OR_NEAR_BLANK = "blank_or_near_blank"
+
+
+class PageNextPath(StrEnum):
+    DIRECT_PDF_TEXT = "direct_pdf_text"
+    LOCAL_OCR = "local_ocr"
+    PENDING_OCR_MODEL = "pending_ocr_model"
+    MANUAL_REVIEW = "manual_review"
+    NO_EXTRACTION = "no_extraction"
+
+
 class DigitalTextReasonCode(StrEnum):
     COMPLETE_DIGITAL_TEXT = "complete_digital_text"
     SUFFICIENT_TEXT_DISTRIBUTION = "sufficient_text_distribution"
@@ -203,6 +218,40 @@ class DigitalTextGateResult:
                 }
                 for check in self.checks
             ],
+        }
+
+
+@dataclass(frozen=True)
+class TrustedDigitalTextContext:
+    document_sha256: str
+    page_number: int
+    normalized_text_sha256: str
+    gate_result: DigitalTextGateResult
+
+
+@dataclass(frozen=True)
+class PageDecisionResult:
+    decision: PageDecision
+    next_path: PageNextPath
+    gate_verdict: DigitalTextGateVerdict
+    reason_codes: tuple[str, ...]
+    evidence: tuple[tuple[str, int | float | bool | str | None], ...]
+    ocr_required: bool
+    ocr_available: bool
+    review_required: bool
+    trusted_context: TrustedDigitalTextContext | None = field(default=None, repr=False)
+
+    def to_diagnostics(self) -> dict[str, object]:
+        return {
+            "decision": self.decision.value,
+            "next_path": self.next_path.value,
+            "gate_verdict": self.gate_verdict.value,
+            "reason_codes": list(self.reason_codes),
+            "evidence": dict(self.evidence),
+            "ocr_required": self.ocr_required,
+            "ocr_available": self.ocr_available,
+            "ocr_pending": (self.next_path is PageNextPath.PENDING_OCR_MODEL),
+            "review_required": self.review_required,
         }
 
 
@@ -739,6 +788,116 @@ def evaluate_digital_text_trust(analysis: PageAnalysis) -> DigitalTextGateResult
     )
 
 
+def _decision_reasons(
+    analysis: PageAnalysis,
+    gate: DigitalTextGateResult,
+    extra: str,
+) -> tuple[str, ...]:
+    reasons = [reason.value for reason in gate.reason_codes]
+    reasons.extend(analysis.evidence_codes)
+    reasons.append(extra)
+    return tuple(dict.fromkeys(reasons))
+
+
+def decide_page_route(
+    analysis: PageAnalysis,
+    gate: DigitalTextGateResult,
+    *,
+    ocr_available: bool,
+) -> PageDecisionResult:
+    common_evidence: tuple[tuple[str, int | float | bool | str | None], ...] = (
+        ("page_number", analysis.page_number),
+        ("embedded_text_present", analysis.embedded_text_present),
+        ("blank_evidence", analysis.blank_evidence),
+        ("near_blank_evidence", analysis.near_blank_evidence),
+    )
+    if analysis.blank_evidence or analysis.near_blank_evidence:
+        reason = (
+            "blank_content_stream"
+            if analysis.blank_evidence
+            else "near_blank_structural_evidence"
+        )
+        return PageDecisionResult(
+            decision=PageDecision.BLANK_OR_NEAR_BLANK,
+            next_path=PageNextPath.NO_EXTRACTION,
+            gate_verdict=gate.verdict,
+            reason_codes=_decision_reasons(analysis, gate, reason),
+            evidence=common_evidence,
+            ocr_required=False,
+            ocr_available=ocr_available,
+            review_required=analysis.near_blank_evidence,
+        )
+    if gate.verdict is DigitalTextGateVerdict.TRUSTED:
+        trusted_context = TrustedDigitalTextContext(
+            document_sha256=analysis.document_sha256,
+            page_number=analysis.page_number,
+            normalized_text_sha256=digest_normalized_text(analysis.embedded_text),
+            gate_result=gate,
+        )
+        return PageDecisionResult(
+            decision=PageDecision.TRUSTED_DIGITAL_TEXT,
+            next_path=PageNextPath.DIRECT_PDF_TEXT,
+            gate_verdict=gate.verdict,
+            reason_codes=_decision_reasons(analysis, gate, "trusted_gate_passed"),
+            evidence=common_evidence,
+            ocr_required=False,
+            ocr_available=ocr_available,
+            review_required=False,
+            trusted_context=trusted_context,
+        )
+    if gate.verdict is DigitalTextGateVerdict.UNTRUSTED:
+        return PageDecisionResult(
+            decision=PageDecision.OCR_REQUIRED,
+            next_path=(
+                PageNextPath.LOCAL_OCR
+                if ocr_available
+                else PageNextPath.PENDING_OCR_MODEL
+            ),
+            gate_verdict=gate.verdict,
+            reason_codes=_decision_reasons(
+                analysis,
+                gate,
+                "ocr_available" if ocr_available else "ocr_unavailable",
+            ),
+            evidence=common_evidence,
+            ocr_required=True,
+            ocr_available=ocr_available,
+            review_required=not ocr_available,
+        )
+    return PageDecisionResult(
+        decision=PageDecision.REVIEW_REQUIRED,
+        next_path=PageNextPath.MANUAL_REVIEW,
+        gate_verdict=gate.verdict,
+        reason_codes=_decision_reasons(analysis, gate, "gate_uncertain"),
+        evidence=common_evidence,
+        ocr_required=False,
+        ocr_available=ocr_available,
+        review_required=True,
+    )
+
+
+def validate_trusted_context_before_extraction(
+    context: TrustedDigitalTextContext,
+    *,
+    document_sha256: str,
+    page_number: int,
+    gate: DigitalTextGateResult,
+) -> bool:
+    return bool(
+        gate.verdict is DigitalTextGateVerdict.TRUSTED
+        and context.document_sha256 == document_sha256
+        and context.page_number == page_number
+        and context.gate_result == gate
+    )
+
+
+def validate_trusted_text_after_extraction(
+    context: TrustedDigitalTextContext,
+    extracted_text: str,
+) -> bool:
+    return context.normalized_text_sha256 == digest_normalized_text(extracted_text)
+
+
 __all__ = [
     "AnalysisWarningCode",
     "DigitalTextGateResult",
@@ -748,9 +907,16 @@ __all__ = [
     "EvidenceAvailability",
     "GateCheck",
     "PageAnalysis",
+    "PageDecision",
+    "PageDecisionResult",
+    "PageNextPath",
     "TextSpan",
+    "TrustedDigitalTextContext",
     "analyze_pdf_page",
+    "decide_page_route",
     "digest_normalized_text",
     "evaluate_digital_text_trust",
     "normalize_embedded_text",
+    "validate_trusted_context_before_extraction",
+    "validate_trusted_text_after_extraction",
 ]

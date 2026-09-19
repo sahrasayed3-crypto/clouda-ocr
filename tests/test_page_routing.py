@@ -15,8 +15,13 @@ from pdfword.page_routing import (
     DigitalTextGateVerdict,
     DigitalTextReasonCode,
     DocumentRoutingContext,
+    PageDecision,
+    PageNextPath,
     analyze_pdf_page,
+    decide_page_route,
     evaluate_digital_text_trust,
+    validate_trusted_context_before_extraction,
+    validate_trusted_text_after_extraction,
 )
 
 FIXTURES = Path(__file__).with_name("fixtures")
@@ -293,3 +298,126 @@ def test_short_centered_title_gate_is_not_near_blank() -> None:
         DigitalTextGateVerdict.TRUSTED,
         DigitalTextGateVerdict.UNCERTAIN,
     }
+
+
+def test_trusted_gate_decision_authorizes_direct_text() -> None:
+    analysis = _analyze_bytes((FIXTURES / "digital_text.pdf").read_bytes())
+    gate = evaluate_digital_text_trust(analysis)
+
+    result = decide_page_route(analysis, gate, ocr_available=False)
+
+    assert result.decision is PageDecision.TRUSTED_DIGITAL_TEXT
+    assert result.next_path is PageNextPath.DIRECT_PDF_TEXT
+    assert result.ocr_required is False
+    assert result.review_required is False
+    assert result.trusted_context is not None
+
+
+def test_untrusted_page_with_unavailable_ocr_preserves_pending_path() -> None:
+    analysis = _analyze_bytes((FIXTURES / "scanned.pdf").read_bytes())
+    gate = evaluate_digital_text_trust(analysis)
+
+    result = decide_page_route(analysis, gate, ocr_available=False)
+
+    assert result.decision is PageDecision.OCR_REQUIRED
+    assert result.next_path is PageNextPath.PENDING_OCR_MODEL
+    assert result.ocr_required is True
+    assert result.ocr_available is False
+
+
+def test_untrusted_page_with_available_ocr_selects_local_ocr() -> None:
+    analysis = _analyze_bytes((FIXTURES / "scanned.pdf").read_bytes())
+    gate = evaluate_digital_text_trust(analysis)
+
+    result = decide_page_route(analysis, gate, ocr_available=True)
+
+    assert result.decision is PageDecision.OCR_REQUIRED
+    assert result.next_path is PageNextPath.LOCAL_OCR
+    assert result.ocr_available is True
+
+
+def test_ambiguous_short_title_requires_review() -> None:
+    analysis = _analyze_bytes(_text_pdf("Short Title"))
+    gate = evaluate_digital_text_trust(analysis)
+
+    result = decide_page_route(analysis, gate, ocr_available=False)
+
+    assert result.decision is PageDecision.REVIEW_REQUIRED
+    assert result.next_path is PageNextPath.MANUAL_REVIEW
+    assert result.review_required is True
+    assert result.trusted_context is None
+
+
+def test_blank_and_structural_near_blank_share_closed_blank_decision() -> None:
+    blank = _analyze_bytes((FIXTURES / "blank.pdf").read_bytes())
+    near_blank = _analyze_bytes((FIXTURES / "near_blank_page_number.pdf").read_bytes())
+
+    blank_result = decide_page_route(
+        blank, evaluate_digital_text_trust(blank), ocr_available=False
+    )
+    near_blank_result = decide_page_route(
+        near_blank,
+        evaluate_digital_text_trust(near_blank),
+        ocr_available=False,
+    )
+
+    assert blank_result.decision is PageDecision.BLANK_OR_NEAR_BLANK
+    assert blank_result.next_path is PageNextPath.NO_EXTRACTION
+    assert near_blank_result.decision is PageDecision.BLANK_OR_NEAR_BLANK
+    assert near_blank_result.next_path is PageNextPath.NO_EXTRACTION
+
+
+def test_trusted_context_rejects_another_document_or_page() -> None:
+    analysis = _analyze_bytes((FIXTURES / "digital_text.pdf").read_bytes())
+    gate = evaluate_digital_text_trust(analysis)
+    decision = decide_page_route(analysis, gate, ocr_available=False)
+    assert decision.trusted_context is not None
+
+    assert validate_trusted_context_before_extraction(
+        decision.trusted_context,
+        document_sha256=analysis.document_sha256,
+        page_number=analysis.page_number,
+        gate=gate,
+    )
+    assert not validate_trusted_context_before_extraction(
+        decision.trusted_context,
+        document_sha256="0" * 64,
+        page_number=analysis.page_number,
+        gate=gate,
+    )
+    assert not validate_trusted_context_before_extraction(
+        decision.trusted_context,
+        document_sha256=analysis.document_sha256,
+        page_number=analysis.page_number + 1,
+        gate=gate,
+    )
+
+
+def test_post_extraction_digest_mismatch_is_rejected() -> None:
+    analysis = _analyze_bytes((FIXTURES / "digital_text.pdf").read_bytes())
+    gate = evaluate_digital_text_trust(analysis)
+    decision = decide_page_route(analysis, gate, ocr_available=False)
+    assert decision.trusted_context is not None
+
+    assert validate_trusted_text_after_extraction(
+        decision.trusted_context, analysis.embedded_text
+    )
+    assert not validate_trusted_text_after_extraction(
+        decision.trusted_context,
+        "different extracted text",
+    )
+
+
+def test_page_decision_diagnostics_are_categorical_and_hide_context_digests() -> None:
+    analysis = _analyze_bytes((FIXTURES / "digital_text.pdf").read_bytes())
+    gate = evaluate_digital_text_trust(analysis)
+    decision = decide_page_route(analysis, gate, ocr_available=False)
+
+    payload = decision.to_diagnostics()
+    serialized = json.dumps(payload).lower()
+
+    assert payload["decision"] == "trusted_digital_text"
+    assert "sha256" not in serialized
+    assert "accuracy" not in serialized
+    assert "confidence" not in serialized
+    assert "quality" not in serialized

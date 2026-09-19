@@ -112,11 +112,11 @@ class SourceDocument:
 
     @property
     def title(self) -> str:
-        """The document's own title segment, or its filename stem."""
+        """The document's own title segment, or its stable document identity."""
         for seg in self.segments:
             if seg.kind == "title":
                 return seg.text
-        return self.path.stem
+        return self.doc_id
 
     def verify_segment_invariant(self) -> None:
         """Assert every segment is an exact substring at its recorded offsets.
@@ -239,7 +239,9 @@ def parse_segments(
     return segments
 
 
-def load_document(path: Path, markup: str = "auto") -> SourceDocument:
+def load_document(
+    path: Path, markup: str = "auto", document_id: str | None = None
+) -> SourceDocument:
     """Ingest one source file."""
     raw = path.read_bytes()
     if not raw.strip():
@@ -255,7 +257,10 @@ def load_document(path: Path, markup: str = "auto") -> SourceDocument:
     else:
         raise CorpusError(f"unknown markup mode {markup!r} (use auto|hash|none)")
 
-    doc_id = path.stem
+    # A caller that transports in-memory text through a temporary file may
+    # supply its canonical identity.  It is used in segments and fallback
+    # furniture, so deriving it from a random filename would make pages vary.
+    doc_id = document_id or path.stem
     segments = parse_segments(doc_id, text, detect_headings=detect)
     if not segments:
         raise CorpusError(f"{path} contains no usable text segments")

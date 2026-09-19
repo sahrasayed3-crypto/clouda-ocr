@@ -73,10 +73,13 @@ def test_tiny_offline_e2e_full_chain(tmp_path):
     import hashlib
 
     for row in ok_rows:
-        assert (
-            row["source_sha256"]
-            == hashlib.sha256((inbox / "tiny_page.png").read_bytes()).hexdigest()
-        )
+        # autorun intentionally processes the image and its text companion as
+        # distinct source assets.  Each row must retain the hash of the source
+        # it actually consumed; the rendered/degraded artifact has its own
+        # output hash below and is not expected to equal either source hash.
+        source = inbox / Path(str(row["source_ref"])).name
+        assert source.is_file()
+        assert row["source_sha256"] == hashlib.sha256(source.read_bytes()).hexdigest()
         assert isinstance(row["seed"], int)
         assert row["seed_mode"] == "v1"
         assert row["profile"] in summary["profiles"]

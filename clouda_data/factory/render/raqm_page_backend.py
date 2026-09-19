@@ -148,6 +148,10 @@ def _document_from_text(text: str, style_seed: int):
         handle.write(text)
         path = Path(handle.name)
     try:
-        return v_corpus.load_document(path, markup="auto")
+        # The transport path is intentionally random and must not leak into
+        # running headers/footers via SourceDocument's fallback title.  Bind
+        # the logical document identity to canonical text bytes instead.
+        document_id = f"cdf-{v_corpus.sha256_text(text)[:16]}"
+        return v_corpus.load_document(path, markup="auto", document_id=document_id)
     finally:
         path.unlink(missing_ok=True)

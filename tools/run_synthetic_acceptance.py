@@ -295,6 +295,9 @@ def run() -> dict[str, object]:
         ]
     )
     runtime_metadata = page_results[0].metadata or {}
+    runtime_page_state = str(runtime_metadata["page_state"])
+    runtime_model = str(page_results[0].model_used)
+    runtime_engines = list(page_results[0].engines_attempted)
     report = {
         "schema_version": 1,
         "run_id": stamp,
@@ -310,7 +313,9 @@ def run() -> dict[str, object]:
         "document_leakage": training["document_leakage"],
         "mock_ocr_cer": evaluation["summary"]["cer"],
         "mock_ocr_wer": evaluation["summary"]["wer"],
-        "runtime_mock_status": runtime_metadata["page_state"],
+        "runtime_mock_status": runtime_page_state,
+        "runtime_mock_model": runtime_model,
+        "runtime_mock_engines": runtime_engines,
         "docx": str(docx_path),
         "source_unchanged": source_unchanged,
         "outputs_inside_state": outputs_inside_state,
@@ -324,7 +329,12 @@ def run() -> dict[str, object]:
                 not training["document_leakage"],
                 evaluation["summary"]["cer"] == 0,
                 evaluation["summary"]["wer"] == 0,
-                runtime_metadata["page_state"] == "local_model_ocr",
+                # The self-review layer now exposes its categorical outcome as
+                # the page state.  Verify both that the mock local engine ran
+                # and that its first pass was accepted, rather than comparing
+                # the state to the pre-self-review engine route name.
+                runtime_page_state == "accepted_first_pass",
+                "local_model_ocr" in runtime_engines,
                 source_unchanged,
                 outputs_inside_state,
             ]

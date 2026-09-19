@@ -55,10 +55,12 @@ registry.
 
 `DirectPdfTextEngine` remains a pure extraction primitive. It does not own page
 analysis, trust policy, or routing. The canonical runtime calls it only after a
-trusted decision. A `TrustedDigitalTextContext` produced by the routing module
-binds the authorization to the SHA-256 digest of the PDF bytes, page number,
-gate verdict, and extracted-text digest. The orchestrator validates that context
-before invoking the direct engine. This is an accidental-bypass guard, not a
+trusted decision. A document-scoped routing context computes the PDF SHA-256
+once and reuses it for every selected page. A `TrustedDigitalTextContext`
+produced by the routing module binds the authorization to that document digest,
+page number, gate verdict, and analyzed-text digest. The orchestrator validates
+the context before invoking the direct engine and validates the extracted-text
+digest again after the engine returns. This is an accidental-bypass guard, not a
 security claim: the low-level extraction primitive remains importable for tests
 and tooling.
 
@@ -199,9 +201,16 @@ verdict is `trusted`. It contains:
 - normalized-text SHA-256 digest;
 - the trusted gate result.
 
-The runtime validates all four fields immediately before direct extraction and
-rejects a mismatch as `review_required`. It does not silently reroute a context
-mismatch to direct text.
+The parent `DocumentRoutingContext` computes the PDF digest once when processing
+begins, then supplies it to every page analyzer and trusted context. The runtime
+does not rehash the full PDF for each page.
+
+The runtime validates all trusted-context fields immediately before direct
+extraction. Because analysis and `DirectPdfTextEngine` perform separate
+extraction calls, it normalizes and hashes the engine's returned text and
+compares that digest with the trusted context after extraction. Any pre- or
+post-extraction mismatch becomes `review_required`; it never silently succeeds,
+uses the mismatched text, or falls back to untrusted direct output.
 
 ### Page decision
 
@@ -228,7 +237,12 @@ Decision precedence is deterministic:
 
 1. Strong blank evidence selects `blank_or_near_blank` and `no_extraction`.
 2. Strong near-blank evidence selects `blank_or_near_blank`; meaningful short
-   text is preserved in `PageResult` for review compatibility.
+   text is preserved in `PageResult` for review compatibility. Character count
+   alone can never grant near-blank status. It requires corroborating structural
+   or visible-content evidence, such as a single localized footer/page-number
+   span or a small isolated mark with otherwise empty content-stream evidence.
+   A short title or other centrally distributed legitimate text remains eligible
+   for trust or review, not automatic near-blank classification.
 3. A trusted gate selects `trusted_digital_text` and `direct_pdf_text`.
 4. An untrusted gate selects `ocr_required`; the next path is `local_ocr` only
    when the existing feature-flagged registered OCR engine is available,
@@ -304,12 +318,21 @@ the decision, gate verdict, reason codes, safe analyzer diagnostics, next path,
 and OCR availability. Existing top-level keys such as `page_state` and
 `embedded_text_chars` remain during migration.
 
+Pages routed to `review_required` preserve their page boundary and emit an
+explicit non-text review placeholder or equivalent user-visible status in the
+converted document. The placeholder identifies the page as requiring review
+without reproducing untrusted extracted text. A review page therefore cannot
+silently disappear from DOCX output.
+
 Failures are conservative:
 
 - analyzer failure becomes `review_required` unless the content-stream evidence
   independently proves an image-only page requiring OCR;
 - direct extraction failure after trusted authorization becomes
   `review_required`, never an unexamined OCR success;
+- extracted-text digest mismatch after direct extraction becomes
+  `review_required`, preserves the page boundary, and emits the review
+  placeholder without the mismatched text;
 - unavailable OCR preserves `pending_ocr_model`;
 - local OCR errors preserve the existing failed/pending behavior and diagnostics;
 - no untrusted embedded text is substituted merely to populate output.
@@ -385,7 +408,12 @@ Focused coverage includes:
 17. trusted context cannot be reused for another document or page;
 18. all enum and reason-code serialization is stable;
 19. Lab and conversion-facing diagnostics contain no routing accuracy,
-    confidence, or quality percentage.
+    confidence, or quality percentage;
+20. the PDF digest is computed once per document and reused for every page;
+21. direct extraction text-digest mismatch becomes visible review output;
+22. short title pages are not classified near-blank from character count alone;
+23. every review-required page preserves its document boundary and visible
+    placeholder without exposing untrusted text.
 
 Tests are split by responsibility:
 
@@ -446,7 +474,9 @@ branch deletion, hard reset, or history rewrite.
 - A partial hidden OCR layer is not trusted and cannot silently populate output.
 - A hybrid page is trusted only when structural evidence supports complete
   digital text; otherwise it requires OCR or review.
-- An ambiguous page is explicitly `review_required`.
-- A blank or deterministically near-blank page has an explicit blank decision.
+- An ambiguous page is explicitly `review_required`, keeps its page boundary,
+  and emits a visible review placeholder without untrusted text.
+- A blank or deterministically near-blank page has an explicit blank decision;
+  short length alone is insufficient for near-blank classification.
 - OCR-required pages preserve the canonical pending-model state when OCR is
   unavailable.

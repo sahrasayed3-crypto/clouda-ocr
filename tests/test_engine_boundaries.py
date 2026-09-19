@@ -34,7 +34,10 @@ def test_registry_validation_and_status_reporting() -> None:
         registry.register(engine)
     with pytest.raises(KeyError):
         registry.get("missing")
-    assert available_engine_status(registry)[0]["status"] == "ready"
+    status = available_engine_status(registry)[0]
+    assert status["status"] == "ready"
+    assert status["active"] is False
+    assert status["selection"] == "conditional_page_decision"
     assert registry.all() == [engine]
 
 

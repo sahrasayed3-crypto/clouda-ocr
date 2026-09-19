@@ -166,7 +166,7 @@ class DirectPdfTextEngine:
                 status=OCR_STATUS_SUCCEEDED if has_text else OCR_STATUS_PENDING_MODEL,
                 text=text,
                 processing_time=time.perf_counter() - started,
-                confidence=100.0 if has_text else None,
+                confidence=None,
                 error_message=None if has_text else "No embedded text layer was found.",
             )
         except Exception as exc:
@@ -384,7 +384,12 @@ def available_engine_status(
                 "type": engine.engine_type,
                 "model": getattr(engine, "model_name", None),
                 "available": engine.available(),
-                "active": engine.name == DIRECT_TEXT_ENGINE.name,
+                "active": False,
+                "selection": (
+                    "conditional_page_decision"
+                    if engine.name == DIRECT_TEXT_ENGINE.name
+                    else "engine_registry"
+                ),
                 "status": "ready" if engine.available() else OCR_STATUS_PENDING_MODEL,
             }
         )

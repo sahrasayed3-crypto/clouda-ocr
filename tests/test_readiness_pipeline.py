@@ -6,15 +6,20 @@ import subprocess
 import sys
 from pathlib import Path
 
+import fitz
 import pytest
 from docx import Document
+from PIL import Image
 from pypdf.errors import PdfReadError
 
 from pdfword.docx_export import markdown_to_docx
 from pdfword.engines import (
+    DIRECT_TEXT_ENGINE,
     DirectPdfTextEngine,
+    OCRResult,
     OCR_STATUS_FAILED,
     OCR_STATUS_PENDING_MODEL,
+    OCR_STATUS_SUCCEEDED,
 )
 from pdfword.ocr_pipeline import BLANK_PAGE_ROUTE, NEAR_BLANK_PAGE_ROUTE, process_pdf
 
@@ -55,6 +60,118 @@ def test_digital_pdf_extracts_text_without_ocr() -> None:
     assert rows[0].route_used == "direct_pdf_text"
     assert rows[0].metadata["page_state"] == "digital_text"
     assert rows[0].metadata["embedded_text_chars"] > 20
+    assert rows[0].metadata["document_intelligence"]["decision"] == (
+        "trusted_digital_text"
+    )
+    assert rows[0].metadata["document_intelligence"]["gate_verdict"] == "trusted"
+
+
+def _hidden_partial_text_pdf() -> bytes:
+    image = Image.new("RGB", (1190, 1684), "white")
+    image_output = io.BytesIO()
+    image.save(image_output, format="PNG")
+    document = fitz.open()
+    page = document.new_page(width=595, height=842)
+    page.insert_image(page.rect, stream=image_output.getvalue())
+    page.insert_text((72, 72), "Header only", fontsize=6, fontname="helv")
+    payload = document.tobytes(garbage=4, deflate=True)
+    document.close()
+    return payload
+
+
+def test_direct_engine_does_not_fabricate_confidence() -> None:
+    result = DirectPdfTextEngine().extract_page(
+        pdf_bytes=(FIXTURES / "digital_text.pdf").read_bytes(), page_no=1
+    )
+
+    assert result.success
+    assert result.confidence is None
+
+
+def test_direct_text_digest_mismatch_becomes_visible_review(monkeypatch) -> None:
+    monkeypatch.setattr(
+        DIRECT_TEXT_ENGINE,
+        "extract_page",
+        lambda **_kwargs: OCRResult(
+            engine_name="direct_pdf_text",
+            status=OCR_STATUS_SUCCEEDED,
+            text="changed after analysis",
+            confidence=None,
+        ),
+    )
+
+    rows, text = _process("digital_text.pdf")
+
+    assert rows[0].route_used == "review_required"
+    assert rows[0].requires_manual_review is True
+    assert "changed after analysis" not in rows[0].markdown
+    assert "changed after analysis" not in text
+    assert "REQUIRES REVIEW" in rows[0].markdown
+
+
+def test_review_placeholder_is_visible_in_docx_without_quality_percentage(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        DIRECT_TEXT_ENGINE,
+        "extract_page",
+        lambda **_kwargs: OCRResult(
+            engine_name="direct_pdf_text",
+            status=OCR_STATUS_SUCCEEDED,
+            text="mismatched private text",
+            confidence=None,
+        ),
+    )
+    rows, _ = _process("digital_text.pdf")
+
+    document = Document(io.BytesIO(markdown_to_docx(rows)))
+    visible = "\n".join(paragraph.text for paragraph in document.paragraphs)
+
+    assert "REQUIRES REVIEW" in visible
+    assert "mismatched private text" not in visible
+    assert "%" not in visible
+    assert "estimated quality" not in visible.lower()
+
+
+def test_review_diagnostics_are_categorical_and_do_not_expose_page_text(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        DIRECT_TEXT_ENGINE,
+        "extract_page",
+        lambda **_kwargs: OCRResult(
+            engine_name="direct_pdf_text",
+            status=OCR_STATUS_SUCCEEDED,
+            text="mismatch",
+            confidence=None,
+        ),
+    )
+    rows, _ = _process("digital_text.pdf")
+
+    diagnostics = rows[0].metadata["document_intelligence"]
+    serialized = json.dumps(diagnostics).lower()
+
+    assert diagnostics["decision"] == "review_required"
+    assert diagnostics["review_required"] is True
+    assert "digital pdf text" not in serialized
+    assert "accuracy" not in serialized
+    assert "confidence" not in serialized
+    assert "quality" not in serialized
+
+
+def test_untrusted_hidden_text_is_not_emitted_as_conversion_output() -> None:
+    rows, text = process_pdf(
+        _hidden_partial_text_pdf(),
+        from_page=1,
+        to_page=1,
+        progress_bar=None,
+        status_placeholder=None,
+    )
+
+    assert rows[0].route_used == OCR_STATUS_PENDING_MODEL
+    assert rows[0].metadata["document_intelligence"]["decision"] == "ocr_required"
+    assert "Header only" not in rows[0].markdown
+    assert "Header only" not in text
 
 
 @pytest.mark.parametrize("name", ["scanned.pdf"])

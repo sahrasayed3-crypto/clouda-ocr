@@ -598,16 +598,24 @@ def _gate_check(
 def evaluate_digital_text_trust(analysis: PageAnalysis) -> DigitalTextGateResult:
     missing_evidence = bool(analysis.warnings)
     has_text = analysis.embedded_text_present and bool(analysis.normalized_text)
-    usable_text = (
-        analysis.normalized_character_count >= 40
-        and analysis.word_count >= 6
-        and analysis.alphanumeric_character_count >= 30
-    )
     distributed_text = bool(
         analysis.text_coverage_ratio is not None
         and analysis.text_coverage_ratio >= 0.002
         and analysis.horizontal_distribution is not None
         and sum(value > 0 for value in analysis.horizontal_distribution) >= 1
+    )
+    usable_text = bool(
+        (
+            analysis.normalized_character_count >= 40
+            and analysis.word_count >= 6
+            and analysis.alphanumeric_character_count >= 30
+        )
+        or (
+            analysis.normalized_character_count >= 30
+            and analysis.word_count >= 6
+            and analysis.alphanumeric_character_count >= 25
+            and distributed_text
+        )
     )
     isolated_arabic = bool(
         analysis.arabic_character_count

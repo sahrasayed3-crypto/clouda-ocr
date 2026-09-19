@@ -70,7 +70,7 @@ One repository with isolated domains and external state: `pdfword` (production P
 ## Engineering evidence
 
 - **Cross-platform CI** (Windows + Ubuntu, Python 3.11) running lint (ruff), formatting (black), types (mypy), a compile gate, import/CLI smoke tests, and the deep doctor self-test. [Latest workflow runs](https://github.com/sahrasayed3-crypto/clouda-ocr/actions/workflows/ci.yml).
-- **Large automated test suite**: 183 test files with roughly 1,900 test functions (static count) covering routing, trust gating, DOCX validity, security bounds, Lab contracts, and benchmark release validation. Run the suite for live numbers rather than quoting a snapshot.
+- **Large automated test suite**: 1,895 test functions across 202 test files (static count) covering routing, trust gating, DOCX validity, security bounds, Lab contracts, and benchmark release validation. Run the suite for live numbers rather than quoting a snapshot.
 - **Security tooling**: repository scan (`python -m tools.validation.repository_scan --root .`), bounded uploads, archive traversal/expansion checks, `defusedxml`, header-key worker API, pinned GitHub Actions SHAs, and an [SBOM](SBOM.json). See [SECURITY.md](SECURITY.md).
 - **Deterministic fixtures**: tests use copyright-free, deterministic local fixtures; no dataset or model downloads in CI.
 

@@ -112,7 +112,9 @@ class RqmPageBackend(RenderBackend):
             img = page_renderer.render(page, spec)
             target = out_dir / f"page_{page.index:06d}.png"
             with atomic_target(target) as tmp:
-                img.save(tmp)
+                # atomic_target deliberately uses a non-image temporary suffix;
+                # Pillow therefore needs an explicit output format here.
+                img.save(tmp, format="PNG")
             page_paths.append(target)
             layout_records.append(page.meta["layout"])
 

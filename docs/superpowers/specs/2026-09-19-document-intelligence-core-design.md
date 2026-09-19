@@ -359,9 +359,11 @@ The existing Lab gains a Document Intelligence page and no second dashboard.
 A focused `DocumentIntelligenceService` delegates to the same canonical routing
 module used by production.
 
-The Lab endpoint accepts an uploaded PDF, not a filesystem path. It is protected
-by the existing loopback dependency and action token, enforces a small byte and
-page limit, performs no persistence, and makes no network call. The response is
+The Lab endpoint accepts a raw `application/pdf` request body, not a filesystem
+path or multipart upload. It is protected by the existing loopback dependency
+and action token, enforces the byte limit while streaming into bounded memory
+before parsing, enforces a small page limit, performs no persistence, and makes
+no network call. The response is
 passed through `browser_safe` and contains only:
 
 - page number;

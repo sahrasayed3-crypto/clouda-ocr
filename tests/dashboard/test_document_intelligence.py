@@ -11,6 +11,7 @@ from pypdf import PdfWriter
 
 from clouda_lab.dashboard.document_intelligence import (
     DocumentIntelligenceService,
+    MAX_PDF_BYTES,
 )
 from clouda_lab.dashboard.settings import LabSettings
 
@@ -102,17 +103,21 @@ def test_lab_document_intelligence_requires_action_token_and_is_sanitized(
 
     client = TestClient(create_app(_settings(tmp_path)))
     pdf_bytes = (FIXTURES / "digital_text.pdf").read_bytes()
-    files = {"file": ("sample.pdf", pdf_bytes, "application/pdf")}
+    content_headers = {"Content-Type": "application/pdf"}
 
     assert (
-        client.post("/api/lab/document-intelligence/analyze", files=files).status_code
+        client.post(
+            "/api/lab/document-intelligence/analyze",
+            content=pdf_bytes,
+            headers=content_headers,
+        ).status_code
         == 403
     )
     token = client.get("/api/lab/session").json()["action_token"]
     response = client.post(
         "/api/lab/document-intelligence/analyze",
-        headers={"X-Clouda-Lab-Action": token},
-        files=files,
+        headers={"X-Clouda-Lab-Action": token, **content_headers},
+        content=pdf_bytes,
     )
     payload = response.json()
     serialized = json.dumps(payload).lower()
@@ -137,9 +142,53 @@ def test_lab_document_intelligence_rejects_non_pdf_upload(tmp_path: Path) -> Non
 
     response = client.post(
         "/api/lab/document-intelligence/analyze",
-        headers={"X-Clouda-Lab-Action": token},
-        files={"file": ("notes.txt", b"not a pdf", "text/plain")},
+        headers={
+            "X-Clouda-Lab-Action": token,
+            "Content-Type": "application/pdf",
+        },
+        content=b"not a pdf",
     )
 
     assert response.status_code == 422
     assert "PDF signature" in response.json()["detail"]
+
+
+def test_lab_document_intelligence_accepts_large_pdf_without_multipart_spooling(
+    tmp_path: Path,
+) -> None:
+    from clouda_lab.dashboard.app import create_app
+
+    client = TestClient(create_app(_settings(tmp_path)))
+    token = client.get("/api/lab/session").json()["action_token"]
+    payload = _blank_pdf(1) + (b"\0" * (1024 * 1024))
+
+    response = client.post(
+        "/api/lab/document-intelligence/analyze",
+        headers={
+            "X-Clouda-Lab-Action": token,
+            "Content-Type": "application/pdf",
+        },
+        content=payload,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["page_count"] == 1
+
+
+def test_lab_document_intelligence_rejects_oversized_http_body(tmp_path: Path) -> None:
+    from clouda_lab.dashboard.app import create_app
+
+    client = TestClient(create_app(_settings(tmp_path)))
+    token = client.get("/api/lab/session").json()["action_token"]
+
+    response = client.post(
+        "/api/lab/document-intelligence/analyze",
+        headers={
+            "X-Clouda-Lab-Action": token,
+            "Content-Type": "application/pdf",
+        },
+        content=b"%PDF-1.7\n" + (b"x" * MAX_PDF_BYTES),
+    )
+
+    assert response.status_code == 422
+    assert "10 MiB" in response.json()["detail"]

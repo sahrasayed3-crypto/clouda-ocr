@@ -115,7 +115,8 @@ def test_document_intelligence_page_is_explicit_and_categorical_only():
 
     assert 'href="#/document-intelligence"' in html
     assert '"document-intelligence": renderDocumentIntelligence' in script
-    assert "formData" in script
+    assert "rawBody" in script
+    assert "formData" not in script
     assert 'init.headers["X-Clouda-Lab-Action"]' in script
     assert 'type: "file"' in script
     assert 'accept: "application/pdf,.pdf"' in script

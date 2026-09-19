@@ -8,12 +8,10 @@ from typing import Any
 from fastapi import (
     Depends,
     FastAPI,
-    File,
     Header,
     HTTPException,
     Query,
     Request,
-    UploadFile,
 )
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -209,13 +207,17 @@ def create_app(settings: LabSettings | None = None) -> FastAPI:
         dependencies=[Depends(require_action_token)],
     )
     async def analyze_document_intelligence(
-        file: UploadFile = File(...),
+        request: Request,
     ) -> dict[str, Any]:
-        try:
-            payload = await file.read(MAX_PDF_BYTES + 1)
-        finally:
-            await file.close()
-        return document_intelligence.analyze(payload)
+        content_type = request.headers.get("content-type", "").partition(";")[0].lower()
+        if content_type != "application/pdf":
+            raise ValueError("Document Intelligence requires application/pdf")
+        payload = bytearray()
+        async for chunk in request.stream():
+            if len(payload) + len(chunk) > MAX_PDF_BYTES:
+                raise ValueError("Document Intelligence accepts PDFs up to 10 MiB")
+            payload.extend(chunk)
+        return document_intelligence.analyze(bytes(payload))
 
     @app.get("/api/lab/overview")
     def overview() -> dict[str, Any]:

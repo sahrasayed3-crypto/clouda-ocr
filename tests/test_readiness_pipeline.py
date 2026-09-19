@@ -22,6 +22,7 @@ from pdfword.engines import (
     OCR_STATUS_SUCCEEDED,
 )
 from pdfword.ocr_pipeline import BLANK_PAGE_ROUTE, NEAR_BLANK_PAGE_ROUTE, process_pdf
+from pdfword.models import PageResult
 
 FIXTURES = Path(__file__).with_name("fixtures")
 ROOT = Path(__file__).resolve().parents[1]
@@ -133,6 +134,25 @@ def test_review_placeholder_is_visible_in_docx_without_quality_percentage(
     assert "estimated quality" not in visible.lower()
 
 
+def test_local_ocr_review_reason_is_categorical_in_docx() -> None:
+    page = PageResult(
+        page_no=1,
+        model_used="local:test",
+        markdown="",
+        requires_manual_review=True,
+        review_reason="estimated_text_quality below 90.00%",
+        route_used="local_ocr",
+        accepted=False,
+    )
+
+    document = Document(io.BytesIO(markdown_to_docx([page])))
+    visible = "\n".join(paragraph.text for paragraph in document.paragraphs)
+
+    assert "review_policy_not_met" in visible
+    assert "%" not in visible
+    assert "quality" not in visible.lower()
+
+
 def test_review_diagnostics_are_categorical_and_do_not_expose_page_text(
     monkeypatch,
 ) -> None:
@@ -157,6 +177,26 @@ def test_review_diagnostics_are_categorical_and_do_not_expose_page_text(
     assert "accuracy" not in serialized
     assert "confidence" not in serialized
     assert "quality" not in serialized
+
+
+def test_digest_mismatch_placeholder_names_mismatch_not_trusted_success(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        DIRECT_TEXT_ENGINE,
+        "extract_page",
+        lambda **_kwargs: OCRResult(
+            engine_name="direct_pdf_text",
+            status=OCR_STATUS_SUCCEEDED,
+            text="mismatch",
+            confidence=None,
+        ),
+    )
+
+    rows, _ = _process("digital_text.pdf")
+
+    assert "trusted_context_mismatch" in rows[0].markdown
+    assert "trusted_gate_passed" not in rows[0].markdown
 
 
 def test_untrusted_hidden_text_is_not_emitted_as_conversion_output() -> None:

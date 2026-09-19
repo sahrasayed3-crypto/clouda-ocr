@@ -437,7 +437,7 @@ git commit -m "feat: route PDF pages through document intelligence"
 **Interfaces:**
 - Consumes: `DocumentRoutingContext`, `analyze_pdf_page`, `evaluate_digital_text_trust`, and `decide_page_route`.
 - Produces: `DocumentIntelligenceService.analyze(pdf_bytes: bytes) -> dict[str, Any]`.
-- Produces: action-token-protected `POST /api/lab/document-intelligence/analyze` with `UploadFile`.
+- Produces: action-token-protected `POST /api/lab/document-intelligence/analyze` with a bounded raw `application/pdf` body. Raw streaming avoids multipart temporary-file spooling.
 
 - [ ] **Step 1: Write failing service and endpoint tests**
 
@@ -502,7 +502,7 @@ git commit -m "feat(lab): expose safe page routing diagnostics"
 
 - [ ] **Step 1: Write failing UI contract tests**
 
-Assert navigation and renderer registration, multipart submission with the action token, safe `textContent` rendering, category/reason columns, and absence of accuracy/confidence/quality percentage labels.
+Assert navigation and renderer registration, bounded raw-PDF submission with the action token, safe `textContent` rendering, category/reason columns, and absence of accuracy/confidence/quality percentage labels.
 
 ```python
 def test_document_intelligence_page_is_categorical_only():
@@ -525,8 +525,8 @@ Expected: the new route and renderer assertions fail.
 
 - [ ] **Step 3: Implement explicit upload and categorical rendering**
 
-Extend `api` with a `formData` branch that does not set JSON content type, sends
-the action token, and retains the current abort signal. Render decision, gate
+Extend `api` with a `rawBody` branch that sets `application/pdf`, sends the
+action token, and retains the current abort signal. Render decision, gate
 verdict, next path, reason-code badges, OCR pending state, and safe evidence.
 Do not render internal diagnostic scores or OCR confidence fields.
 

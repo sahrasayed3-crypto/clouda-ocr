@@ -34,8 +34,10 @@ domain services plus a bounded FastAPI surface and dependency-free browser UI.
 ## Document Intelligence inspection
 
 `POST /api/lab/document-intelligence/analyze` requires the per-session action
-token and an explicit PDF upload. It accepts at most 10 MiB and 25 pages,
-performs no network calls, and neither stores the uploaded PDF nor exposes its
+token and an explicit raw `application/pdf` request body. The handler enforces
+the 10 MiB limit while streaming into bounded memory, before any multipart
+parser or temporary-file spool is involved, and accepts at most 25 pages. It
+performs no network calls and neither stores the uploaded PDF nor exposes its
 text, paths, or hashes. The browser page displays only categorical decisions,
 gate verdicts, next paths, safe evidence, pending/review states, and explicit
 reason codes. It does not expose user-facing accuracy, confidence, or quality

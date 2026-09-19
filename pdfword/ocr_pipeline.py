@@ -152,7 +152,7 @@ def _review_page(
     *,
     reason: str | None = None,
 ) -> PageResult:
-    reason_codes = decision.reason_codes or ("gate_uncertain",)
+    reason_codes = (reason,) if reason else decision.reason_codes or ("gate_uncertain",)
     placeholder = (
         f"[PAGE {analysis.page_number} REQUIRES REVIEW - embedded text was not "
         f"used; reasons: {', '.join(reason_codes)}]"

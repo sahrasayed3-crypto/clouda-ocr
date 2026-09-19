@@ -6,6 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import fitz
+import pytest
 from PIL import Image, ImageDraw
 from pypdf import PdfReader, PdfWriter
 
@@ -41,6 +42,22 @@ def _text_pdf(text: str, *, y: float = 160) -> bytes:
     document = fitz.open()
     page = document.new_page(width=595, height=842)
     page.insert_text((220, y), text, fontsize=18, fontname="helv")
+    payload = document.tobytes(garbage=4, deflate=True)
+    document.close()
+    return payload
+
+
+def _lines_pdf(*, reversed_order: bool) -> bytes:
+    document = fitz.open()
+    page = document.new_page(width=595, height=842)
+    for index in range(6):
+        y = 700 - index * 30 if reversed_order else 300 + index * 30
+        page.insert_text(
+            (72, y),
+            f"Line {index + 1} has enough text for routing analysis.",
+            fontsize=12,
+            fontname="helv",
+        )
     payload = document.tobytes(garbage=4, deflate=True)
     document.close()
     return payload
@@ -146,6 +163,30 @@ def test_short_centered_title_is_not_near_blank_from_length_alone() -> None:
     assert analysis.near_blank_evidence is False
 
 
+@pytest.mark.parametrize("title", ["2026", "CIVIL"])
+def test_number_like_title_is_not_near_blank_without_footer_localization(
+    title: str,
+) -> None:
+    analysis = _analyze_bytes(_text_pdf(title))
+
+    assert analysis.near_blank_evidence is False
+
+
+def test_reversed_line_sequence_is_reading_order_risk() -> None:
+    analysis = _analyze_bytes(_lines_pdf(reversed_order=True))
+    gate = evaluate_digital_text_trust(analysis)
+
+    assert analysis.reading_order_risk is True
+    assert gate.verdict is DigitalTextGateVerdict.UNCERTAIN
+    assert DigitalTextReasonCode.LAYOUT_ORDER_RISK in gate.reason_codes
+
+
+def test_normal_line_sequence_is_not_reading_order_risk() -> None:
+    analysis = _analyze_bytes(_lines_pdf(reversed_order=False))
+
+    assert analysis.reading_order_risk is False
+
+
 class _UnreadablePage:
     @property
     def mediabox(self):
@@ -179,6 +220,14 @@ def test_unavailable_page_evidence_is_explicit_not_fabricated() -> None:
         AnalysisWarningCode.CONTENT_STREAM_UNAVAILABLE,
     } <= set(analysis.warnings)
 
+    decision = decide_page_route(
+        analysis,
+        evaluate_digital_text_trust(analysis),
+        ocr_available=False,
+    )
+    assert decision.decision is PageDecision.REVIEW_REQUIRED
+    assert decision.next_path is PageNextPath.MANUAL_REVIEW
+
 
 def test_complete_digital_text_gate_is_trusted() -> None:
     analysis = _analyze_bytes((FIXTURES / "digital_text.pdf").read_bytes())
@@ -200,6 +249,23 @@ def test_gate_rejects_a_page_without_embedded_text() -> None:
 
 def test_hidden_sparse_text_over_page_image_is_untrusted() -> None:
     analysis = _analyze_bytes(_hybrid_pdf("x", full_page_image=True))
+
+    result = evaluate_digital_text_trust(analysis)
+
+    assert result.verdict is DigitalTextGateVerdict.UNTRUSTED
+    assert DigitalTextReasonCode.IMAGE_DOMINANT_PARTIAL_TEXT in result.reason_codes
+    decision = decide_page_route(analysis, result, ocr_available=False)
+    assert decision.decision is PageDecision.OCR_REQUIRED
+    assert decision.next_path is PageNextPath.PENDING_OCR_MODEL
+
+
+def test_long_localized_header_over_dominant_image_is_untrusted() -> None:
+    analysis = _analyze_bytes(
+        _hybrid_pdf(
+            "This document contains a header with only partial extracted text.",
+            full_page_image=True,
+        )
+    )
 
     result = evaluate_digital_text_trust(analysis)
 

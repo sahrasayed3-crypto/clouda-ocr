@@ -64,7 +64,7 @@ function pageHead(name, description, tools = []) { return node("div", { class: "
 
 async function api(path, options = {}) {
   const init = { method: options.method || "GET", headers: { "Accept": "application/json" }, signal: state.requestController?.signal };
-  if (options.formData !== undefined) { init.headers["X-Clouda-Lab-Action"] = state.actionToken || ""; init.body = options.formData; }
+  if (options.rawBody !== undefined) { init.headers["Content-Type"] = "application/pdf"; init.headers["X-Clouda-Lab-Action"] = state.actionToken || ""; init.body = options.rawBody; }
   else if (options.body !== undefined) { init.headers["Content-Type"] = "application/json"; init.headers["X-Clouda-Lab-Action"] = state.actionToken || ""; init.body = JSON.stringify(options.body); }
   const response = await fetch(`/api/lab${path}`, init);
   const payload = await response.json().catch(() => ({ detail: "Invalid local response" }));
@@ -95,8 +95,7 @@ async function renderDocumentIntelligence() {
   const result = node("div");
   async function analyze() {
     if (!file.files?.length) { showNotice("Choose a PDF before analysis."); return; }
-    const formData = new FormData(); formData.append("file", file.files[0]);
-    const data = await action(() => api("/document-intelligence/analyze", { method: "POST", formData }), "Analyzing local PDF routing evidence…");
+    const data = await action(() => api("/document-intelligence/analyze", { method: "POST", rawBody: file.files[0] }), "Analyzing local PDF routing evidence…");
     clear(result);
     const rows = (data.pages || []).map((page) => {
       const reasons = node("div", { class: "toolbar" }, (page.reason_codes || []).map((reason) => badge(reason)));

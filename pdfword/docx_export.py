@@ -49,6 +49,10 @@ def _add_page_number_field(paragraph, prefix_text: str = "ص ") -> None:
 
 def _manual_review_marker(page: PageResult) -> str:
     reason = (page.review_reason or "review_required").strip()
+    if "%" in reason or re.search(
+        r"(?:accuracy|confidence|quality)", reason, flags=re.IGNORECASE
+    ):
+        reason = "review_policy_not_met"
     model = (page.model_used or "unknown").strip()
     return (
         f"[PAGE {page.page_no} REQUIRES MANUAL REVIEW - "

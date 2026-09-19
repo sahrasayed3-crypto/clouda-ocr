@@ -366,8 +366,12 @@ def _text_geometry(spans: tuple[TextSpan, ...], width: float, height: float) -> 
     y_moves = [
         centers[index + 1][1] - centers[index][1] for index in range(len(centers) - 1)
     ]
+    directional_moves = [move for move in y_moves if abs(move) >= 0.01]
+    reverse_moves = sum(move > 0 for move in directional_moves)
     reading_order_risk = bool(
-        len(y_moves) >= 4 and sum(1 for move in y_moves if abs(move) > 0.35) >= 2
+        len(directional_moves) >= 4
+        and reverse_moves >= 3
+        and reverse_moves * 5 >= len(directional_moves) * 3
     )
     return (
         min(1.0, area / (width * height)),
@@ -487,19 +491,29 @@ def analyze_pdf_page(
         and path_ops == 0
     )
     is_page_number = bool(_PAGE_NUMBER_RE.fullmatch(normalized_text))
+    positioned_spans = [span for span in spans if span.bbox is not None]
+    footer_page_number = bool(
+        is_page_number
+        and len(positioned_spans) == 1
+        and positioned_spans[0].bbox is not None
+        and height > 0
+        and (positioned_spans[0].bbox[1] + positioned_spans[0].bbox[3]) / 2 / height
+        <= 0.15
+    )
     small_isolated_image = bool(
         not normalized_text
-        and image_count
+        and image_count is not None
+        and image_count > 0
         and image_density is not None
         and image_density <= _SMALL_IMAGE_DENSITY_LIMIT
-        and (path_ops or 0) == 0
+        and path_ops == 0
     )
     near_blank = bool(
         (
-            is_page_number
+            footer_page_number
             and len(normalized_text) <= _NEAR_BLANK_TEXT_LIMIT
-            and (image_count or 0) == 0
-            and (path_ops or 0) == 0
+            and image_count == 0
+            and path_ops == 0
         )
         or small_isolated_image
     )
@@ -628,13 +642,26 @@ def evaluate_digital_text_trust(analysis: PageAnalysis) -> DigitalTextGateResult
     )
     unicode_corruption = analysis.unicode_corruption_count > 0
     fragmented = analysis.suspicious_fragmentation
-    image_dominant_partial = bool(
+    dominant_image = bool(
         analysis.hybrid_page
         and analysis.largest_image_density_estimate is not None
         and analysis.largest_image_density_estimate > _SMALL_IMAGE_DENSITY_LIMIT
-        and not usable_text
     )
-    incomplete_hybrid = bool(analysis.hybrid_page and not usable_text)
+    hybrid_text_distribution_complete = bool(
+        usable_text
+        and analysis.vertical_distribution is not None
+        and sum(value > 0 for value in analysis.vertical_distribution) >= 3
+    )
+    image_dominant_partial = bool(
+        dominant_image and not hybrid_text_distribution_complete
+    )
+    incomplete_hybrid = bool(
+        analysis.hybrid_page
+        and (
+            not usable_text
+            or (dominant_image and not hybrid_text_distribution_complete)
+        )
+    )
     decorative_image = bool(
         analysis.hybrid_page
         and analysis.largest_image_density_estimate is not None

@@ -2075,7 +2075,6 @@ def upload_result(
     if claim_token and not re.fullmatch(CLAIM_TOKEN_PATTERN, claim_token):
         raise HTTPException(status_code=400, detail="Invalid claim token")
     database, row = _get_job(job_id)
-    row = _recover_finalizing_result(database, row)
     if row["status"] in {"completed", "manual_review"}:
         raise HTTPException(status_code=409, detail="Job is already final")
     if row["status"] != "processing" or not database.claim_matches(

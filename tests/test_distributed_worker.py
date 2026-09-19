@@ -7,6 +7,7 @@ import sys
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Event
 
 import fakeredis
 import pytest
@@ -654,6 +655,61 @@ def test_duplicate_worker_result_upload_cannot_overwrite_winner(api_environment)
         database.get_conversion("job-a")["stored_docx_path"]
     ).read_bytes()
     assert sum(marker in final_bytes for marker in (b"WINNER_A", b"WINNER_B")) == 1
+
+
+def test_duplicate_upload_cannot_recover_an_active_finalization(
+    api_environment, monkeypatch: pytest.MonkeyPatch
+):
+    client, database, storage = api_environment
+    create_job(database, storage)
+    headers = {"X-Worker-API-Key": API_KEY}
+    started = client.post(
+        "/internal/jobs/job-a/start", headers=headers, json={"worker_name": "worker-1"}
+    )
+    claim_token = started.json()["claim_token"]
+    first_completion_started = Event()
+    allow_first_completion = Event()
+    original_complete = Database.complete_conversion_finalization
+
+    def block_first_completion(self, *args, **kwargs):
+        if not first_completion_started.is_set():
+            first_completion_started.set()
+            assert allow_first_completion.wait(timeout=5)
+        return original_complete(self, *args, **kwargs)
+
+    monkeypatch.setattr(
+        Database, "complete_conversion_finalization", block_first_completion
+    )
+
+    def upload(name: str, marker: str):
+        return client.post(
+            "/internal/jobs/job-a/result",
+            headers=headers,
+            data={
+                "worker_name": "worker-1",
+                "claim_token": claim_token,
+                "metadata": json.dumps(
+                    {"status": "completed", "text_quality_score": 99.0}
+                ),
+            },
+            files={"result": (name, io.BytesIO(valid_docx_bytes() + marker.encode()))},
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(upload, "first.docx", "WINNER_A")
+        assert first_completion_started.wait(timeout=5)
+        duplicate = executor.submit(upload, "second.docx", "WINNER_B")
+        duplicate_response = duplicate.result(timeout=5)
+        allow_first_completion.set()
+        first_response = first.result(timeout=5)
+
+    assert sorted(
+        response.status_code for response in (first_response, duplicate_response)
+    ) == [200, 409]
+    final_bytes = Path(
+        database.get_conversion("job-a")["stored_docx_path"]
+    ).read_bytes()
+    assert final_bytes.endswith(b"WINNER_A")
 
 
 def test_result_recovery_treats_stale_finalizing_read_as_duplicate(api_environment):

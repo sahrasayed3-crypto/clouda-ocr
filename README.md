@@ -10,7 +10,7 @@
 
 Clouda PDF is an open-source, model-agnostic PDF-to-DOCX project for Arabic, English, and mixed-language documents. Its long-term goal is reliable Arabic OCR for modern and historical books, including weak or medium-quality scanned pages, margins, footnotes, RTL text, and mixed Arabic-English reading order.
 
-The current verified implementation converts born-digital PDF documents into editable, text-only DOCX files while preserving page order, Arabic Unicode, RTL paragraph direction, footers, and page boundaries. Image-only scanned pages are detected and routed to `pending_ocr_model`; they are not treated as successful OCR output until a leading model candidate is licensed for the intended use, integrated, trained or adapted as needed, and measured in the application route.
+The current verified implementation converts trusted born-digital PDF text into editable, text-only DOCX files while preserving page order, Arabic Unicode, RTL paragraph direction, footers, and page boundaries. Embedded text is analyzed and must pass the canonical digital-text trust gate before direct extraction is authorized. Image-only scanned pages are detected and routed to `pending_ocr_model`; they are not treated as successful OCR output until a model is licensed for the intended use, integrated, trained or adapted as needed, and validated in the application route.
 
 It is designed for modern and historical Arabic books as well as English and mixed-language documents. Text fidelity is the priority. The project does not currently attempt layout-perfect reconstruction of images, tables, or page artwork.
 
@@ -20,9 +20,9 @@ Researchers, publishers, and archives need editable documents without silently l
 
 ## Current capabilities
 
-- Extract selectable text from born-digital PDF pages without OCR.
+- Extract trusted embedded text from born-digital PDF pages without OCR.
 - Generate a valid editable DOCX with page breaks and RTL-aware Arabic paragraphs.
-- Classify pages as `digital_text`, `blank_page`, `near_blank`, or `pending_ocr_model` and record per-page metadata.
+- Classify pages through categorical gate and routing states, including `digital_text`, `blank_page`, `near_blank`, `pending_ocr_model`, and `review_required`.
 - Preserve short page-number text rather than discarding it.
 - Use a model-agnostic `ExtractionEngine` and `EngineRegistry` for a future OCR integration.
 - Keep scanned, low-quality, and image-only pages in an explicit review state instead of claiming unmeasured OCR accuracy.
@@ -30,15 +30,18 @@ Researchers, publishers, and archives need editable documents without silently l
 ```mermaid
 flowchart LR
     A[PDF input] --> B[Validate and select pages]
-    B --> C[Direct PDF text engine]
-    C -->|Selectable text| D[digital_text]
-    C -->|Blank| E[blank_page]
-    C -->|Short text or small stamp| F[near_blank]
-    C -->|Image-only scan| G[pending_ocr_model]
-    D --> H[DOCX and JSON metadata]
-    E --> H
-    F --> H
-    G --> H
+    B --> C[Page Analyzer]
+    C --> D[Trusted Digital Text Gate]
+    D --> E[Page Decision Engine]
+    E -->|Trusted context| F[Direct PDF text engine]
+    E -->|OCR needed and unavailable| G[pending_ocr_model]
+    E -->|Uncertain or digest mismatch| H[review_required]
+    E -->|Structural evidence| I[blank_page or near_blank]
+    F --> J[digital_text]
+    G --> K[DOCX and JSON metadata]
+    H --> K
+    I --> K
+    J --> K
 ```
 
 ## Install (Windows)
@@ -144,6 +147,11 @@ to approved canonical manifests and require a review plus a short-lived,
 single-use confirmation. Model downloads, dependency installation, and
 published-model benchmark execution are not exposed.
 
+The Document Intelligence page accepts an explicit PDF submission (up to
+10 MiB and 25 pages), analyzes it in memory, and displays categorical routing
+states, evidence, and reason codes. It does not persist the upload or expose
+user-facing accuracy, confidence, or quality percentages.
+
 The dashboard stores persistent operation records under `runs/.lab-tasks`,
 managed model selections under `runs/.lab-models`, deterministic plans under
 `runs/.lab-plans` and `runs/.lab-benchmark-plans`, and recoverable removals
@@ -176,10 +184,11 @@ training-planning code.
 
 | Input page | Result | Output |
 | --- | --- | --- |
-| PDF page with selectable text | `digital_text` | Extracted text in DOCX |
+| PDF page whose embedded text passes the trust gate | `digital_text` | Extracted text in DOCX |
 | Image-only scanned page | `pending_ocr_model` | Explicit review state and JSON metadata |
 | Empty page | `blank_page` | Page boundary retained |
-| Page number or small stamp | `near_blank` | Original short content retained for review |
+| Structurally near-empty page | `near_blank` | Page boundary and categorical state retained |
+| Uncertain page or post-extraction digest mismatch | `review_required` | Visible review placeholder; untrusted text omitted |
 
 ## Current limitations
 

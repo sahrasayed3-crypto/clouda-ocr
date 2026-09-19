@@ -56,7 +56,8 @@ def generate() -> None:
     _save(document, "blank.pdf")
 
     document = fitz.open()
-    _digital_page(document, "12")
+    page = document.new_page(width=PAGE_RECT.width, height=PAGE_RECT.height)
+    page.insert_text((290, 810), "12", fontsize=12, fontname="helv")
     _save(document, "near_blank_page_number.pdf")
 
     document = fitz.open()

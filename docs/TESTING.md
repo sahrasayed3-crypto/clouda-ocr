@@ -4,7 +4,7 @@ Clouda PDF uses `pytest` with deterministic, copyright-free fixtures under `test
 
 ## Coverage
 
-The readiness tests cover digital-text extraction, scanned-page routing, blank and near-blank classification, mixed page order, corrupt and empty PDFs, non-PDF handling, DOCX validity, OCR result schemas, engine registration, mock engines, Arabic/RTL fixtures, storage, API, and Streamlit smoke tests.
+The readiness tests cover page analysis, categorical digital-text trust gating, typed direct-extraction authorization, post-extraction digest mismatch handling, scanned-page routing, structurally evidenced blank and near-blank classification, review placeholders, mixed page order, corrupt and empty PDFs, non-PDF handling, DOCX validity, OCR result schemas, engine registration, mock engines, Arabic/RTL fixtures, storage, API, Lab upload bounds, and Streamlit smoke tests.
 
 Run the suite and coverage report:
 
@@ -13,6 +13,19 @@ Run the suite and coverage report:
 ```
 
 The report intentionally does not treat `pending_ocr_model` as OCR success or as a final processing failure.
+
+Routing tests assert the canonical sequence `Page Analyzer -> Trusted Digital
+Text Gate -> Page Decision Engine`. A legitimate short-text page must not be
+classified as `near_blank` from character count alone. Direct extraction uses
+`confidence=None`; trust is categorical and backed by reason codes. If the
+post-extraction text digest differs from the trusted context, the page must be
+`review_required` with the `manual_review` next path, must retain a visible placeholder and page boundary, and must
+not emit the extracted text.
+
+Lab contract tests require explicit action-token-protected submission, enforce
+the 10 MiB / 25-page bounds, and verify that the response and UI contain no
+uploaded text, local paths, hashes, or user-facing accuracy, confidence, or
+quality percentages.
 
 ## Latest verified result
 

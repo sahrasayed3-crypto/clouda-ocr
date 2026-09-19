@@ -78,7 +78,7 @@ def test_engine_can_be_selected_from_settings_without_router_change() -> None:
 
     validate_setting("enabled_engines", [engine.name])
     rows, text = process_pdf(
-        pdf_bytes=_blank_pdf(),
+        pdf_bytes=(Path(__file__).parent / "fixtures" / "scanned.pdf").read_bytes(),
         from_page=1,
         to_page=1,
         progress_bar=None,
@@ -132,7 +132,7 @@ def test_engine_error_is_reported_as_pending_model_page() -> None:
     registry.register(engine, replace=True)
 
     rows, text = process_pdf(
-        pdf_bytes=_blank_pdf(),
+        pdf_bytes=(Path(__file__).parent / "fixtures" / "scanned.pdf").read_bytes(),
         from_page=1,
         to_page=1,
         progress_bar=None,

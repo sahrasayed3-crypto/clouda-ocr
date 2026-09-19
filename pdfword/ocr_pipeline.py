@@ -10,12 +10,20 @@ import threading
 import pypdfium2 as pdfium
 from pypdf import PdfReader
 
-from .accuracy import estimate_quality_components, final_acceptance_decision
 from .engines import (
     DIRECT_TEXT_ENGINE,
     FUTURE_OCR_ENGINE,
     OCR_STATUS_PENDING_MODEL,
     get_engine_registry,
+)
+from .ocr_self_review import (
+    OCRIssueCode,
+    OCRPageState,
+    ReReadResult,
+    crop_review_region,
+    make_rendered_page_context,
+    reconcile_ocr_results,
+    review_first_pass,
 )
 from .job_queue import JobCancelled
 from .models import PageResult
@@ -31,8 +39,6 @@ from .page_routing import (
     validate_trusted_text_after_extraction,
 )
 
-TARGET_QUALITY_SCORE = 97.0
-MIN_ACCEPT_QUALITY_SCORE = 90.0
 _PDFIUM_RENDER_LOCK = threading.Lock()
 BLANK_PAGE_ROUTE = "blank_page"
 NEAR_BLANK_PAGE_ROUTE = "near_blank"
@@ -193,15 +199,14 @@ def _future_ocr_page(
     )
     if reason:
         message += f"\n\nReason: {reason}"
-    quality_parts = estimate_quality_components("", base_text_score=0.0)
     return PageResult(
         page_no=page_no,
         model_used=f"pending:{FUTURE_OCR_ENGINE.name}",
         markdown=message,
-        quality_score=quality_parts["final_quality"],
-        text_quality_score=0.0,
-        layout_quality_score=quality_parts["layout_quality"],
-        direction_quality_score=quality_parts["direction_quality"],
+        quality_score=None,
+        text_quality_score=None,
+        layout_quality_score=None,
+        direction_quality_score=None,
         completeness_score=0.0,
         requires_manual_review=True,
         review_reason=OCR_STATUS_PENDING_MODEL,
@@ -231,7 +236,7 @@ def process_pdf(
     cancellation_check=None,
     checkpoint_callback=None,
     existing_results: dict[int, PageResult] | None = None,
-    acceptance_threshold: float = MIN_ACCEPT_QUALITY_SCORE,
+    acceptance_threshold: float = 90.0,
     max_cloud_attempts: int | None = None,
     scan_dpi: int = 300,
     enabled_engines: list[str] | None = None,
@@ -261,7 +266,7 @@ def process_pdf(
     if any(page < 1 or page > pdf_page_count for page in pages):
         raise ValueError(f"Page selection must be between 1 and {pdf_page_count}")
 
-    acceptance_threshold = max(MIN_ACCEPT_QUALITY_SCORE, float(acceptance_threshold))
+    del acceptance_threshold
     results_by_page: dict[int, PageResult] = dict(existing_results or {})
     total_pages = len(pages)
     completed = len(results_by_page)
@@ -406,6 +411,7 @@ def process_pdf(
             assert page_decision.next_path is PageNextPath.LOCAL_OCR
             model_extraction = None
             local_metadata = dict(metadata)
+            image_bytes = b""
             try:
                 image_bytes = render_pdf_page_to_png_bytes(
                     document_context.pdf_bytes, page_no
@@ -418,69 +424,104 @@ def process_pdf(
                 )
             except Exception as exc:
                 local_metadata["local_model_error"] = f"{type(exc).__name__}: {exc}"
-            model_text = _clean_markdown_output(
-                model_extraction.text if model_extraction is not None else ""
-            )
-            valid_model_result = bool(
-                model_extraction is not None
-                and model_extraction.success
-                and model_text
-                and model_extraction.confidence is not None
-            )
-            if not valid_model_result or model_extraction is None:
-                page_result = _future_ocr_page(
-                    page_no,
-                    (
-                        model_extraction.failure_reason
-                        if model_extraction is not None
-                        else "Configured OCR engine did not return a valid result."
-                    ),
+            if model_extraction is None:
+                page_result = _review_page(
+                    analysis,
+                    page_decision,
+                    local_metadata,
                     attempted,
-                    metadata=local_metadata,
+                    reason=OCRIssueCode.ENGINE_ERROR.value,
                 )
+                page_result.route_used = OCRPageState.OCR_FAILED.value
+                page_result.review_reason = OCRIssueCode.ENGINE_ERROR.value
+                page_result.metadata = {**(page_result.metadata or {}), "page_state": OCRPageState.OCR_FAILED.value}
             else:
-                assert model_extraction.confidence is not None
-                quality_parts = estimate_quality_components(
-                    model_text,
-                    base_text_score=float(model_extraction.confidence) * 100,
+                render_context = make_rendered_page_context(page_no, image_bytes)
+                review = review_first_pass(model_extraction, analysis, render_context)
+                rereads: list[ReReadResult] = []
+                if review.selective_reread_justified:
+                    assert ocr_engine is not None
+                    for region in review.suspicious_regions:
+                        if _cancelled():
+                            raise JobCancelled("Conversion was cancelled by the user")
+                        try:
+                            crop_bytes = crop_review_region(image_bytes, region, render_context)
+                            reread = ocr_engine.extract_page(image_bytes=crop_bytes, page_no=page_no)
+                            rereads.append(
+                                ReReadResult(
+                                    region.region_id,
+                                    reread.engine_name,
+                                    reread.success,
+                                    reread.text,
+                                    reread.metadata.get("model_revision"),
+                                )
+                            )
+                        except Exception:
+                            rereads.append(ReReadResult(region.region_id, ocr_engine.name, False, ""))
+                reconciliation = reconcile_ocr_results(
+                    model_extraction.text, review, tuple(rereads)
                 )
-                acceptance = final_acceptance_decision(
-                    model_text,
-                    estimated_text_quality=quality_parts["text_quality"],
-                    threshold=acceptance_threshold,
-                    expected_non_empty=True,
-                )
-                page_result = PageResult(
-                    page_no=page_no,
-                    model_used=(
-                        model_extraction.model_name
-                        if ocr_engine is not None
-                        and ocr_engine.engine_type == "local_model"
-                        and model_extraction.model_name
-                        else f"local:{model_extraction.engine_name}"
-                    ),
-                    markdown=model_text,
-                    quality_score=quality_parts["final_quality"],
-                    text_quality_score=acceptance["estimated_text_quality"],
-                    layout_quality_score=quality_parts["layout_quality"],
-                    direction_quality_score=quality_parts["direction_quality"],
-                    completeness_score=quality_parts["completeness"],
-                    requires_manual_review=bool(acceptance["requires_manual_review"]),
-                    review_reason=acceptance["review_reason"],
-                    engines_attempted=attempted,
-                    route_used=model_extraction.engine_name,
-                    accepted=bool(acceptance["accepted"]),
-                    attempts_count=1,
-                    elapsed_time=model_extraction.processing_time,
-                    corruption_diagnostics=acceptance["diagnostics"],
-                    selection_reason="page_decision_local_ocr",
-                    metadata={
-                        **local_metadata,
-                        **model_extraction.metadata,
-                        "engine_status": model_extraction.status,
-                        "page_state": "local_model_ocr",
+                review_metadata = {
+                    **local_metadata,
+                    **model_extraction.metadata,
+                    "engine_status": model_extraction.status,
+                    "ocr_self_review": {
+                        **review.to_diagnostics(),
+                        **reconciliation.to_diagnostics(),
+                        "reread_attempt_count": len(rereads),
                     },
-                )
+                    "page_state": reconciliation.state.value,
+                }
+                if review.verdict.value == "failed":
+                    page_result = _review_page(
+                        analysis,
+                        page_decision,
+                        review_metadata,
+                        attempted,
+                        reason=OCRIssueCode.ENGINE_ERROR.value,
+                    )
+                    page_result.route_used = OCRPageState.OCR_FAILED.value
+                    page_result.review_reason = OCRIssueCode.ENGINE_ERROR.value
+                    page_result.metadata = {
+                        **(page_result.metadata or {}),
+                        "page_state": OCRPageState.OCR_FAILED.value,
+                    }
+                elif reconciliation.review_required:
+                    reason = (
+                        reconciliation.reason_codes[0].value
+                        if reconciliation.reason_codes
+                        else "review_required"
+                    )
+                    page_result = _review_page(
+                        analysis, page_decision, review_metadata, attempted, reason=reason
+                    )
+                else:
+                    text = _clean_markdown_output(reconciliation.text)
+                    page_result = PageResult(
+                        page_no=page_no,
+                        model_used=(
+                            model_extraction.model_name
+                            if ocr_engine is not None
+                            and ocr_engine.engine_type == "local_model"
+                            and model_extraction.model_name
+                            else f"local:{model_extraction.engine_name}"
+                        ),
+                        markdown=text,
+                        quality_score=None,
+                        text_quality_score=None,
+                        layout_quality_score=None,
+                        direction_quality_score=None,
+                        completeness_score=None,
+                        requires_manual_review=False,
+                        review_reason=None,
+                        engines_attempted=attempted,
+                        route_used=reconciliation.state.value,
+                        accepted=True,
+                        attempts_count=1 + len(rereads),
+                        elapsed_time=model_extraction.processing_time,
+                        selection_reason="ocr_self_review_reconciliation",
+                        metadata=review_metadata,
+                    )
 
         results_by_page[page_no] = page_result
         completed += 1

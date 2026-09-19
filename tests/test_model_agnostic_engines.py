@@ -14,6 +14,7 @@ from pdfword.engines import (
     get_engine_registry,
 )
 from pdfword.ocr_pipeline import process_pdf
+from pdfword.ocr_self_review import make_rendered_page_context
 from pdfword.settings import validate_setting
 
 
@@ -61,6 +62,41 @@ class MockLocalProvider:
         return self.result
 
 
+class SelectiveReReadEngine:
+    name = "selective_reread_engine"
+    engine_type = "local_model"
+    model_name = "test-model"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def available(self) -> bool:
+        return True
+
+    def extract_page(self, *, image_bytes: bytes, page_no: int, **_kwargs) -> OCRResult:
+        self.calls += 1
+        if self.calls == 1:
+            context = make_rendered_page_context(page_no, image_bytes)
+            return OCRResult(
+                engine_name=self.name,
+                status=OCR_STATUS_SUCCEEDED,
+                text="before bad \ufffd after",
+                boxes=(
+                    OCRBox(
+                        text="bad \ufffd",
+                        bbox=(10.0, 10.0, 100.0, 80.0),
+                        metadata={
+                            "coordinate_space": "image_pixels",
+                            "render_identity": context.render_identity,
+                            "image_width_px": context.width_px,
+                            "image_height_px": context.height_px,
+                        },
+                    ),
+                ),
+            )
+        return OCRResult(engine_name=self.name, status=OCR_STATUS_SUCCEEDED, text="fixed")
+
+
 def test_engine_registry_can_register_new_engine() -> None:
     registry = EngineRegistry()
     engine = MockOcrEngine()
@@ -87,8 +123,26 @@ def test_engine_can_be_selected_from_settings_without_router_change() -> None:
     )
 
     assert text == "mock text"
-    assert rows[0].route_used == engine.name
+    assert rows[0].route_used == "accepted_first_pass"
     assert rows[0].model_used == f"local:{engine.name}"
+
+
+def test_verified_local_reread_replaces_only_box_text() -> None:
+    registry = get_engine_registry()
+    engine = SelectiveReReadEngine()
+    registry.register(engine, replace=True)
+
+    rows, text = process_pdf(
+        pdf_bytes=(Path(__file__).parent / "fixtures" / "scanned.pdf").read_bytes(),
+        from_page=1,
+        to_page=1,
+        enabled_engines=[engine.name],
+    )
+
+    assert engine.calls == 2
+    assert rows[0].route_used == "accepted_after_selective_reread"
+    assert text == "before fixed after"
+    assert rows[0].quality_score is None
 
 
 def test_ocr_result_schema_has_optional_layout_and_confidence() -> None:
@@ -116,7 +170,7 @@ def test_ocr_result_schema_has_optional_layout_and_confidence() -> None:
     assert payload["reading_order"] == (1, 2)
 
 
-def test_engine_error_is_reported_as_pending_model_page() -> None:
+def test_engine_error_is_reported_as_categorical_ocr_failure() -> None:
     registry = get_engine_registry()
     engine = MockOcrEngine(
         OCRResult(
@@ -140,9 +194,9 @@ def test_engine_error_is_reported_as_pending_model_page() -> None:
         enabled_engines=[engine.name],
     )
 
-    assert rows[0].route_used == OCR_STATUS_PENDING_MODEL
-    assert rows[0].review_reason == OCR_STATUS_PENDING_MODEL
-    assert "engine unavailable" in text
+    assert rows[0].route_used == "ocr_failed"
+    assert rows[0].review_reason == "engine_error"
+    assert "REQUIRES REVIEW" in text
 
 
 def test_configuration_is_cpu_gpu_neutral() -> None:
@@ -182,7 +236,7 @@ def test_local_model_requires_text_quality_and_pinned_revision() -> None:
     assert result.metadata["model_revision"] == "abc123"
 
 
-def test_local_model_rejects_success_without_quality_metadata() -> None:
+def test_local_model_accepts_success_without_optional_confidence() -> None:
     provider = MockLocalProvider(
         OCRResult(
             engine_name="provider",
@@ -197,8 +251,9 @@ def test_local_model_rejects_success_without_quality_metadata() -> None:
         retry_count=1,
     )
     result = engine.extract_page(image_bytes=b"image", page_no=1)
-    assert result.status == OCR_STATUS_FAILED
-    assert provider.calls == 2
+    assert result.status == OCR_STATUS_SUCCEEDED
+    assert result.confidence is None
+    assert provider.calls == 1
 
 
 def test_feature_flagged_local_model_can_process_scanned_fixture() -> None:
@@ -232,7 +287,7 @@ def test_feature_flagged_local_model_can_process_scanned_fixture() -> None:
     finally:
         registry.register(original, replace=True)
     assert text
-    assert rows[0].route_used == engine.name
+    assert rows[0].route_used == "accepted_first_pass"
     assert rows[0].metadata is not None
     assert rows[0].metadata["model_revision"] == "abc123"
 

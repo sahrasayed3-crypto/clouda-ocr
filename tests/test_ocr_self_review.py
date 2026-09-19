@@ -10,15 +10,18 @@ from pdfword.ocr_self_review import (
     OCRIssueCode,
     OCRReviewResult,
     OCRReviewVerdict,
+    OCRPageState,
+    ReReadResult,
     ReReadBudget,
     RenderedPageContext,
     ReviewRegion,
     make_rendered_page_context,
     crop_review_region,
+    reconcile_ocr_results,
     review_first_pass,
     validate_and_bound_regions,
 )
-from pdfword.engines import OCRResult, OCR_STATUS_SUCCEEDED
+from pdfword.engines import OCRBox, OCRResult, OCR_STATUS_SUCCEEDED
 
 
 def _png_bytes(width: int = 40, height: int = 60) -> bytes:
@@ -110,6 +113,34 @@ def test_unicode_corruption_is_categorical_review_reason() -> None:
     assert review.verdict is OCRReviewVerdict.REVIEW_REQUIRED
 
 
+def test_verified_current_render_box_justifies_selective_reread() -> None:
+    context = make_rendered_page_context(1, _png_bytes())
+    review = review_first_pass(
+        OCRResult(
+            engine_name="fake",
+            status=OCR_STATUS_SUCCEEDED,
+            text="broken \ufffd output",
+            boxes=(
+                OCRBox(
+                    bbox=(1.0, 2.0, 30.0, 40.0),
+                    metadata={
+                        "coordinate_space": "image_pixels",
+                        "render_identity": context.render_identity,
+                        "image_width_px": 40,
+                        "image_height_px": 60,
+                    },
+                ),
+            ),
+        ),
+        _analysis(),
+        context,
+    )
+
+    assert review.verdict is OCRReviewVerdict.REREAD_REQUIRED
+    assert review.selective_reread_justified
+    assert len(review.suspicious_regions) == 1
+
+
 def test_stale_region_is_rejected_without_creating_a_crop() -> None:
     context = make_rendered_page_context(1, _png_bytes())
     stale = ReviewRegion(
@@ -148,3 +179,57 @@ def test_overlapping_regions_are_deduplicated_and_crop_is_bounded() -> None:
     assert [region.region_id for region in bounded] == ["one"]
     with Image.open(io.BytesIO(crop_review_region(image, bounded[0], context))) as crop:
         assert crop.size == (29, 49)
+
+
+def test_reread_replaces_only_the_verified_box_text_and_retains_provenance() -> None:
+    context = make_rendered_page_context(1, _png_bytes())
+    region = ReviewRegion(
+        region_id="r1",
+        page_no=1,
+        bbox_px=(1, 1, 30, 40),
+        render_identity=context.render_identity,
+        image_width_px=40,
+        image_height_px=60,
+        reason_codes=(OCRIssueCode.UNICODE_CORRUPTION,),
+        priority="high",
+        source_text="bad \ufffd",
+    )
+    review = OCRReviewResult(
+        verdict=OCRReviewVerdict.REREAD_REQUIRED,
+        issue_codes=(OCRIssueCode.UNICODE_CORRUPTION,),
+        suspicious_regions=(region,),
+        safe_diagnostics=(),
+        selective_reread_justified=True,
+        manual_review_required=False,
+    )
+
+    result = reconcile_ocr_results(
+        "before bad \ufffd after",
+        review,
+        (ReReadResult("r1", "fake", True, "fixed"),),
+    )
+
+    assert result.state is OCRPageState.ACCEPTED_AFTER_SELECTIVE_REREAD
+    assert result.text == "before fixed after"
+    assert result.provenance == ("selective_reread:r1",)
+
+
+def test_reread_without_a_verified_text_boundary_requires_review() -> None:
+    review = OCRReviewResult(
+        verdict=OCRReviewVerdict.REREAD_REQUIRED,
+        issue_codes=(OCRIssueCode.UNICODE_CORRUPTION,),
+        suspicious_regions=(
+            ReviewRegion(
+                "r1", 1, (1, 1, 30, 40), "render", 40, 60,
+                (OCRIssueCode.UNICODE_CORRUPTION,), "high",
+            ),
+        ),
+        safe_diagnostics=(),
+        selective_reread_justified=True,
+        manual_review_required=False,
+    )
+
+    result = reconcile_ocr_results("bad \ufffd", review, (ReReadResult("r1", "fake", True, "fixed"),))
+
+    assert result.state is OCRPageState.REVIEW_REQUIRED
+    assert OCRIssueCode.REREAD_DISAGREEMENT in result.reason_codes

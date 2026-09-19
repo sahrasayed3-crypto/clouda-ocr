@@ -298,10 +298,7 @@ class FeatureFlaggedLocalModelEngine:
             except Exception as exc:
                 last_error = f"{type(exc).__name__}: {exc}"
                 continue
-            valid_confidence = (
-                result.confidence is not None and 0 <= result.confidence <= 1
-            )
-            if result.success and result.text.strip() and valid_confidence:
+            if result.success and result.text.strip():
                 metadata = dict(result.metadata)
                 metadata.update(
                     {
@@ -322,7 +319,7 @@ class FeatureFlaggedLocalModelEngine:
                 )
             last_error = (
                 result.error_message
-                or "Local OCR returned invalid text or missing quality metadata."
+                or "Local OCR returned invalid text."
             )
         return OCRResult(
             engine_name=self.name,

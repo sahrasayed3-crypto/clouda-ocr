@@ -10,10 +10,13 @@ from pdfword.ocr_self_review import (
     OCRIssueCode,
     OCRReviewResult,
     OCRReviewVerdict,
+    ReReadBudget,
     RenderedPageContext,
     ReviewRegion,
     make_rendered_page_context,
+    crop_review_region,
     review_first_pass,
+    validate_and_bound_regions,
 )
 from pdfword.engines import OCRResult, OCR_STATUS_SUCCEEDED
 
@@ -105,3 +108,43 @@ def test_unicode_corruption_is_categorical_review_reason() -> None:
 
     assert OCRIssueCode.UNICODE_CORRUPTION in review.issue_codes
     assert review.verdict is OCRReviewVerdict.REVIEW_REQUIRED
+
+
+def test_stale_region_is_rejected_without_creating_a_crop() -> None:
+    context = make_rendered_page_context(1, _png_bytes())
+    stale = ReviewRegion(
+        region_id="stale",
+        page_no=1,
+        bbox_px=(1, 1, 20, 20),
+        render_identity="other-render",
+        image_width_px=40,
+        image_height_px=60,
+        reason_codes=(OCRIssueCode.UNICODE_CORRUPTION,),
+        priority="high",
+    )
+
+    assert validate_and_bound_regions((stale,), context, ReReadBudget()) == ()
+
+
+def test_overlapping_regions_are_deduplicated_and_crop_is_bounded() -> None:
+    image = _png_bytes()
+    context = make_rendered_page_context(1, image)
+    regions = tuple(
+        ReviewRegion(
+            region_id=name,
+            page_no=1,
+            bbox_px=bbox,
+            render_identity=context.render_identity,
+            image_width_px=40,
+            image_height_px=60,
+            reason_codes=(OCRIssueCode.UNICODE_CORRUPTION,),
+            priority="high",
+        )
+        for name, bbox in (("one", (1, 1, 30, 50)), ("two", (2, 2, 31, 51)))
+    )
+
+    bounded = validate_and_bound_regions(regions, context, ReReadBudget())
+
+    assert [region.region_id for region in bounded] == ["one"]
+    with Image.open(io.BytesIO(crop_review_region(image, bounded[0], context))) as crop:
+        assert crop.size == (29, 49)

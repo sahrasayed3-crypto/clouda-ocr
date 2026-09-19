@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import math
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
@@ -42,6 +43,17 @@ class OCRPageState(StrEnum):
     REVIEW_REQUIRED = "review_required"
     PENDING_OCR_MODEL = "pending_ocr_model"
     OCR_FAILED = "ocr_failed"
+
+
+@dataclass(frozen=True)
+class ReReadBudget:
+    max_regions: int = 4
+    max_attempts_per_region: int = 1
+    max_total_attempts: int = 4
+    max_total_pixels: int = 4_000_000
+    max_total_bytes: int = 8 * 1024 * 1024
+    min_width_px: int = 8
+    min_height_px: int = 8
 
 
 @dataclass(frozen=True)
@@ -191,3 +203,72 @@ def review_first_pass(
         selective_reread_justified=False,
         manual_review_required=True,
     )
+
+
+def _intersection_over_union(
+    left: tuple[int, int, int, int], right: tuple[int, int, int, int]
+) -> float:
+    x0, y0 = max(left[0], right[0]), max(left[1], right[1])
+    x1, y1 = min(left[2], right[2]), min(left[3], right[3])
+    intersection = max(0, x1 - x0) * max(0, y1 - y0)
+    if not intersection:
+        return 0.0
+    left_area = (left[2] - left[0]) * (left[3] - left[1])
+    right_area = (right[2] - right[0]) * (right[3] - right[1])
+    return intersection / max(1, left_area + right_area - intersection)
+
+
+def _valid_region(
+    region: ReviewRegion, render: RenderedPageContext, budget: ReReadBudget
+) -> bool:
+    if (
+        region.page_no != render.page_no
+        or region.render_identity != render.render_identity
+        or region.image_width_px != render.width_px
+        or region.image_height_px != render.height_px
+    ):
+        return False
+    coordinates = region.bbox_px
+    if any(not isinstance(value, int) or isinstance(value, bool) for value in coordinates):
+        return False
+    x0, y0, x1, y1 = coordinates
+    if x0 < 0 or y0 < 0 or x1 > render.width_px or y1 > render.height_px:
+        return False
+    return x1 - x0 >= budget.min_width_px and y1 - y0 >= budget.min_height_px
+
+
+def validate_and_bound_regions(
+    regions: tuple[ReviewRegion, ...],
+    render: RenderedPageContext,
+    budget: ReReadBudget,
+) -> tuple[ReviewRegion, ...]:
+    accepted: list[ReviewRegion] = []
+    pixels = 0
+    for region in regions:
+        if len(accepted) >= budget.max_regions or not _valid_region(region, render, budget):
+            continue
+        area = (region.bbox_px[2] - region.bbox_px[0]) * (
+            region.bbox_px[3] - region.bbox_px[1]
+        )
+        if pixels + area > budget.max_total_pixels or any(
+            _intersection_over_union(region.bbox_px, known.bbox_px) >= 0.85
+            for known in accepted
+        ):
+            continue
+        accepted.append(region)
+        pixels += area
+    return tuple(accepted)
+
+
+def crop_review_region(
+    image_bytes: bytes, region: ReviewRegion, render: RenderedPageContext
+) -> bytes:
+    if not _valid_region(region, render, ReReadBudget()):
+        raise ValueError("Review region is not bound to the current rendered image")
+    with Image.open(io.BytesIO(image_bytes)) as image:
+        if image.size != (render.width_px, render.height_px):
+            raise ValueError("Rendered image dimensions no longer match region context")
+        crop = image.crop(region.bbox_px)
+        output = io.BytesIO()
+        crop.save(output, format="PNG")
+    return output.getvalue()

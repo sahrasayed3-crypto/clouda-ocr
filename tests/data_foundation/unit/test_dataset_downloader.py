@@ -11,6 +11,8 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from clouda_data.datasets.downloader import (
+    DownloadCancelled,
+    download_http,
     download_dataset_sample,
     safe_filename,
     verify_download,
@@ -126,6 +128,90 @@ class DatasetDownloaderTests(unittest.TestCase):
                 download_dataset_sample(
                     "tiny_source", project_root=root, max_bytes=3 * 1024 * 1024 * 1024
                 )
+
+    def test_download_reports_progress_and_cancelled_partial_can_resume(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            server_root = root / "server"
+            server_root.mkdir()
+            payload = b"clouda-progress" * 100_000
+            (server_root / "large.bin").write_bytes(payload)
+            destination = root / "downloads" / "large.bin"
+            progress: list[tuple[int, int | None]] = []
+            cancelled = False
+
+            def on_progress(completed: int, total: int | None) -> None:
+                nonlocal cancelled
+                progress.append((completed, total))
+                if completed:
+                    cancelled = True
+
+            with (
+                LocalServer(server_root) as server,
+                mock.patch.dict(
+                    os.environ,
+                    {
+                        "CLOUDA_ALLOW_PRIVATE_DOWNLOADS": "true",
+                        "CLOUDA_ALLOW_INSECURE_DOWNLOADS": "true",
+                    },
+                ),
+            ):
+                with self.assertRaises(DownloadCancelled):
+                    download_http(
+                        f"{server.url}/large.bin",
+                        destination,
+                        max_bytes=len(payload) + 1,
+                        progress_callback=on_progress,
+                        cancellation_check=lambda: cancelled,
+                    )
+                partial = destination.with_suffix(".bin.part")
+                self.assertTrue(partial.is_file())
+                self.assertGreater(partial.stat().st_size, 0)
+
+                resumed_progress: list[tuple[int, int | None]] = []
+                result = download_http(
+                    f"{server.url}/large.bin",
+                    destination,
+                    max_bytes=len(payload) + 1,
+                    progress_callback=lambda completed, total: resumed_progress.append(
+                        (completed, total)
+                    ),
+                )
+
+            self.assertEqual(destination.read_bytes(), payload)
+            self.assertEqual(result.size_bytes, len(payload))
+            self.assertTrue(progress)
+            self.assertEqual(resumed_progress[-1], (len(payload), len(payload)))
+
+    def test_sample_download_propagates_aggregate_progress(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            server_root = root / "server"
+            server_root.mkdir()
+            payload = b"canonical sample"
+            (server_root / "sample.txt").write_bytes(payload)
+            progress: list[tuple[int, int | None]] = []
+            with LocalServer(server_root) as server:
+                registry = root / "data/manifests/dataset_registry.json"
+                create_registry(registry, f"{server.url}/sample.txt")
+                with mock.patch.dict(
+                    os.environ,
+                    {
+                        "CLOUDA_ALLOW_PRIVATE_DOWNLOADS": "true",
+                        "CLOUDA_ALLOW_INSECURE_DOWNLOADS": "true",
+                    },
+                ):
+                    result = download_dataset_sample(
+                        "tiny_source",
+                        project_root=root,
+                        max_bytes=1024 * 1024,
+                        progress_callback=lambda completed, total: progress.append(
+                            (completed, total)
+                        ),
+                    )
+
+            self.assertTrue(result.ok)
+            self.assertEqual(progress[-1], (len(payload), len(payload)))
 
 
 if __name__ == "__main__":

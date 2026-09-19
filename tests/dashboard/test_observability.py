@@ -90,6 +90,20 @@ def test_results_and_benchmarks_read_only_canonical_local_metadata(tmp_path: Pat
     assert benchmarks["results"][1]["rankable"] is False
 
 
+def test_results_do_not_mislabel_unclassified_runs_as_training(tmp_path: Path):
+    from clouda_data.results.service import ResultsService
+
+    catalog, _training, service = _services(tmp_path)
+    writer = ResultsService(catalog.settings.results_root)
+    writer.register_dataset(dataset_id="eval-set", version="1", name="Evaluation")
+    writer.register_model({"model_id": "model-a", "display_name": "Model A"})
+    writer.create_run(model_id="model-a", dataset_id="eval-set", metadata={})
+
+    results = service.results({})
+
+    assert results["runs"][0]["run_type"] == "unknown"
+
+
 def test_doctor_hardware_and_overview_preserve_canonical_status(tmp_path: Path):
     _catalog_service, _training, service = _services(tmp_path)
 

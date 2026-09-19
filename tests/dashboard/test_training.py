@@ -28,7 +28,7 @@ def test_registered_adapter_capabilities_are_honest_and_path_free(tmp_path: Path
     assert "weights" not in hunyuan
     assert "tokenizer" not in hunyuan
     assert "processor" not in hunyuan
-    assert hunyuan["dependency_check"]["status"] in {"PASS", "FAIL"}
+    assert hunyuan["dependency_check"]["status"] == "UNCHECKED"
     assert hunyuan["gpu_validation"] == "DEFERRED"
     assert hunyuan["real_training"] == "NOT VALIDATED"
     assert hunyuan["capabilities"]["supports_resume"] is True

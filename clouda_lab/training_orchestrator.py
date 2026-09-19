@@ -104,7 +104,20 @@ class TrainingOrchestrator:
         right = load_run(right_run_id, self.runs_root)
         return compare_runs(left, right)
 
-    # -- lifecycle (mock/dry-run only) --------------------------------------
+    # -- lifecycle ----------------------------------------------------------
+
+    def start(self, config_path: str | Path) -> dict[str, Any]:
+        """Delegate a real config to the canonical experiment runtime.
+
+        The dashboard performs canonical preflight immediately before this
+        boundary. This method still rejects dry-run configs so a caller cannot
+        accidentally route simulations through the real-operation entrypoint.
+        """
+        config = load_experiment_config(Path(config_path))
+        if config.runtime.dry_run:
+            raise ConfigError("start requires a non-dry-run experiment config")
+        handle = run_experiment(config)
+        return handle.to_dict()
 
     def start_dry_run(
         self,

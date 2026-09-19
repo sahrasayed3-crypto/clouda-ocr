@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+from types import SimpleNamespace
 
 from PIL import Image
 
@@ -12,7 +13,9 @@ from pdfword.ocr_self_review import (
     RenderedPageContext,
     ReviewRegion,
     make_rendered_page_context,
+    review_first_pass,
 )
+from pdfword.engines import OCRResult, OCR_STATUS_SUCCEEDED
 
 
 def _png_bytes(width: int = 40, height: int = 60) -> bytes:
@@ -56,3 +59,49 @@ def test_safe_diagnostics_omit_internal_text_hash_and_geometry() -> None:
     assert "secret text" not in serialized
     assert context.render_identity not in serialized
     assert "bbox" not in serialized
+
+
+def _analysis(**overrides: object) -> SimpleNamespace:
+    values: dict[str, object] = {
+        "arabic_integrity_risk": False,
+        "suspicious_fragmentation": False,
+        "pathological_arabic_spacing_count": 0,
+        "unicode_corruption_count": 0,
+        "reading_order_risk": False,
+        "text_coverage_ratio": None,
+        "visible_image_operations": None,
+        "warnings": (),
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def test_clean_first_pass_without_confidence_is_accepted() -> None:
+    review = review_first_pass(
+        OCRResult(
+            engine_name="fake",
+            status=OCR_STATUS_SUCCEEDED,
+            text="A readable first-pass OCR result with enough words to be useful.",
+            confidence=None,
+        ),
+        _analysis(),
+        make_rendered_page_context(1, _png_bytes()),
+    )
+
+    assert review.verdict is OCRReviewVerdict.ACCEPTED
+    assert not review.issue_codes
+
+
+def test_unicode_corruption_is_categorical_review_reason() -> None:
+    review = review_first_pass(
+        OCRResult(
+            engine_name="fake",
+            status=OCR_STATUS_SUCCEEDED,
+            text="broken \ufffd output",
+        ),
+        _analysis(),
+        make_rendered_page_context(1, _png_bytes()),
+    )
+
+    assert OCRIssueCode.UNICODE_CORRUPTION in review.issue_codes
+    assert review.verdict is OCRReviewVerdict.REVIEW_REQUIRED

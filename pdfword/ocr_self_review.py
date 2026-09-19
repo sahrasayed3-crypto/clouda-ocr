@@ -8,6 +8,8 @@ from typing import Any
 
 from PIL import Image
 
+from .engines import OCRResult
+
 
 class OCRReviewVerdict(StrEnum):
     ACCEPTED = "accepted"
@@ -132,4 +134,60 @@ def make_rendered_page_context(page_no: int, image_bytes: bytes) -> RenderedPage
         render_identity=hashlib.sha256(image_bytes).hexdigest(),
         width_px=width,
         height_px=height,
+    )
+
+
+def _text_unicode_corruption_count(text: str) -> int:
+    return sum(
+        character == "\ufffd"
+        or 0xE000 <= ord(character) <= 0xF8FF
+        or (character not in {"\n", "\t"} and ord(character) < 32)
+        for character in text
+    )
+
+
+def review_first_pass(
+    result: OCRResult,
+    analysis: Any,
+    render: RenderedPageContext,
+) -> OCRReviewResult:
+    del render
+    issues: list[OCRIssueCode] = []
+    text = (result.text or "").strip()
+    if not result.success:
+        issues.append(OCRIssueCode.ENGINE_ERROR)
+    elif not text:
+        issues.append(OCRIssueCode.EMPTY_OCR_OUTPUT)
+    elif _text_unicode_corruption_count(text) or bool(
+        getattr(analysis, "unicode_corruption_count", 0)
+    ):
+        issues.append(OCRIssueCode.UNICODE_CORRUPTION)
+    if bool(getattr(analysis, "suspicious_fragmentation", False)) or bool(
+        getattr(analysis, "arabic_integrity_risk", False)
+    ):
+        issues.append(OCRIssueCode.ARABIC_FRAGMENTATION)
+    if getattr(analysis, "pathological_arabic_spacing_count", 0):
+        issues.append(OCRIssueCode.ARABIC_PATHOLOGICAL_SPACING)
+    if getattr(analysis, "reading_order_risk", False) is True:
+        issues.append(OCRIssueCode.READING_ORDER_RISK)
+    if not issues:
+        return OCRReviewResult(
+            verdict=OCRReviewVerdict.ACCEPTED,
+            issue_codes=(),
+            suspicious_regions=(),
+            safe_diagnostics=(("first_pass_characters", len(text)),),
+            selective_reread_justified=False,
+            manual_review_required=False,
+        )
+    return OCRReviewResult(
+        verdict=(
+            OCRReviewVerdict.FAILED
+            if OCRIssueCode.ENGINE_ERROR in issues
+            else OCRReviewVerdict.REVIEW_REQUIRED
+        ),
+        issue_codes=tuple(dict.fromkeys(issues)),
+        suspicious_regions=(),
+        safe_diagnostics=(("first_pass_characters", len(text)),),
+        selective_reread_justified=False,
+        manual_review_required=True,
     )

@@ -1,32 +1,52 @@
-# Clouda PDF
+# Clouda OCR
 
-[![Build with Ona](https://ona.com/build-with-ona.svg)](https://app.ona.com/#https://github.com/sahrasayed3-crypto/clouda-ocr)
+[![CI](https://github.com/sahrasayed3-crypto/clouda-ocr/actions/workflows/ci.yml/badge.svg)](https://github.com/sahrasayed3-crypto/clouda-ocr/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-> The repository now includes the production runtime plus isolated data,
-> training-planning, model-registry, and shared-contract subsystems. The
-> pre-training dataset-preparation infrastructure is ready and frozen pending
-> real data ingestion. No final trained OCR model exists; model training and
-> local OCR inference remain disabled by default.
+Clouda OCR is an open-source, model-agnostic document-intelligence runtime for Arabic, English, and mixed-language PDFs. Today it converts trusted born-digital PDF text into RTL-aware, editable DOCX with explicit page-level routing — and it ships the data, evaluation, and training-preparation infrastructure for Arabic OCR while a final trained OCR model remains deliberately unbuilt.
 
-Clouda PDF is an open-source, model-agnostic PDF-to-DOCX project for Arabic, English, and mixed-language documents. Its long-term goal is reliable Arabic OCR for modern and historical books, including weak or medium-quality scanned pages, margins, footnotes, RTL text, and mixed Arabic-English reading order.
+The installed Python package is named `clouda-pdf` for historical reasons; the project is Clouda OCR.
 
-The current verified implementation converts trusted born-digital PDF text into editable, text-only DOCX files while preserving page order, Arabic Unicode, RTL paragraph direction, footers, and page boundaries. Embedded text is analyzed and must pass the canonical digital-text trust gate before direct extraction is authorized. Image-only scanned pages are detected and routed to `pending_ocr_model`; they are not treated as successful OCR output until a model is licensed for the intended use, integrated, trained or adapted as needed, and validated in the application route.
+## Why this exists
 
-It is designed for modern and historical Arabic books as well as English and mixed-language documents. Text fidelity is the priority. The project does not currently attempt layout-perfect reconstruction of images, tables, or page artwork.
+Arabic document digitization is harder than English OCR: right-to-left text, mixed Arabic-English reading order, footnotes and margins, and weak or medium-quality scans of modern and historical books. Researchers, publishers, and archives need editable documents without silently losing page context or implying OCR accuracy that has not been measured. Clouda OCR makes the supported digital-text path explicit and preserves uncertain pages for review instead of guessing.
 
-## Why it exists
+## What works today
 
-Researchers, publishers, and archives need editable documents without silently losing page context or implying OCR accuracy that has not been measured. Clouda PDF makes the supported digital-text path explicit and preserves uncertain pages for review.
-
-## Current capabilities
-
-- Extract trusted embedded text from born-digital PDF pages without OCR.
-- Generate a valid editable DOCX with page breaks and RTL-aware Arabic paragraphs.
-- Classify pages through categorical gate and routing states, including `digital_text`, `blank_page`, `near_blank`, `pending_ocr_model`, and `review_required`.
-- Preserve short page-number text rather than discarding it.
-- Use a model-agnostic `ExtractionEngine` and `EngineRegistry` for a future OCR integration.
-- Keep scanned, low-quality, and image-only pages in an explicit review state instead of claiming unmeasured OCR accuracy.
+- Extract trusted embedded text from born-digital PDF pages without OCR, into a valid editable DOCX with page breaks and RTL-aware Arabic paragraphs.
+- Classify every page through categorical gate and routing states: `digital_text`, `blank_page`, `near_blank`, `pending_ocr_model`, `review_required`.
+- Detect image-only scanned pages and keep them in an explicit `pending_ocr_model` review state — never presented as OCR output.
 - Self-review configured local OCR categorically and re-read only verified, bounded image regions; unresolved OCR remains review-required.
+- Preserve short page-number text rather than discarding it.
+
+## What makes Clouda different
+
+- **Page-level trust, not blind extraction.** Every page passes the canonical Page Analyzer → Trusted Digital Text Gate → Page Decision Engine sequence. Embedded text must pass the trust gate before direct extraction is authorized; a post-extraction digest mismatch forces `review_required` and the untrusted text is omitted.
+- **Provider-independent by construction.** A model-agnostic `ExtractionEngine` and `EngineRegistry` mean the runtime does not depend on any single upstream OCR/VLM model. Benchmark candidates are evaluated; none is the identity of Clouda.
+- **OCR review and selective re-read.** Configured local OCR is self-reviewed and only verified, bounded image regions are re-read — cost control with categorical, not confidence-based, decisions.
+- **Fail-closed licensing as an engineering property.** Dataset, model, output-redistribution, and training-label rights are separate fields; unknown rights fail closed as `LOCAL_ONLY` or `NEEDS_REVIEW`.
+- **Offline and self-hosted orientation.** Local OCR and GPU training are disabled by default; the Clouda Lab dashboard binds loopback only and never downloads datasets or models during normal navigation.
+- **Reproducible evaluation.** A metadata-only, hash-pinned 177-page Arabic benchmark with sanitized provenance and documented exclusions.
+
+## Current status
+
+| Capability | Status |
+|---|---|
+| Born-digital PDF → RTL-aware DOCX (digital-text route) | Implemented, CI-tested |
+| Page Analyzer → Trusted Digital Text Gate → Page Decision Engine routing | Implemented, CI-tested |
+| Blank / near-blank / review-required page states with per-page metadata | Implemented, CI-tested |
+| OCR Self-Review and Selective Re-read | Implemented (CI-tested with local fakes; no production model) |
+| Model-agnostic engine registry and provider abstraction | Implemented |
+| Arabic OCR data foundation (rendering, distortion, QC, license-gated export) | Implemented |
+| Training experiment framework (planner, preflight, deterministic CPU mock runs) | Implemented; real training fail-closed |
+| Final trained Clouda OCR model | **Not built** — deliberately; candidates are benchmarked, not adopted |
+| Production OCR inference / hosted service | Not built |
+| GPU benchmark cycle (177-page Arabic) | Completed for this cycle; see [benchmark](benchmarks/ocr_arabic/README.md) |
+| Layout-perfect reconstruction (tables, images, margins) | Not attempted; text fidelity is the priority |
+
+No final trained OCR model exists. Model training and local OCR inference remain disabled by default. Scanned pages are not treated as successful OCR output until a model is licensed for the intended use, integrated, trained or adapted as needed, and validated in the application route.
+
+## Architecture
 
 ```mermaid
 flowchart LR
@@ -44,6 +64,15 @@ flowchart LR
     I --> K
     J --> K
 ```
+
+One repository with isolated domains and external state: `pdfword` (production PDF-to-DOCX runtime), `clouda_data` (dataset preparation, evaluation, and the integrated Data Factory), `clouda_contracts` (dependency-light boundary), `clouda_training` (planning and reproducible offline mock experiments), and `clouda_models` (model metadata, no weights). Runtime files, datasets, and caches resolve through `StorageRoots` and stay outside Git. See [ARCHITECTURE.md](ARCHITECTURE.md).
+
+## Engineering evidence
+
+- **Cross-platform CI** (Windows + Ubuntu, Python 3.11) running lint (ruff), formatting (black), types (mypy), a compile gate, import/CLI smoke tests, and the deep doctor self-test. [Latest workflow runs](https://github.com/sahrasayed3-crypto/clouda-ocr/actions/workflows/ci.yml).
+- **Large automated test suite**: 1,895 test functions across 202 test files (static count) covering routing, trust gating, DOCX validity, security bounds, Lab contracts, and benchmark release validation. Run the suite for live numbers rather than quoting a snapshot.
+- **Security tooling**: repository scan (`python -m tools.validation.repository_scan --root .`), bounded uploads, archive traversal/expansion checks, `defusedxml`, header-key worker API, pinned GitHub Actions SHAs, and an [SBOM](SBOM.json). See [SECURITY.md](SECURITY.md).
+- **Deterministic fixtures**: tests use copyright-free, deterministic local fixtures; no dataset or model downloads in CI.
 
 ## Install (Windows)
 
@@ -110,10 +139,6 @@ trusted-text, blank, and OCR-required routes plus DOCX page boundaries. CUDA
 is informational only; this command performs no GPU inference, training, or
 benchmarking.
 
-## External tools
-
-Do not commit Poppler, OCR runtimes, virtual environments, or GPU toolkits into this repository. If a future workflow needs Poppler, install it outside the repo and add its `bin` directory to `PATH`, for example `C:\tools\poppler\Library\bin`.
-
 ## Demo
 
 The demo processes copyright-free local fixtures and writes a DOCX plus per-page JSON metadata:
@@ -123,6 +148,16 @@ The demo processes copyright-free local fixtures and writes a DOCX plus per-page
 ```
 
 It demonstrates digital text extraction, DOCX generation, a scanned page routed to `pending_ocr_model`, and a blank page routed to `blank_page`.
+
+## Example outcome
+
+| Input page | Result | Output |
+| --- | --- | --- |
+| PDF page whose embedded text passes the trust gate | `digital_text` | Extracted text in DOCX |
+| Image-only scanned page | `pending_ocr_model` | Explicit review state and JSON metadata |
+| Empty page | `blank_page` | Page boundary retained |
+| Structurally near-empty page | `near_blank` | Page boundary and categorical state retained |
+| Uncertain page or post-extraction digest mismatch | `review_required` | Visible review placeholder; untrusted text omitted |
 
 ## Arabic OCR data foundation
 
@@ -165,20 +200,10 @@ The Document Intelligence page accepts an explicit PDF submission (up to
 states, evidence, and reason codes. It does not persist the upload or expose
 user-facing accuracy, confidence, or quality percentages.
 
-The dashboard stores persistent operation records under `runs/.lab-tasks`,
-managed model selections under `runs/.lab-models`, deterministic plans under
-`runs/.lab-plans` and `runs/.lab-benchmark-plans`, and recoverable removals
-under `runs/.lab-trash`. It accepts managed IDs only: dataset imports resolve
-under `data/imports`, downloaded samples under `data/downloads`, and model
-assets under `data/models`.
-
 Real training is conditionally available only when a managed model asset has
 passed canonical verification and the canonical preflight reports no blockers.
 The no-GPU/no-model state is fully usable for catalog, quality, planning,
-results, benchmark metadata, Doctor, task, and storage inspection. Training
-stop remains unavailable until the canonical runtime provides cooperative
-cancellation; checkpoint resume uses the canonical integrity and identity
-checks.
+results, benchmark metadata, Doctor, task, and storage inspection.
 
 ### Pre-training stage status
 
@@ -193,30 +218,40 @@ OCR model, production model inference or serving, and a paid hosted OCR service.
 Those are later stages and are not implied by the presence of preparation or
 training-planning code.
 
-## Example outcome
+## Benchmark status
 
-| Input page | Result | Output |
-| --- | --- | --- |
-| PDF page whose embedded text passes the trust gate | `digital_text` | Extracted text in DOCX |
-| Image-only scanned page | `pending_ocr_model` | Explicit review state and JSON metadata |
-| Empty page | `blank_page` | Page boundary retained |
-| Structurally near-empty page | `near_blank` | Page boundary and categorical state retained |
-| Uncertain page or post-extraction digest mismatch | `review_required` | Visible review placeholder; untrusted text omitted |
+A separate metadata-only
+[177-page Arabic OCR benchmark](benchmarks/ocr_arabic/README.md)
+(`clouda-ocr-arabic-177-v1`) documents controlled model-evaluation results
+without changing the application route. Public contents include results,
+methodology, hashes, sanitized provenance, rights classifications, and
+validation code only; all image, ground-truth, raw-output, and permission
+evidence remains private and local.
+
+Key results, with their caveats: HunyuanOCR-1.5 ranked first by Normalized
+Arabic CER (0.391497) on this specific 177-page distorted Arabic benchmark.
+This does not establish universal model superiority or commercial usability;
+model licenses and output rights are tracked separately and remain
+`NEEDS_REVIEW`. Runtime figures across different GPUs are explicitly not a
+controlled speed comparison. See
+[RESULTS.md](benchmarks/ocr_arabic/RESULTS.md) and
+[methodology.md](benchmarks/ocr_arabic/methodology.md).
 
 ## Current limitations
 
-- Benchmarking is complete. Model adaptation/training and runtime integration are the next major technical stage. Progress on that stage is currently limited primarily by access to suitable GPU compute. Dataset and model rights remain governed separately by the existing fail-closed licensing and provenance process.
-- HunyuanOCR-1.5 is the current leading candidate based on this specific 177-page benchmark (Normalized Arabic CER 0.391497). Final production/runtime selection remains subject to architecture, licensing, deployment constraints, integration, and subsequent validation.
-- Production application accuracy is not claimed. A separate metadata-only
-  [177-page Arabic OCR benchmark](benchmarks/ocr_arabic/README.md) documents
-  controlled model-evaluation results without changing the application route.
+- Model adaptation/training and runtime integration are the next major technical stage. Progress on that stage is currently limited primarily by access to suitable GPU compute. Dataset and model rights remain governed separately by the existing fail-closed licensing and provenance process.
+- Production application accuracy is not claimed.
 - Layout-perfect reconstruction, tables, images, margins, and footnotes are not rebuilt as DOCX objects; page boundaries and extracted text are retained.
 - AMD/ROCm readiness is architectural and diagnostic only. No GPU inference or training has been validated.
 - Qwen, Kraken, PaddleOCR, Tesseract, and other OCR candidates are benchmark candidates only until legally usable, installed, and evaluated on the same ground-truth set.
 
+## External tools
+
+Do not commit Poppler, OCR runtimes, virtual environments, or GPU toolkits into this repository. If a future workflow needs Poppler, install it outside the repo and add its `bin` directory to `PATH`, for example `C:\tools\poppler\Library\bin`.
+
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md), [docs/ROADMAP.md](docs/ROADMAP.md), and [docs/MODEL_INTEGRATION.md](docs/MODEL_INTEGRATION.md). The current leading candidate will become the final OCR engine only if architecture, licensing, deployment, integration, and subsequent validation requirements are satisfied.
+See [ROADMAP.md](ROADMAP.md), [docs/ROADMAP.md](docs/ROADMAP.md), and [docs/MODEL_INTEGRATION.md](docs/MODEL_INTEGRATION.md). The current leading benchmark candidate will become the final OCR engine only if architecture, licensing, deployment, integration, and subsequent validation requirements are satisfied.
 
 ## Documentation
 
@@ -228,10 +263,11 @@ See [ROADMAP.md](ROADMAP.md), [docs/ROADMAP.md](docs/ROADMAP.md), and [docs/MODE
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
 - [Security](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)
+- [Investor-facing GitHub audit (2026-09-20)](docs/investor-github-audit.md)
 
 ## Open-Source Scope
 
-This repository contains the public open-source portion of OCR_PROJECT / Clouda PDF: the application structure, model-agnostic interfaces, OCR engine registry, page routing, blank and near-blank page handling, quality and review workflow, public evaluation utilities, tests, documentation, and safe examples.
+This repository contains the public open-source portion of Clouda OCR: the application structure, model-agnostic interfaces, OCR engine registry, page routing, blank and near-blank page handling, quality and review workflow, public evaluation utilities, tests, documentation, and safe examples.
 
 Some components are intentionally not included in this repository. Training data, private reference texts, final model weights, LoRA/QLoRA adapters, checkpoints, production service code, customer data, proprietary data-collection tools, advanced private training recipes, and sensitive deployment configuration may be licensed, hosted, or distributed separately.
 

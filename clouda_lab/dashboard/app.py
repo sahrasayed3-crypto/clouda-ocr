@@ -5,7 +5,16 @@ import secrets
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
@@ -13,6 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from .benchmarks import BenchmarkWorkspaceService
 from .catalog import DatasetCatalog
 from .datasets import DatasetOperationsService
+from .document_intelligence import DocumentIntelligenceService, MAX_PDF_BYTES
 from .models import ModelCatalogService
 from .observability import ObservabilityService
 from .security import browser_safe, require_loopback
@@ -105,6 +115,7 @@ def create_app(settings: LabSettings | None = None) -> FastAPI:
     observability = ObservabilityService(
         resolved, catalog, training, storage=storage, tasks=tasks
     )
+    document_intelligence = DocumentIntelligenceService(resolved)
     app.state.lab_catalog = catalog
     app.state.lab_tasks = tasks
     app.state.lab_dataset_operations = dataset_operations
@@ -113,6 +124,7 @@ def create_app(settings: LabSettings | None = None) -> FastAPI:
     app.state.lab_storage = storage
     app.state.lab_benchmark_workspace = benchmark_workspace
     app.state.lab_observability = observability
+    app.state.lab_document_intelligence = document_intelligence
     app.state.lab_action_token = secrets.token_urlsafe(32)
 
     def require_action_token(
@@ -191,6 +203,19 @@ def create_app(settings: LabSettings | None = None) -> FastAPI:
     @app.get("/api/lab/session")
     def session(request: Request) -> dict[str, str]:
         return {"action_token": request.app.state.lab_action_token}
+
+    @app.post(
+        "/api/lab/document-intelligence/analyze",
+        dependencies=[Depends(require_action_token)],
+    )
+    async def analyze_document_intelligence(
+        file: UploadFile = File(...),
+    ) -> dict[str, Any]:
+        try:
+            payload = await file.read(MAX_PDF_BYTES + 1)
+        finally:
+            await file.close()
+        return document_intelligence.analyze(payload)
 
     @app.get("/api/lab/overview")
     def overview() -> dict[str, Any]:

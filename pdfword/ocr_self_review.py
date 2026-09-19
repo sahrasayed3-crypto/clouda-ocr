@@ -102,12 +102,15 @@ class OCRReviewResult:
     safe_diagnostics: tuple[tuple[str, int | str | bool | None], ...]
     selective_reread_justified: bool
     manual_review_required: bool
+    unresolved_regions: tuple[str, ...] = ()
+    reread_budget: ReReadBudget = field(default_factory=ReReadBudget, repr=False)
 
     def to_diagnostics(self) -> dict[str, Any]:
         return {
             "review_verdict": self.verdict.value,
             "issue_codes": [code.value for code in self.issue_codes],
             "suspicious_region_count": len(self.suspicious_regions),
+            "unresolved_region_count": len(self.unresolved_regions),
             "safe_diagnostics": dict(self.safe_diagnostics),
             "selective_reread_justified": self.selective_reread_justified,
             "manual_review_required": self.manual_review_required,
@@ -167,29 +170,75 @@ def _text_unicode_corruption_count(text: str) -> int:
     )
 
 
+def _normalized_text_lines(text: str) -> tuple[str, ...]:
+    return tuple(" ".join(line.split()) for line in text.splitlines() if line.strip())
+
+
+def _arabic_single_letter_fragment_count(text: str) -> int:
+    return sum(
+        len(token) == 1 and "\u0600" <= token <= "\u06ff" for token in text.split()
+    )
+
+
+def _observable_text_issues(result: OCRResult) -> tuple[OCRIssueCode, ...]:
+    """Return categorical risks evidenced by the OCR result itself.
+
+    Embedded-PDF analysis is intentionally not used here: it describes the
+    source layer, not the model output being accepted.
+    """
+    text = (result.text or "").strip()
+    issues: list[OCRIssueCode] = []
+    if not result.success:
+        issues.append(OCRIssueCode.ENGINE_ERROR)
+    elif not text:
+        issues.append(OCRIssueCode.EMPTY_OCR_OUTPUT)
+    else:
+        if sum(character.isalnum() for character in text) < 2:
+            issues.append(OCRIssueCode.SUSPICIOUSLY_SPARSE_OUTPUT)
+        if _text_unicode_corruption_count(text):
+            issues.append(OCRIssueCode.UNICODE_CORRUPTION)
+        lines = _normalized_text_lines(text)
+        if any(lines.count(line) >= 3 for line in set(lines)):
+            issues.extend(
+                (
+                    OCRIssueCode.DUPLICATE_LINE_SEQUENCE,
+                    OCRIssueCode.REPEATED_TEXT_BLOCK,
+                )
+            )
+        if _arabic_single_letter_fragment_count(text) >= 4:
+            issues.extend(
+                (
+                    OCRIssueCode.ARABIC_FRAGMENTATION,
+                    OCRIssueCode.ARABIC_PATHOLOGICAL_SPACING,
+                )
+            )
+        order = result.reading_order or tuple(
+            box.reading_order for box in result.boxes if box.reading_order is not None
+        )
+        if order and (
+            len(set(order)) != len(order) or tuple(sorted(order)) != tuple(order)
+        ):
+            issues.append(OCRIssueCode.READING_ORDER_RISK)
+        confidence = result.confidence
+        if (
+            result.metadata.get("native_confidence_validated") is True
+            and isinstance(confidence, (int, float))
+            and not isinstance(confidence, bool)
+            and math.isfinite(confidence)
+            and confidence < 0.5
+        ):
+            issues.append(OCRIssueCode.LOW_ENGINE_CONFIDENCE)
+    return tuple(dict.fromkeys(issues))
+
+
 def review_first_pass(
     result: OCRResult,
     analysis: Any,
     render: RenderedPageContext,
 ) -> OCRReviewResult:
-    issues: list[OCRIssueCode] = []
+    del analysis  # Source-layer analysis is contextual, never evidence about OCR output.
+    issues = list(_observable_text_issues(result))
     text = (result.text or "").strip()
-    if not result.success:
-        issues.append(OCRIssueCode.ENGINE_ERROR)
-    elif not text:
-        issues.append(OCRIssueCode.EMPTY_OCR_OUTPUT)
-    elif _text_unicode_corruption_count(text) or bool(
-        getattr(analysis, "unicode_corruption_count", 0)
-    ):
-        issues.append(OCRIssueCode.UNICODE_CORRUPTION)
-    if bool(getattr(analysis, "suspicious_fragmentation", False)) or bool(
-        getattr(analysis, "arabic_integrity_risk", False)
-    ):
-        issues.append(OCRIssueCode.ARABIC_FRAGMENTATION)
-    if getattr(analysis, "pathological_arabic_spacing_count", 0):
-        issues.append(OCRIssueCode.ARABIC_PATHOLOGICAL_SPACING)
-    if getattr(analysis, "reading_order_risk", False) is True:
-        issues.append(OCRIssueCode.READING_ORDER_RISK)
     if not issues:
         return OCRReviewResult(
             verdict=OCRReviewVerdict.ACCEPTED,
@@ -199,8 +248,14 @@ def review_first_pass(
             selective_reread_justified=False,
             manual_review_required=False,
         )
-    regions = regions_from_ocr_boxes(result.boxes, render, tuple(dict.fromkeys(issues)))
-    reread_justified = bool(regions) and OCRIssueCode.ENGINE_ERROR not in issues
+    regions, unresolved = _select_ocr_regions(
+        result.boxes, render, tuple(dict.fromkeys(issues)), ReReadBudget()
+    )
+    if unresolved:
+        issues.append(OCRIssueCode.REQUIRED_EVIDENCE_UNAVAILABLE)
+    reread_justified = (
+        bool(regions) and not unresolved and OCRIssueCode.ENGINE_ERROR not in issues
+    )
     return OCRReviewResult(
         verdict=(
             OCRReviewVerdict.FAILED
@@ -216,6 +271,7 @@ def review_first_pass(
         safe_diagnostics=(("first_pass_characters", len(text)),),
         selective_reread_justified=reread_justified,
         manual_review_required=not reread_justified,
+        unresolved_regions=unresolved,
     )
 
 
@@ -224,7 +280,17 @@ def regions_from_ocr_boxes(
     render: RenderedPageContext,
     reasons: tuple[OCRIssueCode, ...],
 ) -> tuple[ReviewRegion, ...]:
+    return _select_ocr_regions(boxes, render, reasons, ReReadBudget())[0]
+
+
+def _select_ocr_regions(
+    boxes: tuple[OCRBox, ...],
+    render: RenderedPageContext,
+    reasons: tuple[OCRIssueCode, ...],
+    budget: ReReadBudget,
+) -> tuple[tuple[ReviewRegion, ...], tuple[str, ...]]:
     candidates: list[ReviewRegion] = []
+    unresolved: list[str] = []
     for index, box in enumerate(boxes, start=1):
         metadata = box.metadata
         if (
@@ -234,11 +300,13 @@ def regions_from_ocr_boxes(
             or metadata.get("image_width_px") != render.width_px
             or metadata.get("image_height_px") != render.height_px
         ):
+            unresolved.append(f"ocr-region-{index}")
             continue
         if any(
             not isinstance(value, (int, float)) or not math.isfinite(value)
             for value in box.bbox
         ):
+            unresolved.append(f"ocr-region-{index}")
             continue
         x0, y0, x1, y1 = box.bbox
         region = ReviewRegion(
@@ -253,7 +321,10 @@ def regions_from_ocr_boxes(
             source_text=box.text,
         )
         candidates.append(region)
-    return validate_and_bound_regions(tuple(candidates), render, ReReadBudget())
+    selected, bounded_unresolved = _validate_and_bound_regions(
+        tuple(candidates), render, budget
+    )
+    return selected, tuple(dict.fromkeys((*unresolved, *bounded_unresolved)))
 
 
 def _intersection_over_union(
@@ -295,12 +366,22 @@ def validate_and_bound_regions(
     render: RenderedPageContext,
     budget: ReReadBudget,
 ) -> tuple[ReviewRegion, ...]:
+    return _validate_and_bound_regions(regions, render, budget)[0]
+
+
+def _validate_and_bound_regions(
+    regions: tuple[ReviewRegion, ...],
+    render: RenderedPageContext,
+    budget: ReReadBudget,
+) -> tuple[tuple[ReviewRegion, ...], tuple[str, ...]]:
     accepted: list[ReviewRegion] = []
+    unresolved: list[str] = []
     pixels = 0
     for region in regions:
         if len(accepted) >= budget.max_regions or not _valid_region(
             region, render, budget
         ):
+            unresolved.append(region.region_id)
             continue
         area = (region.bbox_px[2] - region.bbox_px[0]) * (
             region.bbox_px[3] - region.bbox_px[1]
@@ -309,10 +390,14 @@ def validate_and_bound_regions(
             _intersection_over_union(region.bbox_px, known.bbox_px) >= 0.85
             for known in accepted
         ):
+            # An overlap is covered by the selected region; capacity and area
+            # limits leave an unverified defect and must fail closed.
+            if pixels + area > budget.max_total_pixels:
+                unresolved.append(region.region_id)
             continue
         accepted.append(region)
         pixels += area
-    return tuple(accepted)
+    return tuple(accepted), tuple(unresolved)
 
 
 def crop_review_region(
@@ -320,6 +405,8 @@ def crop_review_region(
 ) -> bytes:
     if not _valid_region(region, render, ReReadBudget()):
         raise ValueError("Review region is not bound to the current rendered image")
+    if hashlib.sha256(image_bytes).hexdigest() != render.render_identity:
+        raise ValueError("Rendered image identity no longer matches region context")
     with Image.open(io.BytesIO(image_bytes)) as image:
         if image.size != (render.width_px, render.height_px):
             raise ValueError("Rendered image dimensions no longer match region context")
@@ -347,11 +434,28 @@ def reconcile_ocr_results(
             "",
             review.issue_codes,
             unresolved_regions=tuple(
-                region.region_id for region in review.suspicious_regions
+                dict.fromkeys(
+                    (
+                        *review.unresolved_regions,
+                        *(region.region_id for region in review.suspicious_regions),
+                    )
+                )
             ),
             review_required=True,
         )
     by_region = {item.region_id: item for item in rereads}
+    if review.unresolved_regions:
+        return OCRReconciliationResult(
+            OCRPageState.REVIEW_REQUIRED,
+            "",
+            tuple(
+                dict.fromkeys(
+                    (*review.issue_codes, OCRIssueCode.REQUIRED_EVIDENCE_UNAVAILABLE)
+                )
+            ),
+            unresolved_regions=review.unresolved_regions,
+            review_required=True,
+        )
     reconciled = first_pass_text
     accepted: list[str] = []
     for region in review.suspicious_regions:
@@ -363,6 +467,7 @@ def reconcile_ocr_results(
             or not region.source_text
             or reconciled.count(region.source_text) != 1
             or _text_unicode_corruption_count(reread.text)
+            or not _region_contains_observed_defect(region)
         ):
             return OCRReconciliationResult(
                 OCRPageState.REVIEW_REQUIRED,
@@ -377,6 +482,29 @@ def reconcile_ocr_results(
             )
         reconciled = reconciled.replace(region.source_text, reread.text, 1)
         accepted.append(region.region_id)
+    outstanding = set(
+        _observable_text_issues(
+            OCRResult(engine_name="reconciled", status="succeeded", text=reconciled)
+        )
+    )
+    if outstanding:
+        return OCRReconciliationResult(
+            OCRPageState.REVIEW_REQUIRED,
+            "",
+            tuple(
+                dict.fromkeys(
+                    (
+                        *review.issue_codes,
+                        *outstanding,
+                        OCRIssueCode.REREAD_DISAGREEMENT,
+                    )
+                )
+            ),
+            unresolved_regions=tuple(
+                region.region_id for region in review.suspicious_regions
+            ),
+            review_required=True,
+        )
     return OCRReconciliationResult(
         OCRPageState.ACCEPTED_AFTER_SELECTIVE_REREAD,
         reconciled,
@@ -384,6 +512,20 @@ def reconcile_ocr_results(
         accepted_replacements=tuple(accepted),
         provenance=tuple(f"selective_reread:{region_id}" for region_id in accepted),
     )
+
+
+def _region_contains_observed_defect(region: ReviewRegion) -> bool:
+    """Require a correction target to carry the defect that justified its crop."""
+    text = region.source_text
+    if OCRIssueCode.UNICODE_CORRUPTION in region.reason_codes:
+        return bool(_text_unicode_corruption_count(text))
+    if OCRIssueCode.SUSPICIOUSLY_SPARSE_OUTPUT in region.reason_codes:
+        return sum(character.isalnum() for character in text) < 2
+    if OCRIssueCode.ARABIC_FRAGMENTATION in region.reason_codes:
+        return _arabic_single_letter_fragment_count(text) >= 4
+    if OCRIssueCode.ARABIC_PATHOLOGICAL_SPACING in region.reason_codes:
+        return _arabic_single_letter_fragment_count(text) >= 4
+    return False
 
 
 def run_cuda_smoke() -> CudaSmokeResult:

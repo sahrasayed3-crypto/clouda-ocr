@@ -209,7 +209,7 @@ def _future_ocr_page(
         text_quality_score=None,
         layout_quality_score=None,
         direction_quality_score=None,
-        completeness_score=0.0,
+        completeness_score=None,
         requires_manual_review=True,
         review_reason=OCR_STATUS_PENDING_MODEL,
         engines_attempted=engines_attempted
@@ -446,16 +446,34 @@ def process_pdf(
                 rereads: list[ReReadResult] = []
                 if review.selective_reread_justified:
                     assert ocr_engine is not None
+                    reread_bytes = 0
+                    reread_attempts = 0
                     for region in review.suspicious_regions:
                         if _cancelled():
                             raise JobCancelled("Conversion was cancelled by the user")
                         try:
+                            if (
+                                reread_attempts
+                                >= review.reread_budget.max_total_attempts
+                            ):
+                                raise ValueError(
+                                    "Selective reread attempt budget exceeded"
+                                )
                             crop_bytes = crop_review_region(
                                 image_bytes, region, render_context
                             )
+                            if (
+                                reread_bytes + len(crop_bytes)
+                                > review.reread_budget.max_total_bytes
+                            ):
+                                raise ValueError(
+                                    "Selective reread byte budget exceeded"
+                                )
                             reread = ocr_engine.extract_page(
                                 image_bytes=crop_bytes, page_no=page_no
                             )
+                            reread_bytes += len(crop_bytes)
+                            reread_attempts += 1
                             rereads.append(
                                 ReReadResult(
                                     region.region_id,

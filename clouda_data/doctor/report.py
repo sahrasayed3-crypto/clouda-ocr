@@ -27,7 +27,7 @@ from .environment import (
     _load_pyproject,
 )
 from .factory import check_factory, check_raqm, check_weasyprint
-from .models import DoctorCheck, DoctorReport, DoctorSection
+from .models import DoctorCheck, DoctorReport, DoctorSection, DoctorStatus
 from .security import build_env_report
 from .system import check_git, check_storage
 from .training import check_gpu, check_training_framework, run_training_dry_run
@@ -131,6 +131,47 @@ def collect_report(
                     details=detail,
                 )
             )
+            try:
+                from pdfword.release_self_test import run_release_self_test
+
+                release_result = run_release_self_test()
+                deep_checks.append(
+                    DoctorCheck(
+                        id="deep.pdfword-release-self-test",
+                        name="PDF conversion release self-test (deep)",
+                        subsystem="deep",
+                        status=(
+                            DoctorStatus.PASS
+                            if release_result.ok
+                            else DoctorStatus.FAIL
+                        ),
+                        message=(
+                            "Canonical PDF conversion self-test passed."
+                            if release_result.ok
+                            else "Canonical PDF conversion self-test failed."
+                        ),
+                        required=True,
+                        details={
+                            "states": list(release_result.states),
+                            "page_boundaries_preserved": (
+                                release_result.page_boundaries_preserved
+                            ),
+                            "cpu_only": True,
+                        },
+                    )
+                )
+            except Exception as exc:
+                deep_checks.append(
+                    DoctorCheck(
+                        id="deep.pdfword-release-self-test",
+                        name="PDF conversion release self-test (deep)",
+                        subsystem="deep",
+                        status=DoctorStatus.FAIL,
+                        message="Canonical PDF conversion self-test could not run.",
+                        required=True,
+                        details={"error_type": type(exc).__name__},
+                    )
+                )
         finally:
             import shutil
 

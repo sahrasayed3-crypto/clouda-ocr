@@ -349,13 +349,35 @@ def run_dir_to_dataset_manifest(
         )
     # Leakage-safe split assignment so the manifest is directly consumable by
     # the Training Experiment Framework (which requires a non-empty, non-
-    # protected selected split). The seed is derived from the sample content
-    # hashes + source id, so identical factory content always converts to the
-    # identical split assignment regardless of run timestamps.
+    # protected selected split).  Use canonical source identity rather than
+    # rendered-output hashes: native render stacks can encode equivalent pages
+    # differently on supported platforms, while a source document must keep
+    # its split everywhere.
     import hashlib as _hashlib
 
     from ..pretraining.splitting import assign_splits
 
+    split_identity_material = "\x1f".join(
+        ["factory-split-v2", source_id]
+        + sorted(
+            ":".join(
+                (
+                    str(
+                        sample.document_id
+                        or sample.source_record_id
+                        or sample.sample_id
+                    ),
+                    str(sample.provenance.get("source_sha256") or ""),
+                    str(sample.provenance.get("gt_sha256") or ""),
+                )
+            )
+            for sample in samples
+        )
+    )
+    split_seed = int.from_bytes(
+        _hashlib.sha256(split_identity_material.encode("utf-8")).digest()[:4],
+        "big",
+    )
     content_material = "\x1f".join(
         [source_id]
         + sorted(
@@ -367,9 +389,6 @@ def run_dir_to_dataset_manifest(
             )
             for sample in samples
         )
-    )
-    split_seed = int.from_bytes(
-        _hashlib.sha256(content_material.encode("utf-8")).digest()[:4], "big"
     )
     dataset_version_material = "\x1f".join(
         [str(run_metadata.get("config_hash") or ""), content_material]

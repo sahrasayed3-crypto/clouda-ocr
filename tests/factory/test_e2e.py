@@ -73,10 +73,13 @@ def test_tiny_offline_e2e_full_chain(tmp_path):
     import hashlib
 
     for row in ok_rows:
-        assert (
-            row["source_sha256"]
-            == hashlib.sha256((inbox / "tiny_page.png").read_bytes()).hexdigest()
-        )
+        # autorun intentionally processes the image and its text companion as
+        # distinct source assets.  Each row must retain the hash of the source
+        # it actually consumed; the rendered/degraded artifact has its own
+        # output hash below and is not expected to equal either source hash.
+        source = inbox / Path(str(row["source_ref"])).name
+        assert source.is_file()
+        assert row["source_sha256"] == hashlib.sha256(source.read_bytes()).hexdigest()
         assert isinstance(row["seed"], int)
         assert row["seed_mode"] == "v1"
         assert row["profile"] in summary["profiles"]
@@ -113,6 +116,15 @@ def test_tiny_offline_e2e_full_chain(tmp_path):
     header, canonical_rows = read_canonical_manifest(manifest_path)
     assert header["_schema_version"] == "clouda.pretraining.manifest.v1"
     assert len(canonical_rows) == len(ok_rows)
+    trainable_splits = sorted(
+        {
+            str(row["target_split"])
+            for row in canonical_rows
+            if str(row.get("target_split", "")) not in {"holdout", "unassigned"}
+        }
+    )
+    assert trainable_splits
+    selected_split = trainable_splits[0]
 
     # -- 12: Training Experiment Framework dry-run ---------------------------
     from clouda_training.experiments import run_experiment
@@ -136,7 +148,7 @@ dataset:
   dataset_id: {header["dataset_id"]}
   dataset_version: {header["dataset_version"]}
   manifest_path: {manifest_path.as_posix()}
-  split: train
+  split: {selected_split}
   sample_limit: 2
   preprocessing_version: clouda.pretraining.normalize.v1
 training:
@@ -169,7 +181,7 @@ tracking:
     assert handle.status.value == "COMPLETED"
     metadata = json.loads((handle.path / "metadata.json").read_text(encoding="utf-8"))
     assert metadata["dataset_manifest_hash"] == manifest_hash
-    assert metadata["dataset_split"] == "train"
+    assert metadata["dataset_split"] == selected_split
 
 
 def test_tiny_e2e_deterministic_across_repeat(tmp_path):

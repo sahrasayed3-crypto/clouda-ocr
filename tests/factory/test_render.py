@@ -34,6 +34,26 @@ ARABIC = (
 )
 
 
+def test_raqm_source_ingestion_imports_factory_provenance() -> None:
+    from clouda_data.factory.render._raqm.corpus import sha256_bytes, sha256_text
+
+    assert sha256_bytes(b"clouda") == sha256_text("clouda")
+
+
+def test_raqm_in_memory_document_identity_ignores_temporary_filename() -> None:
+    """The temporary transport file must not become visible rendered content."""
+    from clouda_data.factory.render.raqm_page_backend import _document_from_text
+
+    first = _document_from_text(ARABIC, 20260831)
+    second = _document_from_text(ARABIC, 20260831)
+
+    assert first.doc_id == second.doc_id
+    assert first.title == second.title
+    assert [segment.doc_id for segment in first.segments] == [
+        segment.doc_id for segment in second.segments
+    ]
+
+
 @pytest.mark.skipif(not _HAS_RAQM, reason="Pillow built without libraqm")
 def test_raqm_backend_renders_deterministic_pages(tmp_path):
     backend = get_backend("raqm")

@@ -225,28 +225,24 @@ def test_raqm_fallback_warning_function_smoke(clean_worktree_root):
 # ---------------------------------------------------------------------------
 
 
-def test_training_framework_ready(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
+def test_training_framework_without_torch_is_skipped(tmp_path, monkeypatch):
+    monkeypatch.setattr(doctor_training, "installed_version", lambda name: None)
     section = check_training_framework(runs_root=tmp_path / "runs")
     by_id = {c.id: c for c in section.checks}
-    assert by_id["training.imports"].status is DoctorStatus.PASS
-    assert by_id["training.output-root"].status is DoctorStatus.PASS
-    assert by_id["training.imports"].details["example_config_hash"]
-    assert by_id["training.imports"].details["config_origin"] == "generated"
-
-
-def test_training_framework_without_torch_is_skipped(monkeypatch):
-    monkeypatch.setattr(doctor_training, "installed_version", lambda name: None)
-    section = check_training_framework()
-    check = {item.id: item for item in section.checks}["training.imports"]
+    check = by_id["training.imports"]
     assert check.status is DoctorStatus.SKIP
     assert check.required is False
     assert "unavailable" in check.message
+    assert "training.output-root" not in by_id
 
 
-def test_training_framework_writable_root(tmp_path):
+def test_training_framework_available_reports_writable_root(tmp_path, monkeypatch):
+    monkeypatch.setattr(doctor_training, "installed_version", lambda name: "test")
     section = check_training_framework(runs_root=tmp_path)
     by_id = {c.id: c for c in section.checks}
+    assert by_id["training.imports"].status is DoctorStatus.PASS
+    assert by_id["training.imports"].details["example_config_hash"]
+    assert by_id["training.imports"].details["config_origin"] == "generated"
     assert by_id["training.output-root"].status is DoctorStatus.PASS
 
 

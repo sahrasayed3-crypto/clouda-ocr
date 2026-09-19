@@ -565,6 +565,11 @@ def _recover_finalizing_result(database: Database, row: dict) -> dict:
             worker_name=row.get("worker_name") or "",
             claim_token=row.get("claim_token") or None,
         )
+    except ValueError:
+        refreshed = database.get_conversion(row["job_id"])
+        if refreshed is None:
+            raise HTTPException(status_code=404, detail="Job not found") from None
+        return refreshed
     except Exception as exc:
         raise HTTPException(
             status_code=503, detail="Result finalization is temporarily unavailable"
@@ -2070,7 +2075,6 @@ def upload_result(
     if claim_token and not re.fullmatch(CLAIM_TOKEN_PATTERN, claim_token):
         raise HTTPException(status_code=400, detail="Invalid claim token")
     database, row = _get_job(job_id)
-    row = _recover_finalizing_result(database, row)
     if row["status"] in {"completed", "manual_review"}:
         raise HTTPException(status_code=409, detail="Job is already final")
     if row["status"] != "processing" or not database.claim_matches(

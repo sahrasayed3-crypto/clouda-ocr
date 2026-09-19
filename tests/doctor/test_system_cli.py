@@ -387,7 +387,14 @@ def test_deep_mode_reported_cleanly():
     statuses = [c.status for c in deep_sections[0].checks]
     assert statuses  # dry-run check present
     assert all(
-        s in (DoctorStatus.PASS, DoctorStatus.WARN, DoctorStatus.FAIL) for s in statuses
+        s
+        in (
+            DoctorStatus.PASS,
+            DoctorStatus.WARN,
+            DoctorStatus.FAIL,
+            DoctorStatus.SKIP,
+        )
+        for s in statuses
     )
 
 

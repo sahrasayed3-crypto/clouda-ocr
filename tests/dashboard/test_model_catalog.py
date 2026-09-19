@@ -76,7 +76,8 @@ def test_model_assets_are_configured_only_by_managed_id_and_verified_canonically
     configured = service.configure_assets("qwen3-vl-4b-instruct", "qwen-local")
     assert configured["asset_status"] == "CONFIGURED_UNVERIFIED"
     assert configured["asset_id"] == "qwen-local"
-    assert str(tmp_path) not in repr(configured)
+    assert tmp_path.as_posix() not in repr(configured)
+    assert configured["location"] == "data/models/qwen-local"
     with pytest.raises(ValueError, match="canonical identifier"):
         service.configure_assets("qwen3-vl-4b-instruct", "../private")
 

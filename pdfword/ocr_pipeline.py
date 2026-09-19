@@ -40,6 +40,8 @@ from .page_routing import (
 )
 
 _PDFIUM_RENDER_LOCK = threading.Lock()
+TARGET_QUALITY_SCORE = 97.0  # legacy compatibility only; not OCR acceptance policy
+MIN_ACCEPT_QUALITY_SCORE = 90.0  # legacy compatibility only; not OCR acceptance policy
 BLANK_PAGE_ROUTE = "blank_page"
 NEAR_BLANK_PAGE_ROUTE = "near_blank"
 

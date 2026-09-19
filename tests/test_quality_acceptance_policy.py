@@ -10,6 +10,7 @@ from pdfword.ocr_pipeline import (
 )
 from pdfword.accuracy import final_acceptance_decision
 from pdfword.docx_export import markdown_to_docx
+from pdfword.conversion_service import _normalize_manual_review_flags
 
 
 def _blank_pdf(page_count: int = 1) -> bytes:
@@ -96,3 +97,20 @@ def test_images_and_tables_are_not_added_to_docx() -> None:
         ]
     )
     assert payload[:2] == b"PK"
+
+
+def test_categorical_ocr_state_is_not_reclassified_from_missing_legacy_score() -> None:
+    page = PageResult(
+        page_no=1,
+        model_used="local:fake",
+        markdown="clear OCR text",
+        route_used="accepted_first_pass",
+        accepted=True,
+        metadata={"page_state": "accepted_first_pass", "ocr_self_review": {}},
+    )
+
+    _normalize_manual_review_flags([page])
+
+    assert page.accepted is True
+    assert page.requires_manual_review is False
+    assert page.text_quality_score is None

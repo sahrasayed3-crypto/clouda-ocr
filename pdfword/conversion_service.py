@@ -61,6 +61,26 @@ def _normalize_manual_review_flags(
     page_results: list[PageResult], threshold: float = 90.0
 ) -> None:
     for page in page_results:
+        categorical_state = (
+            (page.metadata or {}).get("page_state")
+            if isinstance(page.metadata, dict)
+            else None
+        )
+        if categorical_state in {
+            "accepted_first_pass",
+            "accepted_after_selective_reread",
+            "review_required",
+            "pending_ocr_model",
+            "ocr_failed",
+        }:
+            page.accepted = categorical_state in {
+                "accepted_first_pass",
+                "accepted_after_selective_reread",
+            }
+            page.requires_manual_review = not page.accepted
+            if page.requires_manual_review and not page.review_reason:
+                page.review_reason = str(categorical_state)
+            continue
         score = _page_final_score(page)
         decision = final_acceptance_decision(
             page.markdown,

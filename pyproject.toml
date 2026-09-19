@@ -15,7 +15,10 @@ dependencies = [
   "pypdf>=4.3.1",
   "pypdfium2>=4.30.0",
   "python-docx>=1.1.2",
-  "requests>=2.32.0"
+  "requests>=2.32.0",
+  "PyYAML==6.0.2",
+  "defusedxml==0.7.1",
+  "jsonschema==4.23.0"
 ]
 
 [project.optional-dependencies]
@@ -31,11 +34,7 @@ worker = [
   "redis>=5.0.0",
   "rq>=2.0.0"
 ]
-data = [
-  "PyYAML==6.0.2",
-  "defusedxml==0.7.1",
-  "jsonschema==4.23.0"
-]
+data = []
 factory = [
   "numpy>=1.26",
   "opencv-python-headless>=4.9",
@@ -45,13 +44,9 @@ factory = [
 factory-render = [
   "WeasyPrint>=66,<70"
 ]
-training = [
-  "PyYAML==6.0.2",
-  "jsonschema==4.23.0"
-]
+training = []
 results = []
 lab = [
-  "PyYAML==6.0.2",
   "fastapi>=0.139.2",
   "starlette>=1.3.1",
   "uvicorn>=0.30.0"

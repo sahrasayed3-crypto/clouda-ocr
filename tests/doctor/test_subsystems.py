@@ -43,7 +43,9 @@ def test_factory_ready_state(clean_worktree_root, monkeypatch):
     assert by_id["factory.fonts"].details["count"] >= 1
 
 
-def test_factory_missing_cv2_fails(clean_worktree_root, monkeypatch):
+def test_factory_missing_cv2_is_skipped_as_unavailable(
+    clean_worktree_root, monkeypatch
+):
     monkeypatch.setattr(doctor_factory, "_module_importable", lambda name: True)
     section = check_factory(
         clean_worktree_root,
@@ -52,12 +54,13 @@ def test_factory_missing_cv2_fails(clean_worktree_root, monkeypatch):
         yaml_available=True,
     )
     by_id = {c.id: c for c in section.checks}
-    assert by_id["factory.package"].status is DoctorStatus.FAIL
+    assert by_id["factory.package"].status is DoctorStatus.SKIP
+    assert by_id["factory.package"].required is False
     assert "cv2" in by_id["factory.package"].message
     assert "factory" in (by_id["factory.package"].remediation or "")
 
 
-def test_factory_missing_numpy_fails(clean_worktree_root):
+def test_factory_missing_numpy_is_skipped_as_unavailable(clean_worktree_root):
     section = check_factory(
         clean_worktree_root,
         cv2_available=True,
@@ -65,7 +68,27 @@ def test_factory_missing_numpy_fails(clean_worktree_root):
         yaml_available=True,
     )
     by_id = {c.id: c for c in section.checks}
-    assert by_id["factory.package"].status is DoctorStatus.FAIL
+    assert by_id["factory.package"].status is DoctorStatus.SKIP
+    assert by_id["factory.package"].required is False
+
+
+def test_factory_import_failure_is_required_when_engine_is_installed(
+    clean_worktree_root, monkeypatch
+):
+    monkeypatch.setattr(
+        doctor_factory,
+        "_module_importable",
+        lambda name: name != "clouda_data.factory.export",
+    )
+    section = check_factory(
+        clean_worktree_root,
+        cv2_available=True,
+        numpy_available=True,
+        yaml_available=True,
+    )
+    check = {item.id: item for item in section.checks}["factory.package"]
+    assert check.status is DoctorStatus.FAIL
+    assert check.required is True
 
 
 # ---------------------------------------------------------------------------
@@ -209,6 +232,16 @@ def test_training_framework_ready(tmp_path, monkeypatch):
     assert by_id["training.imports"].status is DoctorStatus.PASS
     assert by_id["training.output-root"].status is DoctorStatus.PASS
     assert by_id["training.imports"].details["example_config_hash"]
+    assert by_id["training.imports"].details["config_origin"] == "generated"
+
+
+def test_training_framework_without_torch_is_skipped(monkeypatch):
+    monkeypatch.setattr(doctor_training, "installed_version", lambda name: None)
+    section = check_training_framework()
+    check = {item.id: item for item in section.checks}["training.imports"]
+    assert check.status is DoctorStatus.SKIP
+    assert check.required is False
+    assert "unavailable" in check.message
 
 
 def test_training_framework_writable_root(tmp_path):

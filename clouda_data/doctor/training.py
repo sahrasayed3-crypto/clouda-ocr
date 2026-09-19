@@ -38,10 +38,92 @@ TRAINING_IMPORT_MODULES: tuple[str, ...] = (
     "clouda_training.exporter",
 )
 
+_MOCK_EXPERIMENT_CONFIG = """\
+schema_version: 1
+experiment:
+  name: clouda_doctor_mock
+  description: Deterministic offline Doctor validation.
+  tags: [doctor, offline, mock]
+model:
+  model_id: mock/clouda-ocr
+  revision: fixture-v1
+  model_family: multimodal-ocr
+  adapter_type: mock
+dataset:
+  dataset_id: clouda-doctor-fixture
+  dataset_version: fixture-v1
+  manifest_path: mock-manifest.jsonl
+  split: train
+  sample_limit: 2
+training:
+  seed: 20260909
+  epochs: 1
+  max_steps: 6
+  batch_size: 2
+  gradient_accumulation_steps: 1
+  learning_rate: 0.0001
+checkpoint:
+  save_strategy: steps
+  save_steps: 2
+  save_total_limit: 2
+evaluation:
+  enabled: true
+  eval_split: validation
+  eval_steps: 2
+  metrics: [cer, wer]
+runtime:
+  device: cpu
+  num_workers: 0
+  output_root: runs
+  dry_run: true
+  offline: true
+  deterministic: true
+tracking:
+  enabled: true
+  backend: jsonl
+  log_steps: 1
+"""
+
+_MOCK_TRAINING_MANIFEST = """\
+{"_row_count":2,"_schema_version":"clouda.pretraining.manifest.v1","dataset_role":"training","preprocessing_version":"clouda.pretraining.normalize.v1"}
+{"sample_id":"doctor-ar-1","source_id":"clouda-doctor","source_license":"Apache-2.0","source_path":"doctor/ar-1.png","target_split":"train"}
+{"sample_id":"doctor-ar-2","source_id":"clouda-doctor","source_license":"Apache-2.0","source_path":"doctor/ar-2.png","target_split":"train"}
+"""
+
+
+def _write_mock_experiment_config(directory: Path) -> Path:
+    """Create Doctor's deterministic training fixture without a repo checkout."""
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / "clouda-doctor-mock-experiment.yaml"
+    path.write_text(_MOCK_EXPERIMENT_CONFIG, encoding="utf-8")
+    (directory / "mock-manifest.jsonl").write_text(
+        _MOCK_TRAINING_MANIFEST, encoding="utf-8"
+    )
+    return path
+
 
 def check_training_framework(runs_root: Path | None = None) -> DoctorSection:
     """Engineering readiness of the Training Experiment Framework."""
     checks: list[DoctorCheck] = []
+    if installed_version("torch") is None:
+        return DoctorSection(
+            id="training-framework",
+            name="Training Framework",
+            checks=[
+                DoctorCheck(
+                    id="training.imports",
+                    name="Training framework imports",
+                    subsystem="training",
+                    status=DoctorStatus.SKIP,
+                    message=(
+                        "Training capability unavailable: optional torch dependency "
+                        "is not installed."
+                    ),
+                    required=False,
+                    remediation='pip install "clouda-pdf[training,training-torch]"',
+                )
+            ],
+        )
     failed: list[str] = []
     for module_name in TRAINING_IMPORT_MODULES:
         try:
@@ -66,12 +148,10 @@ def check_training_framework(runs_root: Path | None = None) -> DoctorSection:
             from clouda_training.experiments import MockTrainer  # type: ignore[attr-defined]
             from clouda_training.experiments.config import load_experiment_config
 
-            config = load_experiment_config(
-                Path(__file__).resolve().parents[2]
-                / "configs"
-                / "training"
-                / "mock-experiment.yaml"
-            )
+            with tempfile.TemporaryDirectory(prefix="clouda-doctor-training-") as tmp:
+                config = load_experiment_config(
+                    _write_mock_experiment_config(Path(tmp))
+                )
             has_mock = MockTrainer is not None
             checks.append(
                 DoctorCheck(
@@ -88,6 +168,7 @@ def check_training_framework(runs_root: Path | None = None) -> DoctorSection:
                     details={
                         "modules": len(TRAINING_IMPORT_MODULES),
                         "example_config_hash": config.hash,
+                        "config_origin": "generated",
                     },
                     remediation=(
                         None
@@ -105,7 +186,7 @@ def check_training_framework(runs_root: Path | None = None) -> DoctorSection:
                     status=DoctorStatus.FAIL,
                     message=f"Config/MockTrainer verification failed: {type(exc).__name__}: {exc}",
                     details={"error": str(exc)},
-                    remediation='pip install -e ".[training]" and verify configs/training/mock-experiment.yaml',
+                    remediation='pip install "clouda-pdf[training,training-torch]"',
                 )
             )
 
@@ -166,13 +247,8 @@ def run_training_dry_run(output_root: Path) -> tuple[DoctorStatus, str, dict[str
     try:
         from clouda_training.cli import main as training_main
 
-        config_path = (
-            Path(__file__).resolve().parents[2]
-            / "configs"
-            / "training"
-            / "mock-experiment.yaml"
-        )
         output_root.mkdir(parents=True, exist_ok=True)
+        config_path = _write_mock_experiment_config(output_root)
         with (
             contextlib.redirect_stdout(io.StringIO()),
             contextlib.redirect_stderr(io.StringIO()),

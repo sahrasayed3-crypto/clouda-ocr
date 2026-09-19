@@ -47,13 +47,22 @@ DIST_TO_IMPORT: dict[str, str] = {
 #: Extras from pyproject.toml mapped to doctor dependency groups. All names
 #: verified against pyproject [project.optional-dependencies] at f868a02.
 EXTRA_GROUPS: dict[str, tuple[str, ...]] = {
-    "core": ("Pillow", "pypdf", "pypdfium2", "python-docx", "requests"),
-    "data": ("PyYAML", "defusedxml", "jsonschema"),
+    "core": (
+        "Pillow",
+        "pypdf",
+        "pypdfium2",
+        "python-docx",
+        "requests",
+        "PyYAML",
+        "defusedxml",
+        "jsonschema",
+    ),
+    "data": (),
     "factory": ("numpy", "opencv-python-headless", "img2pdf", "pikepdf"),
     "factory-render": ("WeasyPrint",),
-    "training": ("PyYAML", "jsonschema"),
+    "training": (),
     "results": (),
-    "lab": ("PyYAML",),
+    "lab": ("fastapi", "starlette", "uvicorn"),
     "training-data": ("Pillow",),
     "server": (
         "fastapi",

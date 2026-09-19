@@ -545,7 +545,8 @@ def test_mock_local_ocr_runtime_path(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     assert results[0].markdown == "نص ممسوح"
     assert results[0].metadata is not None
-    assert results[0].metadata["page_state"] == "local_model_ocr"
+    assert results[0].metadata["page_state"] == "accepted_first_pass"
+    assert results[0].quality_score is None
     assert results[0].accepted
 
 

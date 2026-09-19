@@ -45,6 +45,31 @@ class AnalysisWarningCode(StrEnum):
     UNSUPPORTED_PAGE_GEOMETRY = "unsupported_page_geometry"
 
 
+class DigitalTextGateVerdict(StrEnum):
+    TRUSTED = "trusted"
+    UNTRUSTED = "untrusted"
+    UNCERTAIN = "uncertain"
+
+
+class DigitalTextReasonCode(StrEnum):
+    COMPLETE_DIGITAL_TEXT = "complete_digital_text"
+    SUFFICIENT_TEXT_DISTRIBUTION = "sufficient_text_distribution"
+    HARMLESS_DECORATIVE_IMAGES = "harmless_decorative_images"
+    NO_EMBEDDED_TEXT = "no_embedded_text"
+    INSUFFICIENT_USABLE_TEXT = "insufficient_usable_text"
+    SUSPICIOUS_SPARSE_TEXT = "suspicious_sparse_text"
+    SUSPICIOUS_FRAGMENTATION = "suspicious_fragmentation"
+    ARABIC_ISOLATED_CHARACTER_RUNS = "arabic_isolated_character_runs"
+    ARABIC_PATHOLOGICAL_SPACING = "arabic_pathological_spacing"
+    UNICODE_CORRUPTION_DETECTED = "unicode_corruption_detected"
+    IMAGE_DOMINANT_PARTIAL_TEXT = "image_dominant_partial_text"
+    HYBRID_PAGE_INCOMPLETE_TEXT = "hybrid_page_incomplete_text"
+    LAYOUT_ORDER_RISK = "layout_order_risk"
+    COMPLEX_LAYOUT_RISK = "complex_layout_risk"
+    REQUIRED_EVIDENCE_UNAVAILABLE = "required_evidence_unavailable"
+    CONFLICTING_EVIDENCE = "conflicting_evidence"
+
+
 @dataclass(frozen=True)
 class DocumentRoutingContext:
     pdf_bytes: bytes = field(repr=False)
@@ -148,6 +173,36 @@ class PageAnalysis:
             "multi_column_risk": self.multi_column_risk,
             "warnings": [warning.value for warning in self.warnings],
             "evidence_codes": list(self.evidence_codes),
+        }
+
+
+@dataclass(frozen=True)
+class GateCheck:
+    name: str
+    passed: bool
+    reason_code: DigitalTextReasonCode
+    evidence: tuple[tuple[str, int | float | bool | None], ...] = ()
+
+
+@dataclass(frozen=True)
+class DigitalTextGateResult:
+    verdict: DigitalTextGateVerdict
+    checks: tuple[GateCheck, ...]
+    reason_codes: tuple[DigitalTextReasonCode, ...]
+
+    def to_diagnostics(self) -> dict[str, object]:
+        return {
+            "verdict": self.verdict.value,
+            "reason_codes": [reason.value for reason in self.reason_codes],
+            "checks": [
+                {
+                    "name": check.name,
+                    "passed": check.passed,
+                    "reason_code": check.reason_code.value,
+                    "evidence": dict(check.evidence),
+                }
+                for check in self.checks
+            ],
         }
 
 
@@ -477,13 +532,225 @@ def analyze_pdf_page(
     )
 
 
+def _gate_check(
+    name: str,
+    passed: bool,
+    reason: DigitalTextReasonCode,
+    **evidence: int | float | bool | None,
+) -> GateCheck:
+    return GateCheck(
+        name=name,
+        passed=passed,
+        reason_code=reason,
+        evidence=tuple(sorted(evidence.items())),
+    )
+
+
+def evaluate_digital_text_trust(analysis: PageAnalysis) -> DigitalTextGateResult:
+    missing_evidence = bool(analysis.warnings)
+    has_text = analysis.embedded_text_present and bool(analysis.normalized_text)
+    usable_text = (
+        analysis.normalized_character_count >= 40
+        and analysis.word_count >= 6
+        and analysis.alphanumeric_character_count >= 30
+    )
+    distributed_text = bool(
+        analysis.text_coverage_ratio is not None
+        and analysis.text_coverage_ratio >= 0.002
+        and analysis.horizontal_distribution is not None
+        and sum(value > 0 for value in analysis.horizontal_distribution) >= 1
+    )
+    isolated_arabic = bool(
+        analysis.arabic_character_count
+        and analysis.isolated_arabic_character_ratio is not None
+        and analysis.isolated_arabic_character_ratio >= 0.60
+    )
+    pathological_arabic_spacing = bool(
+        analysis.arabic_character_count
+        and analysis.pathological_arabic_spacing_count > 0
+    )
+    unicode_corruption = analysis.unicode_corruption_count > 0
+    fragmented = analysis.suspicious_fragmentation
+    image_dominant_partial = bool(
+        analysis.hybrid_page
+        and analysis.largest_image_density_estimate is not None
+        and analysis.largest_image_density_estimate > _SMALL_IMAGE_DENSITY_LIMIT
+        and not usable_text
+    )
+    incomplete_hybrid = bool(analysis.hybrid_page and not usable_text)
+    decorative_image = bool(
+        analysis.hybrid_page
+        and analysis.largest_image_density_estimate is not None
+        and analysis.largest_image_density_estimate <= _SMALL_IMAGE_DENSITY_LIMIT
+        and usable_text
+    )
+    layout_order_risk = analysis.reading_order_risk is True
+    complex_layout_risk = analysis.multi_column_risk is True
+
+    checks = (
+        _gate_check(
+            "embedded_text",
+            has_text,
+            (
+                DigitalTextReasonCode.COMPLETE_DIGITAL_TEXT
+                if has_text
+                else DigitalTextReasonCode.NO_EMBEDDED_TEXT
+            ),
+            characters=analysis.normalized_character_count,
+        ),
+        _gate_check(
+            "usable_text",
+            usable_text,
+            (
+                DigitalTextReasonCode.COMPLETE_DIGITAL_TEXT
+                if usable_text
+                else DigitalTextReasonCode.INSUFFICIENT_USABLE_TEXT
+            ),
+            characters=analysis.normalized_character_count,
+            words=analysis.word_count,
+        ),
+        _gate_check(
+            "text_distribution",
+            distributed_text,
+            (
+                DigitalTextReasonCode.SUFFICIENT_TEXT_DISTRIBUTION
+                if distributed_text
+                else DigitalTextReasonCode.SUSPICIOUS_SPARSE_TEXT
+            ),
+            coverage=analysis.text_coverage_ratio,
+        ),
+        _gate_check(
+            "fragmentation",
+            not fragmented,
+            DigitalTextReasonCode.SUSPICIOUS_FRAGMENTATION,
+            fragmented=fragmented,
+        ),
+        _gate_check(
+            "arabic_isolation",
+            not isolated_arabic,
+            DigitalTextReasonCode.ARABIC_ISOLATED_CHARACTER_RUNS,
+            isolated_ratio=analysis.isolated_arabic_character_ratio,
+        ),
+        _gate_check(
+            "arabic_spacing",
+            not pathological_arabic_spacing,
+            DigitalTextReasonCode.ARABIC_PATHOLOGICAL_SPACING,
+            occurrences=analysis.pathological_arabic_spacing_count,
+        ),
+        _gate_check(
+            "unicode_integrity",
+            not unicode_corruption,
+            DigitalTextReasonCode.UNICODE_CORRUPTION_DETECTED,
+            corrupt_codepoints=analysis.unicode_corruption_count,
+        ),
+        _gate_check(
+            "image_dominance",
+            not image_dominant_partial,
+            DigitalTextReasonCode.IMAGE_DOMINANT_PARTIAL_TEXT,
+            image_density=analysis.largest_image_density_estimate,
+        ),
+        _gate_check(
+            "hybrid_completeness",
+            not incomplete_hybrid,
+            DigitalTextReasonCode.HYBRID_PAGE_INCOMPLETE_TEXT,
+            hybrid=analysis.hybrid_page,
+        ),
+        _gate_check(
+            "reading_order",
+            not layout_order_risk,
+            DigitalTextReasonCode.LAYOUT_ORDER_RISK,
+            risk=analysis.reading_order_risk,
+        ),
+        _gate_check(
+            "layout_complexity",
+            not complex_layout_risk,
+            DigitalTextReasonCode.COMPLEX_LAYOUT_RISK,
+            risk=analysis.multi_column_risk,
+        ),
+        _gate_check(
+            "required_evidence",
+            not missing_evidence,
+            DigitalTextReasonCode.REQUIRED_EVIDENCE_UNAVAILABLE,
+            warning_count=len(analysis.warnings),
+        ),
+    )
+
+    reasons: list[DigitalTextReasonCode] = []
+    if usable_text:
+        reasons.append(DigitalTextReasonCode.COMPLETE_DIGITAL_TEXT)
+    if distributed_text:
+        reasons.append(DigitalTextReasonCode.SUFFICIENT_TEXT_DISTRIBUTION)
+    if decorative_image:
+        reasons.append(DigitalTextReasonCode.HARMLESS_DECORATIVE_IMAGES)
+    if not has_text:
+        reasons.append(DigitalTextReasonCode.NO_EMBEDDED_TEXT)
+    if has_text and not usable_text:
+        reasons.append(DigitalTextReasonCode.INSUFFICIENT_USABLE_TEXT)
+    if analysis.suspicious_sparse_text:
+        reasons.append(DigitalTextReasonCode.SUSPICIOUS_SPARSE_TEXT)
+    if fragmented:
+        reasons.append(DigitalTextReasonCode.SUSPICIOUS_FRAGMENTATION)
+    if isolated_arabic:
+        reasons.append(DigitalTextReasonCode.ARABIC_ISOLATED_CHARACTER_RUNS)
+    if pathological_arabic_spacing:
+        reasons.append(DigitalTextReasonCode.ARABIC_PATHOLOGICAL_SPACING)
+    if unicode_corruption:
+        reasons.append(DigitalTextReasonCode.UNICODE_CORRUPTION_DETECTED)
+    if image_dominant_partial:
+        reasons.append(DigitalTextReasonCode.IMAGE_DOMINANT_PARTIAL_TEXT)
+    if incomplete_hybrid:
+        reasons.append(DigitalTextReasonCode.HYBRID_PAGE_INCOMPLETE_TEXT)
+    if layout_order_risk:
+        reasons.append(DigitalTextReasonCode.LAYOUT_ORDER_RISK)
+    if complex_layout_risk:
+        reasons.append(DigitalTextReasonCode.COMPLEX_LAYOUT_RISK)
+    if missing_evidence:
+        reasons.append(DigitalTextReasonCode.REQUIRED_EVIDENCE_UNAVAILABLE)
+
+    definitive_untrusted = any(
+        (
+            fragmented,
+            isolated_arabic,
+            pathological_arabic_spacing,
+            unicode_corruption,
+            image_dominant_partial,
+            incomplete_hybrid,
+        )
+    )
+    uncertain = bool(
+        missing_evidence
+        or layout_order_risk
+        or complex_layout_risk
+        or (has_text and (not usable_text or not distributed_text))
+    )
+    if definitive_untrusted or (not has_text and not missing_evidence):
+        verdict = DigitalTextGateVerdict.UNTRUSTED
+    elif uncertain:
+        verdict = DigitalTextGateVerdict.UNCERTAIN
+    elif usable_text and distributed_text:
+        verdict = DigitalTextGateVerdict.TRUSTED
+    else:
+        verdict = DigitalTextGateVerdict.UNCERTAIN
+
+    return DigitalTextGateResult(
+        verdict=verdict,
+        checks=checks,
+        reason_codes=tuple(dict.fromkeys(reasons)),
+    )
+
+
 __all__ = [
     "AnalysisWarningCode",
+    "DigitalTextGateResult",
+    "DigitalTextGateVerdict",
+    "DigitalTextReasonCode",
     "DocumentRoutingContext",
     "EvidenceAvailability",
+    "GateCheck",
     "PageAnalysis",
     "TextSpan",
     "analyze_pdf_page",
     "digest_normalized_text",
+    "evaluate_digital_text_trust",
     "normalize_embedded_text",
 ]

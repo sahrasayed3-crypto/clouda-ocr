@@ -2,16 +2,21 @@ from __future__ import annotations
 
 import io
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import fitz
+from PIL import Image, ImageDraw
 from pypdf import PdfReader, PdfWriter
 
 import pdfword.page_routing as page_routing
 from pdfword.page_routing import (
     AnalysisWarningCode,
+    DigitalTextGateVerdict,
+    DigitalTextReasonCode,
     DocumentRoutingContext,
     analyze_pdf_page,
+    evaluate_digital_text_trust,
 )
 
 FIXTURES = Path(__file__).with_name("fixtures")
@@ -31,6 +36,31 @@ def _text_pdf(text: str, *, y: float = 160) -> bytes:
     document = fitz.open()
     page = document.new_page(width=595, height=842)
     page.insert_text((220, y), text, fontsize=18, fontname="helv")
+    payload = document.tobytes(garbage=4, deflate=True)
+    document.close()
+    return payload
+
+
+def _image_bytes(size: tuple[int, int] = (60, 60)) -> bytes:
+    image = Image.new("RGB", size, "white")
+    drawer = ImageDraw.Draw(image)
+    drawer.rectangle((1, 1, size[0] - 2, size[1] - 2), outline="black", width=2)
+    output = io.BytesIO()
+    image.save(output, format="PNG")
+    return output.getvalue()
+
+
+def _hybrid_pdf(text: str, *, full_page_image: bool) -> bytes:
+    document = fitz.open()
+    page = document.new_page(width=595, height=842)
+    rectangle = (
+        fitz.Rect(0, 0, 595, 842) if full_page_image else fitz.Rect(510, 40, 550, 80)
+    )
+    image_size = (1190, 1684) if full_page_image else (40, 40)
+    page.insert_image(rectangle, stream=_image_bytes(image_size))
+    page.insert_textbox(
+        fitz.Rect(72, 100, 523, 500), text, fontsize=12, fontname="helv"
+    )
     payload = document.tobytes(garbage=4, deflate=True)
     document.close()
     return payload
@@ -143,3 +173,123 @@ def test_unavailable_page_evidence_is_explicit_not_fabricated() -> None:
         AnalysisWarningCode.IMAGE_METADATA_UNAVAILABLE,
         AnalysisWarningCode.CONTENT_STREAM_UNAVAILABLE,
     } <= set(analysis.warnings)
+
+
+def test_complete_digital_text_gate_is_trusted() -> None:
+    analysis = _analyze_bytes((FIXTURES / "digital_text.pdf").read_bytes())
+
+    result = evaluate_digital_text_trust(analysis)
+
+    assert result.verdict is DigitalTextGateVerdict.TRUSTED
+    assert DigitalTextReasonCode.COMPLETE_DIGITAL_TEXT in result.reason_codes
+
+
+def test_gate_rejects_a_page_without_embedded_text() -> None:
+    analysis = _analyze_bytes((FIXTURES / "scanned.pdf").read_bytes())
+
+    result = evaluate_digital_text_trust(analysis)
+
+    assert result.verdict is DigitalTextGateVerdict.UNTRUSTED
+    assert DigitalTextReasonCode.NO_EMBEDDED_TEXT in result.reason_codes
+
+
+def test_hidden_sparse_text_over_page_image_is_untrusted() -> None:
+    analysis = _analyze_bytes(_hybrid_pdf("x", full_page_image=True))
+
+    result = evaluate_digital_text_trust(analysis)
+
+    assert result.verdict is DigitalTextGateVerdict.UNTRUSTED
+    assert DigitalTextReasonCode.IMAGE_DOMINANT_PARTIAL_TEXT in result.reason_codes
+
+
+def test_incomplete_hybrid_text_is_untrusted() -> None:
+    analysis = _analyze_bytes(_hybrid_pdf("Header only", full_page_image=True))
+
+    result = evaluate_digital_text_trust(analysis)
+
+    assert result.verdict is DigitalTextGateVerdict.UNTRUSTED
+    assert DigitalTextReasonCode.HYBRID_PAGE_INCOMPLETE_TEXT in result.reason_codes
+
+
+def test_complete_digital_page_with_decorative_image_is_trusted() -> None:
+    text = (
+        "This complete born digital page contains enough meaningful text to "
+        "demonstrate that the small corner image is decorative rather than a scan."
+    )
+    analysis = _analyze_bytes(_hybrid_pdf(text, full_page_image=False))
+
+    result = evaluate_digital_text_trust(analysis)
+
+    assert result.verdict is DigitalTextGateVerdict.TRUSTED
+    assert DigitalTextReasonCode.HARMLESS_DECORATIVE_IMAGES in result.reason_codes
+
+
+def test_fragmented_arabic_text_is_untrusted_with_explicit_reason() -> None:
+    base = _analyze_bytes((SAMPLES / "sample_clear_ar.pdf").read_bytes())
+    analysis = replace(
+        base,
+        suspicious_fragmentation=True,
+        isolated_arabic_character_ratio=0.9,
+        arabic_integrity_risk=True,
+    )
+
+    result = evaluate_digital_text_trust(analysis)
+
+    assert result.verdict is DigitalTextGateVerdict.UNTRUSTED
+    assert DigitalTextReasonCode.ARABIC_ISOLATED_CHARACTER_RUNS in result.reason_codes
+
+
+def test_pathological_arabic_spacing_is_untrusted_with_explicit_reason() -> None:
+    base = _analyze_bytes((SAMPLES / "sample_clear_ar.pdf").read_bytes())
+    analysis = replace(
+        base,
+        pathological_arabic_spacing_count=2,
+        arabic_integrity_risk=True,
+    )
+
+    result = evaluate_digital_text_trust(analysis)
+
+    assert result.verdict is DigitalTextGateVerdict.UNTRUSTED
+    assert DigitalTextReasonCode.ARABIC_PATHOLOGICAL_SPACING in result.reason_codes
+
+
+def test_unicode_corruption_is_untrusted_with_explicit_reason() -> None:
+    base = _analyze_bytes((FIXTURES / "digital_text.pdf").read_bytes())
+    analysis = replace(base, unicode_corruption_count=1)
+
+    result = evaluate_digital_text_trust(analysis)
+
+    assert result.verdict is DigitalTextGateVerdict.UNTRUSTED
+    assert DigitalTextReasonCode.UNICODE_CORRUPTION_DETECTED in result.reason_codes
+
+
+def test_complex_layout_risk_is_uncertain_not_silently_trusted() -> None:
+    base = _analyze_bytes((FIXTURES / "digital_text.pdf").read_bytes())
+    analysis = replace(base, multi_column_risk=True)
+
+    result = evaluate_digital_text_trust(analysis)
+
+    assert result.verdict is DigitalTextGateVerdict.UNCERTAIN
+    assert DigitalTextReasonCode.COMPLEX_LAYOUT_RISK in result.reason_codes
+
+
+def test_unavailable_gate_evidence_is_uncertain() -> None:
+    context = DocumentRoutingContext.from_pdf(_blank_pdf())
+    analysis = analyze_pdf_page(_UnreadablePage(), 1, context)
+
+    result = evaluate_digital_text_trust(analysis)
+
+    assert result.verdict is DigitalTextGateVerdict.UNCERTAIN
+    assert DigitalTextReasonCode.REQUIRED_EVIDENCE_UNAVAILABLE in result.reason_codes
+
+
+def test_short_centered_title_gate_is_not_near_blank() -> None:
+    analysis = _analyze_bytes(_text_pdf("Short Title"))
+
+    result = evaluate_digital_text_trust(analysis)
+
+    assert analysis.near_blank_evidence is False
+    assert result.verdict in {
+        DigitalTextGateVerdict.TRUSTED,
+        DigitalTextGateVerdict.UNCERTAIN,
+    }

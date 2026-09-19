@@ -78,7 +78,5 @@ class TestCrossPlatform:
             link.symlink_to(outside)
         except OSError:
             pytest.skip("symlinks unavailable on this host")
-        resolved = resolver.resolve_uri("dataset://images/link.png")
-        # Resolution itself succeeds lexically; the boundary check happens on
-        # the resolved path — an escaping symlink must not resolve outside.
-        assert resolved.is_relative_to((tmp_path / "datasets").resolve()) or True
+        with pytest.raises(ArtifactResolutionError, match="storage boundary"):
+            resolver.resolve_uri("dataset://images/link.png")

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from clouda_data.quality.config import ImageFingerprintPolicy, QualityGateConfig
 from clouda_data.quality.models import NearDuplicateCandidate, SampleFingerprint
@@ -103,7 +103,12 @@ class TestMutations:
         ],
     )
     def test_mutation_stays_confirmed_or_likely(self, tmp_path, mutate, label) -> None:
-        base = render_arabic_page(7, "plain", "نص عربي")
+        # This exercises the image mutations, not text shaping.  A fixed ink
+        # frame keeps content-cropping stable without relying on host fonts.
+        base = render_arabic_page(7, "plain", "")
+        ImageDraw.Draw(base).rectangle(
+            (0, 0, base.width - 1, base.height - 1), outline=0, width=4
+        )
         save_png(base, tmp_path / "orig.png")
         save_png(mutate(base).convert("L"), tmp_path / "mut.png")
         rows = [

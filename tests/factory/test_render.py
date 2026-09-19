@@ -34,6 +34,12 @@ ARABIC = (
 )
 
 
+def test_raqm_source_ingestion_imports_factory_provenance() -> None:
+    from clouda_data.factory.render._raqm.corpus import sha256_bytes, sha256_text
+
+    assert sha256_bytes(b"clouda") == sha256_text("clouda")
+
+
 @pytest.mark.skipif(not _HAS_RAQM, reason="Pillow built without libraqm")
 def test_raqm_backend_renders_deterministic_pages(tmp_path):
     backend = get_backend("raqm")

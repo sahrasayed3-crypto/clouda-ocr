@@ -62,6 +62,8 @@ def browser_safe(value: Any, roots: tuple[Path, ...]) -> Any:
     """Redact secrets and replace absolute paths before browser serialization."""
 
     cleaned = sanitize_payload(value)
+    if isinstance(cleaned, Path):
+        return safe_relative_label(cleaned, roots) or "[PRIVATE PATH]"
     if isinstance(cleaned, dict):
         return {str(key): browser_safe(item, roots) for key, item in cleaned.items()}
     if isinstance(cleaned, list):

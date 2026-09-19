@@ -57,8 +57,8 @@ jobs:
           python -m clouda_data.pipeline.cli render --help
           python -m clouda_training.cli export --help
           python -m clouda_data.factory --help
-          python -m clouda_data.pipeline.cli factory-profiles > /dev/null
-          python -m clouda_data.pipeline.cli factory-seeds > /dev/null
+          python -m clouda_data.pipeline.cli factory-profiles
+          python -m clouda_data.pipeline.cli factory-seeds
           python -m clouda_data.pipeline.cli doctor --deep
       - name: JavaScript syntax
         run: node --check clouda_lab/dashboard/static/app.js

@@ -13,7 +13,7 @@ from typing import Any, Mapping
 import numpy as np
 
 from .config_shim import LayoutConfigView, weighted_choice, weighted_choice_entry
-from ....provenance.hashing import derive_seed
+from ...provenance.hashing import derive_seed
 
 # Western digits -> Arabic-Indic digits, for synthesized page numbers.
 _ARABIC_INDIC = str.maketrans("0123456789", "٠١٢٣٤٥٦٧٨٩")

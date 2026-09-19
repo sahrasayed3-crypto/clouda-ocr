@@ -477,6 +477,31 @@ def test_dataset_version_changes_with_output_content(tmp_path):
     assert first_header["dataset_version"] != second_header["dataset_version"]
 
 
+def test_split_seed_uses_canonical_source_identity_not_rendered_bytes(tmp_path):
+    run_dir, _ = _factory_run(tmp_path)
+    first, _, _ = run_dir_to_dataset_manifest(run_dir, tmp_path / "first.jsonl")
+    first_header, first_rows = read_manifest(first)
+    rows = read_factory_manifest(run_dir / "manifest.jsonl")
+    artifact = run_dir / rows[0]["output_path"]
+    artifact.write_bytes(artifact.read_bytes() + b"platform-render-variation")
+    import hashlib
+
+    changed_hash = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    rows[0]["output_sha256"] = changed_hash
+    rows[0]["png_sha256"] = changed_hash
+    from clouda_data.factory.manifest import write_manifest_jsonl
+
+    write_manifest_jsonl(rows, run_dir / "manifest.jsonl")
+    second, _, _ = run_dir_to_dataset_manifest(run_dir, tmp_path / "second.jsonl")
+    second_header, second_rows = read_manifest(second)
+
+    assert second_header["dataset_version"] != first_header["dataset_version"]
+    assert second_header["split_seed"] == first_header["split_seed"]
+    assert [row["target_split"] for row in second_rows] == [
+        row["target_split"] for row in first_rows
+    ]
+
+
 def test_dataset_version_changes_with_ground_truth_content(tmp_path):
     run_dir, _ = _factory_run(tmp_path)
     first, _, _ = run_dir_to_dataset_manifest(run_dir, tmp_path / "first.jsonl")

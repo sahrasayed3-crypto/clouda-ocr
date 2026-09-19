@@ -32,7 +32,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, Literal, Sequence
 
-from ....provenance.hashing import sha256_bytes, sha256_text
+from ...provenance.hashing import sha256_bytes, sha256_text
 
 import logging
 

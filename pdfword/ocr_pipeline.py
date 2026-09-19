@@ -576,14 +576,14 @@ def process_pdf(
             for result in ordered_results
             if result.route_used == OCR_STATUS_PENDING_MODEL
         )
-        review = sum(
+        review_count = sum(
             1 for result in ordered_results if result.route_used == "review_required"
         )
         if pending:
             status_placeholder.warning(
                 f"Completed page routing; {pending} page(s) require a future OCR model."
             )
-        elif review:
+        elif review_count:
             status_placeholder.warning(
                 f"Completed page routing; {review} page(s) require review."
             )

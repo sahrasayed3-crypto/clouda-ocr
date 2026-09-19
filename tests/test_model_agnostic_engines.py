@@ -65,7 +65,7 @@ class MockLocalProvider:
 class SelectiveReReadEngine:
     name = "selective_reread_engine"
     engine_type = "local_model"
-    model_name = "test-model"
+    model_name: str | None = "test-model"
 
     def __init__(self) -> None:
         self.calls = 0
@@ -73,7 +73,18 @@ class SelectiveReReadEngine:
     def available(self) -> bool:
         return True
 
-    def extract_page(self, *, image_bytes: bytes, page_no: int, **_kwargs) -> OCRResult:
+    def extract_page(
+        self,
+        *,
+        image_bytes: bytes | None = None,
+        image_path: str | None = None,
+        pdf_bytes: bytes | None = None,
+        page_no: int | None = None,
+        **_kwargs: object,
+    ) -> OCRResult:
+        del image_path, pdf_bytes
+        assert image_bytes is not None
+        assert page_no is not None
         self.calls += 1
         if self.calls == 1:
             context = make_rendered_page_context(page_no, image_bytes)

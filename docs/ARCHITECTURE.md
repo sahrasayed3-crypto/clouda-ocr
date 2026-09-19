@@ -58,3 +58,10 @@ Page Analyzer
 -> Page Decision Engine
 -> trusted direct extraction OR OCR/pending/review/blank path
 ```
+
+When a configured local OCR engine runs, the canonical continuation is `first
+pass -> categorical self-review -> verified selective re-read -> conservative
+reconciliation`. OCR geometry can produce a crop only when explicitly bound to
+the exact current render identity, pixel dimensions, and coordinate space.
+Categorical reconciliation is authoritative; compatibility scores are neither
+user-facing nor allowed to accept or reject OCR output.

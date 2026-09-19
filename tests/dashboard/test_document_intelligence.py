@@ -75,6 +75,10 @@ def test_service_performs_no_network_call_or_persistence(
     )
 
     assert payload["pages"][0]["decision"] == "ocr_required"
+    review = payload["pages"][0]["ocr_self_review"]
+    assert review["first_pass_state"] == "not_attempted"
+    assert review["final_state"] in {"pending_ocr_model", "ocr_required"}
+    assert "confidence" not in json.dumps(review).lower()
     assert before == after
 
 

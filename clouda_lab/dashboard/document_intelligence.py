@@ -61,12 +61,32 @@ class DocumentIntelligenceService:
                 gate,
                 ocr_available=ocr_available,
             )
+            ocr_review = {
+                "first_pass_state": "not_attempted",
+                "review_verdict": "not_attempted",
+                "issue_codes": [],
+                "suspicious_region_count": 0,
+                "reread_attempt_count": 0,
+                "accepted_reread_count": 0,
+                "rejected_reread_count": 0,
+                "unresolved_review": False,
+                "final_state": (
+                    "pending_ocr_model"
+                    if decision.next_path.value == "pending_ocr_model"
+                    else (
+                        "ocr_required"
+                        if decision.next_path.value == "local_ocr"
+                        else "not_applicable"
+                    )
+                ),
+            }
             pages.append(
                 {
                     **decision.to_diagnostics(),
                     "page_number": page_number,
                     "analysis": analysis.to_diagnostics(),
                     "gate_checks": gate.to_diagnostics()["checks"],
+                    "ocr_self_review": ocr_review,
                 }
             )
         return browser_safe(

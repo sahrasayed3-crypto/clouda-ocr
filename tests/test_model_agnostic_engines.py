@@ -94,7 +94,9 @@ class SelectiveReReadEngine:
                     ),
                 ),
             )
-        return OCRResult(engine_name=self.name, status=OCR_STATUS_SUCCEEDED, text="fixed")
+        return OCRResult(
+            engine_name=self.name, status=OCR_STATUS_SUCCEEDED, text="fixed"
+        )
 
 
 def test_engine_registry_can_register_new_engine() -> None:

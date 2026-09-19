@@ -436,7 +436,10 @@ def process_pdf(
                 )
                 page_result.route_used = OCRPageState.OCR_FAILED.value
                 page_result.review_reason = OCRIssueCode.ENGINE_ERROR.value
-                page_result.metadata = {**(page_result.metadata or {}), "page_state": OCRPageState.OCR_FAILED.value}
+                page_result.metadata = {
+                    **(page_result.metadata or {}),
+                    "page_state": OCRPageState.OCR_FAILED.value,
+                }
             else:
                 render_context = make_rendered_page_context(page_no, image_bytes)
                 review = review_first_pass(model_extraction, analysis, render_context)
@@ -447,8 +450,12 @@ def process_pdf(
                         if _cancelled():
                             raise JobCancelled("Conversion was cancelled by the user")
                         try:
-                            crop_bytes = crop_review_region(image_bytes, region, render_context)
-                            reread = ocr_engine.extract_page(image_bytes=crop_bytes, page_no=page_no)
+                            crop_bytes = crop_review_region(
+                                image_bytes, region, render_context
+                            )
+                            reread = ocr_engine.extract_page(
+                                image_bytes=crop_bytes, page_no=page_no
+                            )
                             rereads.append(
                                 ReReadResult(
                                     region.region_id,
@@ -459,7 +466,11 @@ def process_pdf(
                                 )
                             )
                         except Exception:
-                            rereads.append(ReReadResult(region.region_id, ocr_engine.name, False, ""))
+                            rereads.append(
+                                ReReadResult(
+                                    region.region_id, ocr_engine.name, False, ""
+                                )
+                            )
                 reconciliation = reconcile_ocr_results(
                     model_extraction.text, review, tuple(rereads)
                 )
@@ -495,7 +506,11 @@ def process_pdf(
                         else "review_required"
                     )
                     page_result = _review_page(
-                        analysis, page_decision, review_metadata, attempted, reason=reason
+                        analysis,
+                        page_decision,
+                        review_metadata,
+                        attempted,
+                        reason=reason,
                     )
                 else:
                     text = _clean_markdown_output(reconciliation.text)

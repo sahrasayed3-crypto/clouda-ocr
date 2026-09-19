@@ -317,10 +317,7 @@ class FeatureFlaggedLocalModelEngine:
                     reading_order=result.reading_order,
                     metadata=metadata,
                 )
-            last_error = (
-                result.error_message
-                or "Local OCR returned invalid text."
-            )
+            last_error = result.error_message or "Local OCR returned invalid text."
         return OCRResult(
             engine_name=self.name,
             model_name=self.model_name,

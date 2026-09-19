@@ -10,6 +10,7 @@ const connection = document.querySelector("#connection-state");
 const pages = {
   "overview": ["Overview", "Canonical local project state"],
   "datasets": ["Datasets", "Identity, lineage, safety, integrity, and loader compatibility"],
+  "document-intelligence": ["Document Intelligence", "Bounded, local PDF page routing inspection"],
   "downloads": ["Downloads", "Explicit, confirmed canonical dataset sample acquisition"],
   "tasks": ["Tasks", "Persistent local operation progress and outcomes"],
   "quality": ["Quality & Dedup", "Canonical quality gate and duplicate analysis"],
@@ -63,7 +64,8 @@ function pageHead(name, description, tools = []) { return node("div", { class: "
 
 async function api(path, options = {}) {
   const init = { method: options.method || "GET", headers: { "Accept": "application/json" }, signal: state.requestController?.signal };
-  if (options.body !== undefined) { init.headers["Content-Type"] = "application/json"; init.headers["X-Clouda-Lab-Action"] = state.actionToken || ""; init.body = JSON.stringify(options.body); }
+  if (options.formData !== undefined) { init.headers["X-Clouda-Lab-Action"] = state.actionToken || ""; init.body = options.formData; }
+  else if (options.body !== undefined) { init.headers["Content-Type"] = "application/json"; init.headers["X-Clouda-Lab-Action"] = state.actionToken || ""; init.body = JSON.stringify(options.body); }
   const response = await fetch(`/api/lab${path}`, init);
   const payload = await response.json().catch(() => ({ detail: "Invalid local response" }));
   if (!response.ok) throw new Error(payload.detail || `Request failed (${response.status})`);
@@ -86,6 +88,25 @@ async function renderDatasets(parts) {
   const draw = () => { clear(host); if (!datasets.length) return host.append(node("div", { class: "state", text: "No datasets found." })); const term = search.value.toLowerCase(); const visible = datasets.filter((item) => pretty(item).toLowerCase().includes(term)); if (!visible.length) return host.append(node("div", { class: "state", text: "No datasets match this search." })); host.append(table(["Dataset", "Version", "Rows", "Quality", "Safety", "Loader", "Updated"], visible.map((item) => [node("a", { href: `#/datasets/${encodeURIComponent(item.dataset_id)}`, text: item.dataset_id }), item.version, item.row_count, badge(item.quality?.status), badge(item.safety?.training_allowed ? "READY" : "BLOCKED"), badge(item.loader?.compatible ? "PASS" : "FAIL"), item.updated_at]))); };
   search.addEventListener("input", draw); app.append(pageHead("Local datasets", "Configured manifests and Results Store metadata are listed without scanning arbitrary roots.", [search]), host); draw();
   app.append(panel("Canonical source registry", [sources.length ? table(["Source", "Classification", "License", "Verified", "Download"], sources.map((source) => [source.name || source.source_id, badge(source.classification), source.license, source.license_verified ? "YES" : "NO", badge(source.download_enabled ? "AVAILABLE" : "DISABLED")])) : node("div", { class: "state", text: "No canonical source registry records are available." }), node("p", { class: "muted", text: "Source URLs and download controls are intentionally not exposed by Clouda Lab." })]));
+}
+
+async function renderDocumentIntelligence() {
+  const file = node("input", { type: "file", accept: "application/pdf,.pdf", "aria-label": "PDF document" });
+  const result = node("div");
+  async function analyze() {
+    if (!file.files?.length) { showNotice("Choose a PDF before analysis."); return; }
+    const formData = new FormData(); formData.append("file", file.files[0]);
+    const data = await action(() => api("/document-intelligence/analyze", { method: "POST", formData }), "Analyzing local PDF routing evidence…");
+    clear(result);
+    const rows = (data.pages || []).map((page) => {
+      const reasons = node("div", { class: "toolbar" }, (page.reason_codes || []).map((reason) => badge(reason)));
+      const evidence = page.evidence || {};
+      const safeEvidence = kv({ "Embedded text": evidence.embedded_text_present ? "YES" : "NO", "Blank evidence": evidence.blank_evidence ? "YES" : "NO", "Near-blank evidence": evidence.near_blank_evidence ? "YES" : "NO" });
+      return [page.page_number, badge(page.decision), badge(page.gate_verdict), badge(page.next_path), reasons, page.ocr_pending ? badge("OCR pending") : badge("NO"), safeEvidence];
+    });
+    result.append(panel("Page routing", [table(["Page", "Decision", "Gate verdict", "Next path", "Reason codes", "OCR pending", "Safe evidence"], rows)]));
+  }
+  app.append(pageHead("Document Intelligence", "Select a PDF to inspect categorical page-routing decisions. The file stays in memory and is not retained.", [file, button("Analyze PDF", analyze)]), result);
 }
 async function renderDatasetDetail(datasetId) {
   const encoded = encodeURIComponent(datasetId); const [data, preview] = await Promise.all([api(`/datasets/${encoded}`), api(`/datasets/${encoded}/preview?limit=5`)]); const safety = data.safety || {};
@@ -220,7 +241,7 @@ async function renderOffline() {
   const [data, storage, sourceData, modelData] = await Promise.all([api("/offline"), api("/storage"), api("/sources"), api("/model-catalog")]); const sources = sourceData.sources || []; const models = modelData.models || []; app.append(pageHead("System & Network Policy", "Automatic and background network behavior is fail-closed."), node("div", { class: "grid two-col" }, [panel("Policy", [kv({ "Automatic downloads": badge(data.automatic_dataset_download || data.automatic_model_download ? "ENABLED" : "BLOCKED"), "Background network calls": badge(data.network_required ? "ENABLED" : "BLOCKED"), "User-triggered dataset samples": badge(storage.network_policy?.explicit_dataset_sample_downloads ? "ALLOWED" : "BLOCKED"), "Remote providers": badge(data.remote_provider_calls ? "ENABLED" : "BLOCKED") })]), panel("Runtime", [kv({ "Offline Mode": badge(data.offline ? "ACTIVE" : "FAIL"), "Service Schema": data.schema_version, "Binding": data.binding, "Download tasks": storage.tasks?.downloads || 0, "Pending downloads": storage.tasks?.pending_downloads || 0 })])]), panel("Approved server-side catalogs", [kv({ "Known dataset sources": sources.length, "Explicitly downloadable samples": sources.filter((item) => item.download?.available).length, "Known models": models.length, "Models with approved download manifests": models.filter((item) => item.download?.available).length })]));
 }
 
-const renderers = { overview: renderOverview, datasets: renderDatasets, downloads: renderDownloads, tasks: renderTasks, quality: renderQuality, planner: renderPlanner, preflight: renderPreflight, models: renderModels, "model-catalog": renderModelCatalog, runs: renderRuns, results: renderResults, benchmarks: renderBenchmarks, "benchmark-workspace": renderBenchmarkWorkspace, storage: renderStorage, doctor: renderDoctor, hardware: renderHardware, offline: renderOffline };
+const renderers = { overview: renderOverview, datasets: renderDatasets, "document-intelligence": renderDocumentIntelligence, downloads: renderDownloads, tasks: renderTasks, quality: renderQuality, planner: renderPlanner, preflight: renderPreflight, models: renderModels, "model-catalog": renderModelCatalog, runs: renderRuns, results: renderResults, benchmarks: renderBenchmarks, "benchmark-workspace": renderBenchmarkWorkspace, storage: renderStorage, doctor: renderDoctor, hardware: renderHardware, offline: renderOffline };
 
 async function route() {
   if (state.taskPoll) { clearTimeout(state.taskPoll); state.taskPoll = null; }

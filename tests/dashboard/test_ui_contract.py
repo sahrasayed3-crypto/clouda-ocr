@@ -107,3 +107,22 @@ def test_styles_define_statuses_tables_lineage_and_responsive_layout():
         "@media",
     ):
         assert selector in css
+
+
+def test_document_intelligence_page_is_explicit_and_categorical_only():
+    html = (STATIC / "index.html").read_text(encoding="utf-8")
+    script = (STATIC / "app.js").read_text(encoding="utf-8")
+
+    assert 'href="#/document-intelligence"' in html
+    assert '"document-intelligence": renderDocumentIntelligence' in script
+    assert "formData" in script
+    assert 'init.headers["X-Clouda-Lab-Action"]' in script
+    assert 'type: "file"' in script
+    assert 'accept: "application/pdf,.pdf"' in script
+    assert "Gate verdict" in script
+    assert "Reason codes" in script
+    assert "OCR pending" in script
+    assert "textContent" in script
+    assert "accuracy percentage" not in script.lower()
+    assert "confidence percentage" not in script.lower()
+    assert "quality percentage" not in script.lower()

@@ -354,8 +354,9 @@ def process_pdf(
             )
             if not extraction_valid or extraction is None:
                 mismatch_metadata = dict(metadata)
-                diagnostics = dict(
-                    mismatch_metadata["document_intelligence"]  # type: ignore[arg-type]
+                raw_diagnostics = mismatch_metadata.get("document_intelligence")
+                diagnostics: dict[str, object] = (
+                    dict(raw_diagnostics) if isinstance(raw_diagnostics, dict) else {}
                 )
                 diagnostics.update(
                     {

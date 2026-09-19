@@ -169,7 +169,11 @@ def test_untrusted_hidden_text_is_not_emitted_as_conversion_output() -> None:
     )
 
     assert rows[0].route_used == OCR_STATUS_PENDING_MODEL
-    assert rows[0].metadata["document_intelligence"]["decision"] == "ocr_required"
+    metadata = rows[0].metadata
+    assert metadata is not None
+    diagnostics = metadata["document_intelligence"]
+    assert isinstance(diagnostics, dict)
+    assert diagnostics["decision"] == "ocr_required"
     assert "Header only" not in rows[0].markdown
     assert "Header only" not in text
 

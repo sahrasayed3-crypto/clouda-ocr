@@ -98,6 +98,18 @@ above for the current checkout rather than relying on a historical test-count
 snapshot; known environment-specific exceptions, when present, are documented
 in the corresponding subsystem documentation.
 
+For a bounded CPU-only conversion release check, with no model or dataset
+download, run:
+
+```powershell
+python -m clouda_data.pipeline.cli doctor --deep
+```
+
+Its PDF self-test generates tiny local fixtures and checks the canonical
+trusted-text, blank, and OCR-required routes plus DOCX page boundaries. CUDA
+is informational only; this command performs no GPU inference, training, or
+benchmarking.
+
 ## External tools
 
 Do not commit Poppler, OCR runtimes, virtual environments, or GPU toolkits into this repository. If a future workflow needs Poppler, install it outside the repo and add its `bin` directory to `PATH`, for example `C:\tools\poppler\Library\bin`.

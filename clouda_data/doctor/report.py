@@ -119,18 +119,36 @@ def collect_report(
                     details=detail,
                 )
             )
-            status, message, detail = run_training_dry_run(temp_root / "runs")
-            deep_checks.append(
-                DoctorCheck(
-                    id="deep.training-dry-run",
-                    name="Training dry-run (deep)",
-                    subsystem="deep",
-                    status=status,
-                    message=message,
-                    required=False,
-                    details=detail,
+            if (
+                training_section
+                and training_section.rollup_status() is DoctorStatus.PASS
+            ):
+                status, message, detail = run_training_dry_run(temp_root / "runs")
+                deep_checks.append(
+                    DoctorCheck(
+                        id="deep.training-dry-run",
+                        name="Training dry-run (deep)",
+                        subsystem="deep",
+                        status=status,
+                        message=message,
+                        required=False,
+                        details=detail,
+                    )
                 )
-            )
+            else:
+                deep_checks.append(
+                    DoctorCheck(
+                        id="deep.training-dry-run",
+                        name="Training dry-run (deep)",
+                        subsystem="deep",
+                        status=DoctorStatus.SKIP,
+                        message=(
+                            "Training dry-run skipped because optional training "
+                            "capability is unavailable."
+                        ),
+                        required=False,
+                    )
+                )
             try:
                 from pdfword.release_self_test import run_release_self_test
 

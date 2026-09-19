@@ -84,17 +84,18 @@ def check_factory(
                 id="factory.package",
                 name="Data Factory package",
                 subsystem="data-factory",
-                status=DoctorStatus.FAIL,
+                status=(DoctorStatus.SKIP if missing else DoctorStatus.FAIL),
                 message=(
-                    "Factory imports failed: " + ", ".join(failed_imports)
-                    if failed_imports
-                    else "Factory engine dependencies missing: " + ", ".join(missing)
+                    "Factory capability unavailable: missing " + ", ".join(missing)
+                    if missing
+                    else "Factory imports failed: " + ", ".join(failed_imports)
                 ),
                 details={
                     "failed_imports": failed_imports,
                     "missing_engine_deps": missing,
                 },
-                remediation='pip install -e ".[factory,data]"',
+                required=not bool(missing),
+                remediation='pip install "clouda-pdf[factory]"',
             )
         )
     else:

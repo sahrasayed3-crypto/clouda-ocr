@@ -8,7 +8,7 @@ from pathlib import Path
 import fitz
 import pytest
 from PIL import Image, ImageDraw
-from pypdf import PdfReader, PdfWriter
+from pypdf import PdfReader, PdfWriter, Transformation
 
 import pdfword.page_routing as page_routing
 from pdfword.page_routing import (
@@ -86,6 +86,33 @@ def _hybrid_pdf(text: str, *, full_page_image: bool) -> bytes:
     payload = document.tobytes(garbage=4, deflate=True)
     document.close()
     return payload
+
+
+def _dominant_image_with_sparse_vertical_markers_pdf() -> bytes:
+    document = fitz.open()
+    page = document.new_page(width=595, height=842)
+    page.insert_image(fitz.Rect(0, 0, 595, 842), stream=_image_bytes((1190, 1684)))
+    page.insert_text(
+        (72, 100),
+        "This document contains a header with only partial extracted text.",
+        fontsize=12,
+        fontname="helv",
+    )
+    page.insert_text((72, 450), "1", fontsize=12, fontname="helv")
+    page.insert_text((72, 800), "2", fontsize=12, fontname="helv")
+    payload = document.tobytes(garbage=4, deflate=True)
+    document.close()
+    return payload
+
+
+def _transformed_numeric_title_pdf() -> bytes:
+    reader = PdfReader(io.BytesIO(_text_pdf("2026", y=812)))
+    output = io.BytesIO()
+    writer = PdfWriter()
+    writer.add_page(reader.pages[0])
+    writer.pages[0].add_transformation(Transformation().translate(ty=400))
+    writer.write(output)
+    return output.getvalue()
 
 
 def _analyze_bytes(payload: bytes, page_number: int = 1):
@@ -169,6 +196,14 @@ def test_number_like_title_is_not_near_blank_without_footer_localization(
 ) -> None:
     analysis = _analyze_bytes(_text_pdf(title))
 
+    assert analysis.near_blank_evidence is False
+
+
+def test_transformed_numeric_title_uses_visible_position_not_raw_text_matrix() -> None:
+    analysis = _analyze_bytes(_transformed_numeric_title_pdf())
+
+    assert analysis.spans[0].bbox is not None
+    assert analysis.spans[0].bbox[1] > 400
     assert analysis.near_blank_evidence is False
 
 
@@ -266,6 +301,15 @@ def test_long_localized_header_over_dominant_image_is_untrusted() -> None:
             full_page_image=True,
         )
     )
+
+    result = evaluate_digital_text_trust(analysis)
+
+    assert result.verdict is DigitalTextGateVerdict.UNTRUSTED
+    assert DigitalTextReasonCode.IMAGE_DOMINANT_PARTIAL_TEXT in result.reason_codes
+
+
+def test_sparse_markers_do_not_make_dominant_image_text_complete() -> None:
+    analysis = _analyze_bytes(_dominant_image_with_sparse_vertical_markers_pdf())
 
     result = evaluate_digital_text_trust(analysis)
 

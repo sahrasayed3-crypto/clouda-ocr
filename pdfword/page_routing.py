@@ -288,6 +288,18 @@ def _page_dimensions(
         return 0.0, 0.0
 
 
+def _multiply_affine(left: list[float], right: list[float]) -> list[float]:
+    """Compose PDF affine matrices using the same convention as pypdf."""
+    return [
+        left[0] * right[0] + left[1] * right[2],
+        left[0] * right[1] + left[1] * right[3],
+        left[2] * right[0] + left[3] * right[2],
+        left[2] * right[1] + left[3] * right[3],
+        left[4] * right[0] + left[5] * right[2] + right[4],
+        left[4] * right[1] + left[5] * right[3] + right[5],
+    ]
+
+
 def _extract_text_and_spans(
     page: Any,
     warnings: list[AnalysisWarningCode],
@@ -296,7 +308,7 @@ def _extract_text_and_spans(
 
     def visitor(
         text: str,
-        _current_matrix: list[float],
+        current_matrix: list[float],
         text_matrix: list[float],
         _font_dictionary: dict[str, Any] | None,
         font_size: float,
@@ -306,11 +318,26 @@ def _extract_text_and_spans(
             return
         bbox: tuple[float, float, float, float] | None = None
         try:
-            x = float(text_matrix[4])
-            y = float(text_matrix[5])
+            effective = _multiply_affine(text_matrix, current_matrix)
+            x = float(effective[4])
+            y = float(effective[5])
             size = max(0.0, float(font_size))
             width = max(size * 0.45 * len(normalized), size * 0.45)
-            bbox = (x, y, x + width, y + size)
+            corners = (
+                (x, y),
+                (x + width * effective[0], y + width * effective[1]),
+                (x + size * effective[2], y + size * effective[3]),
+                (
+                    x + width * effective[0] + size * effective[2],
+                    y + width * effective[1] + size * effective[3],
+                ),
+            )
+            bbox = (
+                min(point[0] for point in corners),
+                min(point[1] for point in corners),
+                max(point[0] for point in corners),
+                max(point[1] for point in corners),
+            )
         except (IndexError, TypeError, ValueError):
             pass
         spans.append(
@@ -647,10 +674,22 @@ def evaluate_digital_text_trust(analysis: PageAnalysis) -> DigitalTextGateResult
         and analysis.largest_image_density_estimate is not None
         and analysis.largest_image_density_estimate > _SMALL_IMAGE_DENSITY_LIMIT
     )
+    meaningful_vertical_buckets: set[int] = set()
+    if analysis.page_height_pt > 0:
+        for span in analysis.spans:
+            if span.bbox is None:
+                continue
+            span_words = re.findall(r"\S+", span.text)
+            span_alphanumeric = sum(character.isalnum() for character in span.text)
+            if len(span_words) < 3 and span_alphanumeric < 12:
+                continue
+            y_center = min(
+                0.999999,
+                max(0.0, (span.bbox[1] + span.bbox[3]) / 2 / analysis.page_height_pt),
+            )
+            meaningful_vertical_buckets.add(int(y_center * 4))
     hybrid_text_distribution_complete = bool(
-        usable_text
-        and analysis.vertical_distribution is not None
-        and sum(value > 0 for value in analysis.vertical_distribution) >= 3
+        usable_text and len(meaningful_vertical_buckets) >= 3
     )
     image_dominant_partial = bool(
         dominant_image and not hybrid_text_distribution_complete

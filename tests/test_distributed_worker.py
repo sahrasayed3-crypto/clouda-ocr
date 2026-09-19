@@ -17,7 +17,7 @@ from rq import Queue
 from pdfword.database import Database, utc_now
 from pdfword.job_queue import DistributedJobQueue
 from pdfword.worker_client import WorkerApiClient
-from pdfword.worker_api import app, _dispatch_conversion_job
+from pdfword.worker_api import app, _dispatch_conversion_job, _recover_finalizing_result
 from pdfword import worker_tasks
 
 API_KEY = "test-worker-secret"  # pragma: allowlist secret
@@ -654,6 +654,37 @@ def test_duplicate_worker_result_upload_cannot_overwrite_winner(api_environment)
         database.get_conversion("job-a")["stored_docx_path"]
     ).read_bytes()
     assert sum(marker in final_bytes for marker in (b"WINNER_A", b"WINNER_B")) == 1
+
+
+def test_result_recovery_treats_stale_finalizing_read_as_duplicate(api_environment):
+    _client, database, storage = api_environment
+    create_job(database, storage)
+    started = _client.post(
+        "/internal/jobs/job-a/start",
+        headers={"X-Worker-API-Key": API_KEY},
+        json={"worker_name": "worker-1"},
+    )
+    claim_token = started.json()["claim_token"]
+    target = Path(database.get_conversion("job-a")["stored_docx_path"])
+    target.write_bytes(valid_docx_bytes())
+    database.prepare_conversion_finalization(
+        "job-a",
+        "completed",
+        worker_name="worker-1",
+        claim_token=claim_token,
+    )
+    stale_finalizing_row = database.get_conversion("job-a")
+    assert stale_finalizing_row is not None
+    database.complete_conversion_finalization(
+        "job-a",
+        "completed",
+        worker_name="worker-1",
+        claim_token=claim_token,
+    )
+
+    recovered = _recover_finalizing_result(database, stale_finalizing_row)
+
+    assert recovered["status"] == "completed"
 
 
 def test_worker_result_promotion_failure_is_recoverable_and_cleans_temp(

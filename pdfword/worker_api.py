@@ -565,6 +565,11 @@ def _recover_finalizing_result(database: Database, row: dict) -> dict:
             worker_name=row.get("worker_name") or "",
             claim_token=row.get("claim_token") or None,
         )
+    except ValueError:
+        refreshed = database.get_conversion(row["job_id"])
+        if refreshed is None:
+            raise HTTPException(status_code=404, detail="Job not found") from None
+        return refreshed
     except Exception as exc:
         raise HTTPException(
             status_code=503, detail="Result finalization is temporarily unavailable"

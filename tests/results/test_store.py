@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import tempfile
+from pathlib import Path
+
 import pytest
 
 from clouda_data.results.ground_truth import build_ground_truth_record
@@ -356,3 +359,59 @@ class TestRunLifecycle:
         svc = ResultsService(tmp_path / "store", read_only=True)
         with pytest.raises(UnknownRecordError):
             svc.get_run("missing")
+
+
+class TestPathSafety:
+    """Identifiers must stay single, unambiguous path components on Windows."""
+
+    @pytest.mark.parametrize(
+        "bad_id",
+        [
+            "evil:stream",  # NTFS alternate-data-stream / WinError 87
+            "abc.",  # trailing dot stripped by Windows -> collides with "abc"
+            "run ",  # trailing space stripped by Windows
+            ".",  # current directory escape
+            "..",  # parent directory escape
+            "CON",  # reserved device name
+            "com1",
+            "LPT9",  # reserved device name
+            "nul",
+        ],
+    )
+    def test_run_dir_rejects_unsafe_ids(self, bad_id) -> None:
+        store = ResultsStore(Path(tempfile.mkdtemp()) / "store")
+        with pytest.raises(ValueError):
+            store.run_dir(bad_id)
+
+    @pytest.mark.parametrize(
+        ("dataset_id", "version"),
+        [("a:b", "1"), ("d", "1."), ("d", ":")],
+    )
+    def test_dataset_path_rejects_unsafe_composites(
+        self, dataset_id, version
+    ) -> None:
+        # The composite f"{dataset_id}__{version}" is the path component;
+        # anything Windows would strip or reinterpret in it must be refused.
+        store = ResultsStore(Path(tempfile.mkdtemp()) / "store")
+        with pytest.raises(ValueError):
+            store.dataset_path(dataset_id, version)
+
+    def test_dataset_path_safe_composite_accepted(self) -> None:
+        store = ResultsStore(Path(tempfile.mkdtemp()) / "store")
+        # A trailing dot inside the composite is harmless; only the component
+        # boundary matters.
+        assert store.dataset_path("v.", "1").name == "v.__1.json"
+
+    @pytest.mark.parametrize(
+        "ok_id", ["run-1", "run_2", "a.b.c", "model@2026", "up+down", "v1.0"]
+    )
+    def test_legitimate_ids_accepted(self, ok_id) -> None:
+        store = ResultsStore(Path(tempfile.mkdtemp()) / "store")
+        assert store.run_dir(ok_id).name == ok_id
+
+    def test_trailing_dot_id_does_not_collide_with_plain_id(self, tmp_path) -> None:
+        store = ResultsStore(tmp_path / "store")
+        with pytest.raises(ValueError):
+            store.run_dir("abc.")
+        # "abc." is refused, so only the plain id can ever own runs/abc.
+        assert not (tmp_path / "store" / "runs" / "abc").exists()

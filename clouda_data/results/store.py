@@ -46,13 +46,31 @@ from .models import (
     PageRecord,
 )
 
-_UNSAFE_ID = re.compile(r"[^A-Za-z0-9._@:+-]")
+_UNSAFE_ID = re.compile(r"[^A-Za-z0-9._@+-]")
+_WINDOWS_RESERVED = frozenset(
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{n}" for n in range(1, 10)}
+    | {f"LPT{n}" for n in range(1, 10)}
+)
 
 
 def safe_component(value: str, *, what: str = "identifier") -> str:
-    """Validate an identifier used as a single path component."""
+    """Validate an identifier used as a single path component.
 
-    if not value or _UNSAFE_ID.search(value):
+    Rejects anything Windows would reinterpret: ``:`` (NTFS data streams and
+    ``os.replace`` failures), trailing dots/spaces (stripped by the filesystem,
+    making ``abc.`` and ``abc`` collide), all-dot names (``.``/``..`` escapes)
+    and reserved device names. The result is safe on Windows, macOS and Linux
+    alike.
+    """
+
+    if (
+        not value
+        or value != value.rstrip(". ")
+        or set(value) == {"."}
+        or _UNSAFE_ID.search(value)
+        or value.upper() in _WINDOWS_RESERVED
+    ):
         raise ValueError(f"Unsafe {what}: {value!r}")
     return value
 

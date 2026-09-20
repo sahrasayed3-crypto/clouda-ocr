@@ -121,19 +121,51 @@ class RedisSecurityConfig:
 
 
 class SlidingWindowRateLimiter:
-    def __init__(self, limit: int = 120, window_seconds: int = 60) -> None:
+    def __init__(
+        self,
+        limit: int = 120,
+        window_seconds: int = 60,
+        sweep_interval: int = 1024,
+    ) -> None:
         self.limit = max(1, limit)
         self.window_seconds = max(1, window_seconds)
         self._events: dict[str, deque[float]] = {}
         self._lock = threading.Lock()
+        self._sweep_interval = max(1, sweep_interval)
+        self._operations_until_sweep = self._sweep_interval
+
+    def _sweep_expired(self, cutoff: float) -> None:
+        """Release clients whose whole window has aged out.
+
+        Deques are append-ordered, so a non-empty deque whose newest event
+        is expired is entirely expired.
+        """
+
+        expired = [
+            key
+            for key, events in self._events.items()
+            if not events or events[-1] <= cutoff
+        ]
+        for key in expired:
+            del self._events[key]
 
     def allow(self, key: str, now: float | None = None) -> bool:
         current = time.monotonic() if now is None else now
         cutoff = current - self.window_seconds
         with self._lock:
-            events = self._events.setdefault(key, deque())
-            while events and events[0] <= cutoff:
-                events.popleft()
+            self._operations_until_sweep -= 1
+            if self._operations_until_sweep <= 0:
+                self._operations_until_sweep = self._sweep_interval
+                self._sweep_expired(cutoff)
+            events = self._events.get(key)
+            if events is not None:
+                while events and events[0] <= cutoff:
+                    events.popleft()
+                if not events:
+                    del self._events[key]
+                    events = None
+            if events is None:
+                events = self._events.setdefault(key, deque())
             if len(events) >= self.limit:
                 return False
             events.append(current)

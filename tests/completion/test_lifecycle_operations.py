@@ -72,6 +72,24 @@ def test_rate_limiter_is_bounded() -> None:
     assert limiter.allow("client", now=12)
 
 
+def test_rate_limiter_releases_idle_client_keys() -> None:
+    """Distinct one-touch clients must not pin memory forever."""
+
+    limiter = SlidingWindowRateLimiter(
+        limit=2, window_seconds=10, sweep_interval=4
+    )
+    for index in range(100):
+        assert limiter.allow(f"ip-{index}", now=1000.0)
+    assert len(limiter._events) == 100  # growth within one window is expected
+
+    # A steady caller drives the periodic sweep: fully-expired windows are
+    # released instead of accumulating one entry per client IP forever.
+    for step in range(20):
+        assert limiter.allow("busy", now=5000.0 + step * 11.0)
+
+    assert len(limiter._events) == 1
+
+
 def test_redaction_and_credential_rotation() -> None:
     value = redact({"api_key": "secret", "nested": {"password": "private"}, "ok": 1})
     assert value == {

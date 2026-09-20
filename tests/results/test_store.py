@@ -415,3 +415,76 @@ class TestPathSafety:
             store.run_dir("abc.")
         # "abc." is refused, so only the plain id can ever own runs/abc.
         assert not (tmp_path / "store" / "runs" / "abc").exists()
+
+
+class TestConcurrentAppends:
+    """Concurrent writers to one run must not duplicate or lose rows."""
+
+    @staticmethod
+    def _pages(dataset_id: str, start: int, count: int) -> list[PageRecord]:
+        return [
+            PageRecord(
+                page_id=f"{dataset_id}@train:page_{index:03d}",
+                document_id=f"doc_{index // 4:03d}",
+                dataset_id=dataset_id,
+                split="train",
+                page_number=index + 1,
+            )
+            for index in range(start, start + count)
+        ]
+
+    def _prepare(self, tmp_path) -> tuple[ResultsService, str]:
+        svc = ResultsService(tmp_path / "store")
+        run = svc.create_run(
+            model_id="m", dataset_id="fx", split="train", created_at="t"
+        )
+        return svc, run.run_id
+
+    def test_concurrent_distinct_pages_all_persist_once(self, tmp_path) -> None:
+        import threading
+
+        svc, run_id = self._prepare(tmp_path)
+        store = svc.store
+        pages = self._pages("fx", 0, 50)
+
+        def ingest(chunk) -> None:
+            store.append_pages(run_id, chunk)
+
+        threads = [
+            threading.Thread(target=ingest, args=(pages[i : i + 25],))
+            for i in (0, 25)
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        rows = list(store.iter_pages(run_id))
+        ids = [row.page_id for row in rows]
+        assert len(rows) == 50, f"expected 50 rows, saw {len(rows)}"
+        assert len(set(ids)) == 50, "duplicate page ids after concurrent ingest"
+
+    def test_concurrent_identical_reingestion_is_idempotent(self, tmp_path) -> None:
+        import threading
+
+        svc, run_id = self._prepare(tmp_path)
+        store = svc.store
+        pages = self._pages("fx", 0, 25)
+        conflicts: list[Exception] = []
+
+        def ingest() -> None:
+            try:
+                store.append_pages(run_id, pages)
+            except Exception as exc:  # noqa: BLE001 - collected below
+                conflicts.append(exc)
+
+        threads = [threading.Thread(target=ingest) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert conflicts == []
+        rows = list(store.iter_pages(run_id))
+        assert len(rows) == 25
+        assert len({row.page_id for row in rows}) == 25

@@ -22,9 +22,13 @@ Properties:
 
 from __future__ import annotations
 
+import contextlib
+import functools
+import os
 import re
 import json
 import shutil
+import time
 from pathlib import Path
 from typing import Any, Iterable, Iterator
 
@@ -73,6 +77,64 @@ def safe_component(value: str, *, what: str = "identifier") -> str:
     ):
         raise ValueError(f"Unsafe {what}: {value!r}")
     return value
+
+
+@contextlib.contextmanager
+def _run_ingest_lock(runs_dir: Path, run_id: str) -> Iterator[None]:
+    """Cross-process advisory lock serializing one run's ingestion writes.
+
+    The ``append_*`` methods are read-modify-write sequences over per-run
+    JSONL files; without serialization, two concurrent writers observe the
+    same missing ids and append duplicates, silently corrupting the bundle.
+    The lock is a sidecar ``<run_id>.lock`` under ``runs/`` so unrelated runs
+    never contend. ``msvcrt.locking`` byte-range locks on Windows, ``fcntl``
+    locks elsewhere.
+    """
+
+    lock_path = runs_dir / f"{safe_component(run_id, what='run id')}.lock"
+    descriptor = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o666)
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            deadline = time.monotonic() + 30.0
+            while True:
+                try:
+                    msvcrt.locking(descriptor, msvcrt.LK_LOCK, 1)
+                    break
+                except OSError:
+                    if time.monotonic() >= deadline:
+                        raise
+                    time.sleep(0.05)
+        else:
+            import fcntl
+
+            fcntl.flock(descriptor, fcntl.LOCK_EX)
+        yield
+    finally:
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                os.lseek(descriptor, 0, os.SEEK_SET)
+                msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(descriptor, fcntl.LOCK_UN)
+        finally:
+            os.close(descriptor)
+
+
+def _serialized_per_run(method):
+    """Decorator: hold the run's ingestion lock for the whole call."""
+
+    @functools.wraps(method)
+    def wrapper(self: "ResultsStore", run_id: str, *args: Any, **kwargs: Any):
+        with _run_ingest_lock(self._runs_dir, run_id):
+            return method(self, run_id, *args, **kwargs)
+
+    return wrapper
 
 
 class ConflictingRecordError(ValueError):
@@ -251,6 +313,7 @@ class ResultsStore:
     def pages_path(self, run_id: str) -> Path:
         return self.run_dir(run_id) / "pages.jsonl"
 
+    @_serialized_per_run
     def append_pages(self, run_id: str, pages: Iterable[PageRecord]) -> int:
         if self.read_only:
             raise PermissionError("Results store is read-only.")
@@ -319,6 +382,7 @@ class ResultsStore:
     def ground_truth_path(self, run_id: str) -> Path:
         return self.run_dir(run_id) / "ground_truth.jsonl"
 
+    @_serialized_per_run
     def append_ground_truth(
         self, run_id: str, records: Iterable[GroundTruthRecord]
     ) -> int:
@@ -374,6 +438,7 @@ class ResultsStore:
     def predictions_path(self, run_id: str) -> Path:
         return self.run_dir(run_id) / "predictions.jsonl"
 
+    @_serialized_per_run
     def append_predictions(
         self, run_id: str, predictions: Iterable[OCRPrediction]
     ) -> int:
@@ -457,6 +522,7 @@ class ResultsStore:
     def metrics_path(self, run_id: str) -> Path:
         return self.run_dir(run_id) / "metrics.jsonl"
 
+    @_serialized_per_run
     def append_metrics(self, run_id: str, records: Iterable[EvaluationRecord]) -> int:
         if self.read_only:
             raise PermissionError("Results store is read-only.")
@@ -546,6 +612,7 @@ class ResultsStore:
     def artifacts_path(self, run_id: str) -> Path:
         return self.run_dir(run_id) / "artifacts.jsonl"
 
+    @_serialized_per_run
     def append_artifacts(self, run_id: str, artifacts: Iterable[ArtifactRef]) -> int:
         if self.read_only:
             raise PermissionError("Results store is read-only.")

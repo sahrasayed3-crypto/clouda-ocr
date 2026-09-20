@@ -252,3 +252,45 @@ def test_preparation_config_json_round_trip(tmp_path: Path):
     path.write_text(json.dumps(config.to_dict()), encoding="utf-8")
     loaded = load_preparation_config(path)
     assert loaded == config
+
+
+def test_write_csv_export_is_safe_under_concurrent_writers(tmp_path: Path):
+    """Concurrent exports to one target must not crash or corrupt the mirror."""
+    import csv as _csv
+    import threading
+
+    from clouda_data.pretraining.manifest import write_csv_export
+
+    target = tmp_path / "export.csv"
+    errors: list[Exception] = []
+
+    def worker(variant: int) -> None:
+        try:
+            for _ in range(10):
+                write_csv_export(
+                    target,
+                    [
+                        {"sample_id": f"r{variant}a", "source_id": "s"},
+                        {"sample_id": f"r{variant}b", "source_id": "s"},
+                    ],
+                )
+        except Exception as exc:  # pragma: no cover - assertion below
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert errors == []
+    with target.open("r", encoding="utf-8", newline="") as handle:
+        rows = list(_csv.DictReader(handle))
+    assert [row["sample_id"] for row in rows] in (
+        ["r0a", "r0b"],
+        ["r1a", "r1b"],
+        ["r2a", "r2b"],
+        ["r3a", "r3b"],
+    )
+    leftovers = [p.name for p in tmp_path.iterdir() if p.name != "export.csv"]
+    assert leftovers == []

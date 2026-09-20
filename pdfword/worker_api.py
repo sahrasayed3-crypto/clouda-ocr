@@ -6,8 +6,10 @@ import re
 import secrets
 import shutil
 import tempfile
+import threading
 import zipfile
 import uuid
+from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -65,7 +67,60 @@ ALLOWED_CLOUD_PROVIDERS = {
     "google",
     "alibaba",
 }
-app = FastAPI(title="Clouda Worker API", docs_url=None, redoc_url=None)
+def _maintenance_loop(stop_event: threading.Event, interval_seconds: float) -> None:
+    """Background maintenance: deferred re-dispatch + guest retention.
+
+    The first cycle runs after one interval, so request-serving tests and
+    short-lived processes never execute maintenance side effects.
+    """
+
+    from .maintenance import run_maintenance_cycle
+    from .settings import runtime_settings
+
+    while not stop_event.wait(interval_seconds):
+        try:
+            settings = runtime_settings()
+            run_maintenance_cycle(
+                Database(settings.database_path),
+                storage_root=settings.storage_root,
+            )
+        except Exception as exc:  # keep the loop alive under any failure
+            structured_log(
+                "maintenance_cycle_failed",
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+
+
+@asynccontextmanager
+async def _lifespan(_: "FastAPI"):
+    stop_event = threading.Event()
+    try:
+        interval = float(
+            os.getenv("CLOUDA_MAINTENANCE_INTERVAL_SECONDS", "300") or 300
+        )
+    except ValueError:
+        interval = 300.0
+    thread = threading.Thread(
+        target=_maintenance_loop,
+        args=(stop_event, max(5.0, interval)),
+        name="clouda-maintenance",
+        daemon=True,
+    )
+    thread.start()
+    try:
+        yield
+    finally:
+        stop_event.set()
+        thread.join(timeout=5)
+
+
+app = FastAPI(
+    title="Clouda Worker API",
+    docs_url=None,
+    redoc_url=None,
+    lifespan=_lifespan,
+)
 app.add_middleware(
     TrustedHostMiddleware,
     allowed_hosts=[

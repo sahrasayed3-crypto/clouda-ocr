@@ -5,6 +5,7 @@ import logging
 import os
 import sys
 import zipfile
+from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Event
@@ -18,6 +19,8 @@ from rq import Queue
 from pdfword.database import Database, utc_now
 from pdfword.job_queue import DistributedJobQueue
 from pdfword.worker_client import WorkerApiClient
+from fastapi import HTTPException
+
 from pdfword.worker_api import app, _dispatch_conversion_job, _recover_finalizing_result
 from pdfword import worker_tasks
 
@@ -1388,3 +1391,61 @@ def test_worker_client_covers_json_stream_and_command_methods(
     )
     assert client.fail("job-a", "worker", "error" * 1000)["status"] == "ok"
     assert all(call[2]["headers"]["X-Worker-API-Key"] == API_KEY for call in calls)
+
+
+def test_corrupt_result_file_is_abandoned_once_stale(api_environment, monkeypatch):
+    """A result file that exists but is corrupt must not wedge the job in
+    ``finalizing`` forever: once the stale threshold passes, recovery
+    abandons the attempt and the job becomes actionable again."""
+
+    _client, database, storage = api_environment
+    monkeypatch.setenv("CLOUDA_FINALIZING_STALE_SECONDS", "1")
+    create_job(database, storage)
+    started = _client.post(
+        "/internal/jobs/job-a/start",
+        headers={"X-Worker-API-Key": API_KEY},
+        json={"worker_name": "worker-1"},
+    )
+    claim_token = started.json()["claim_token"]
+    target = Path(database.get_conversion("job-a")["stored_docx_path"])
+    target.write_bytes(b"PK\x03\x04CORRUPTED_NOT_A_ZIP")
+    database.prepare_conversion_finalization(
+        "job-a", "completed", worker_name="worker-1", claim_token=claim_token
+    )
+    row = database.get_conversion("job-a")
+    assert row["status"] == "finalizing"
+
+    stale_updated_at = (
+        datetime.now(timezone.utc) - timedelta(seconds=30)
+    ).isoformat()
+    database.update_conversion(row["id"], {"updated_at": stale_updated_at})
+    stale_row = database.get_conversion("job-a")
+    assert _recover_finalizing_result(database, dict(stale_row))["status"] == "pending"
+    assert database.get_conversion("job-a")["status"] == "pending"
+
+
+def test_corrupt_result_file_before_stale_threshold_stays_finalizing(
+    api_environment,
+):
+    """Before the stale threshold the worker may still be finishing: the
+    recovery path must not abandon a live attempt."""
+
+    _client, database, storage = api_environment
+    create_job(database, storage)
+    started = _client.post(
+        "/internal/jobs/job-a/start",
+        headers={"X-Worker-API-Key": API_KEY},
+        json={"worker_name": "worker-1"},
+    )
+    claim_token = started.json()["claim_token"]
+    target = Path(database.get_conversion("job-a")["stored_docx_path"])
+    target.write_bytes(b"PK\x03\x04CORRUPTED_NOT_A_ZIP")
+    database.prepare_conversion_finalization(
+        "job-a", "completed", worker_name="worker-1", claim_token=claim_token
+    )
+    row = database.get_conversion("job-a")
+
+    with pytest.raises(HTTPException) as exc_info:
+        _recover_finalizing_result(database, dict(row))
+    assert exc_info.value.status_code == 503
+    assert database.get_conversion("job-a")["status"] == "finalizing"

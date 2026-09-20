@@ -547,40 +547,48 @@ def _recover_finalizing_result(database: Database, row: dict) -> dict:
     if target_status not in {"completed", "manual_review"}:
         raise HTTPException(status_code=503, detail="Result finalization is incomplete")
     target = _inside_storage(row.get("stored_docx_path") or "")
-    if not target.is_file():
-        if _finalizing_is_stale(row):
-            database.abandon_conversion_finalization(
-                row["job_id"], observed_updated_at=row.get("updated_at") or ""
-            )
-            refreshed = database.get_conversion(row["job_id"])
-            if refreshed is None:
-                raise HTTPException(status_code=404, detail="Job not found")
-            return refreshed
-        return row
-    _validate_docx_file(target)
-    try:
-        updated = database.complete_conversion_finalization(
-            row["job_id"],
-            target_status,
-            worker_name=row.get("worker_name") or "",
-            claim_token=row.get("claim_token") or None,
+    if target.is_file():
+        try:
+            _validate_docx_file(target)
+        except HTTPException:
+            if not _finalizing_is_stale(row):
+                raise
+            # Corrupt stored result past the stale threshold: the worker
+            # will never finish finalization, so treat the result like a
+            # missing one and let abandonment below recover the job.
+        else:
+            try:
+                updated = database.complete_conversion_finalization(
+                    row["job_id"],
+                    target_status,
+                    worker_name=row.get("worker_name") or "",
+                    claim_token=row.get("claim_token") or None,
+                )
+            except ValueError:
+                refreshed = database.get_conversion(row["job_id"])
+                if refreshed is None:
+                    raise HTTPException(status_code=404, detail="Job not found") from None
+                return refreshed
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=503, detail="Result finalization is temporarily unavailable"
+                ) from exc
+            if updated.get("guest_scope_id"):
+                database.mark_guest_job_result(
+                    updated["job_id"],
+                    status=updated["status"],
+                    stored_docx_path=str(target),
+                )
+            return updated
+    if _finalizing_is_stale(row):
+        database.abandon_conversion_finalization(
+            row["job_id"], observed_updated_at=row.get("updated_at") or ""
         )
-    except ValueError:
         refreshed = database.get_conversion(row["job_id"])
         if refreshed is None:
-            raise HTTPException(status_code=404, detail="Job not found") from None
+            raise HTTPException(status_code=404, detail="Job not found")
         return refreshed
-    except Exception as exc:
-        raise HTTPException(
-            status_code=503, detail="Result finalization is temporarily unavailable"
-        ) from exc
-    if updated.get("guest_scope_id"):
-        database.mark_guest_job_result(
-            updated["job_id"],
-            status=updated["status"],
-            stored_docx_path=str(target),
-        )
-    return updated
+    return row
 
 
 def _redis_client():

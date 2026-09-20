@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import tempfile
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
@@ -69,6 +70,13 @@ class TenantStorage:
 
     def write_upload(self, paths: TenantPaths, filename: str, source: BinaryIO) -> Path:
         target = paths.uploads / safe_filename(filename, "input.pdf")
+        if target.exists():
+            # Two jobs in one scope can upload the same original filename;
+            # a later upload must never silently replace the earlier job's
+            # stored input (provenance/integrity), so disambiguate instead.
+            target = paths.uploads / (
+                f"{target.stem}_{uuid.uuid4().hex[:12]}{target.suffix}"
+            )
         ensure_contained(self.root, target.parent)
         temporary_path: Path | None = None
         source.seek(0)

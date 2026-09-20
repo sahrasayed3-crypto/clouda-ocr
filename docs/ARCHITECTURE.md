@@ -26,7 +26,7 @@ The engine interface is intentionally model-agnostic. It can accept page images 
 ## Explicit Non-Goals For Current Version
 
 - No legacy OCR integration.
-- The selected primary model candidate is not integrated, trained/adapted, or final.
+- No production model candidate has been selected; none is integrated, trained/adapted, or final.
 - No ROCm/GPU support claim.
 - No CUDA-specific or ROCm-specific engine contract.
 - No layout-perfect PDF reconstruction.

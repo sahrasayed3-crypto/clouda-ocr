@@ -2,18 +2,24 @@
 
 ## Current state
 
-Benchmarking is complete. HunyuanOCR-1.5 is the current leading candidate based
-on this specific 177-page benchmark (Normalized Arabic CER 0.391497), but it is
-not installed or integrated as a final OCR engine. Model adaptation/training and
-runtime integration are the next major technical stage, currently limited
-primarily by access to suitable GPU compute. Dataset and model rights remain
-governed separately by the fail-closed licensing and provenance process. The
-runtime performs direct extraction only; scanned or image-only pages remain
+The published 177-page benchmark v0.1.0 is complete. A larger 462-page held-out
+evaluation is in progress and currently paused pending additional compute
+capacity, so production model selection remains open. On the published
+177-page benchmark, HunyuanOCR-1.5 ranked first by Normalized Arabic CER
+(0.391497); this is a benchmark-specific historical result, not a final
+production-model selection, and no model is installed or integrated as a final
+OCR engine. Runtime integration and validation of candidate OCR/VLM models are
+the next major technical stage, currently limited primarily by access to
+suitable GPU compute. A dedicated Clouda-trained model may be pursued only if
+benchmark evidence shows a meaningful gap that existing open and self-hostable
+models do not adequately close. Dataset and model rights remain governed
+separately by the fail-closed licensing and provenance process. The runtime
+performs direct extraction only; scanned or image-only pages remain
 `pending_ocr_model`.
 
 ## Integration contract
 
-Add the current leading candidate, or any future fallback engine, by implementing `pdfword.engines.ExtractionEngine`, returning `OCRResult`, and registering it in `EngineRegistry`. The contract supports optional confidence, layout boxes, reading order, timing, error details, and metadata without assuming a vendor, framework, CPU, GPU, CUDA, ROCm, or model family.
+Add a candidate engine, or any future fallback engine, by implementing `pdfword.engines.ExtractionEngine`, returning `OCRResult`, and registering it in `EngineRegistry`. The contract supports optional confidence, layout boxes, reading order, timing, error details, and metadata without assuming a vendor, framework, CPU, GPU, CUDA, ROCm, or model family.
 
 ## Required gate before activation
 

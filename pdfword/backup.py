@@ -95,28 +95,39 @@ def restore_backup(archive_path: str | Path, destination: str | Path) -> Path:
     if target.exists() and any(target.iterdir()):
         raise FileExistsError("مجلد الاستعادة يجب أن يكون فارغًا")
     target.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(archive, "r") as bundle:
-        validate_zip_archive(bundle, limits=ArchiveLimits())
-        for member in bundle.infolist():
-            member_target = (target / member.filename).resolve()
-            if target != member_target and target not in member_target.parents:
-                raise ValueError(f"مسار غير آمن داخل Backup: {member.filename}")
-            if member.is_dir():
-                member_target.mkdir(parents=True, exist_ok=True)
-                continue
-            member_target.parent.mkdir(parents=True, exist_ok=True)
-            if member_target.exists() or member_target.is_symlink():
-                raise FileExistsError(f"Refusing to overwrite {member.filename}")
-            with bundle.open(member, "r") as source, member_target.open("xb") as output:
-                shutil.copyfileobj(source, output, length=1024 * 1024)
-    restored_database = target / "data" / "clouda.sqlite3"
-    connection = sqlite3.connect(restored_database)
+    # Extract into staging and publish on success: a conflicting or unsafe
+    # member then fails with the destination still clean instead of leaving
+    # a partial extraction behind.
+    staging = Path(tempfile.mkdtemp(prefix=".restore-", dir=target))
     try:
-        result = connection.execute("PRAGMA integrity_check").fetchone()
-        if not result or result[0] != "ok":
-            raise ValueError("فشل فحص سلامة قاعدة البيانات المستعادة")
-    finally:
-        connection.close()
+        with zipfile.ZipFile(archive, "r") as bundle:
+            validate_zip_archive(bundle, limits=ArchiveLimits())
+            for member in bundle.infolist():
+                member_target = (staging / member.filename).resolve()
+                if staging != member_target and staging not in member_target.parents:
+                    raise ValueError(f"مسار غير آمن داخل Backup: {member.filename}")
+                if member.is_dir():
+                    member_target.mkdir(parents=True, exist_ok=True)
+                    continue
+                member_target.parent.mkdir(parents=True, exist_ok=True)
+                if member_target.exists() or member_target.is_symlink():
+                    raise FileExistsError(f"Refusing to overwrite {member.filename}")
+                with bundle.open(member, "r") as source, member_target.open("xb") as output:
+                    shutil.copyfileobj(source, output, length=1024 * 1024)
+        restored_database = staging / "data" / "clouda.sqlite3"
+        connection = sqlite3.connect(restored_database)
+        try:
+            result = connection.execute("PRAGMA integrity_check").fetchone()
+            if not result or result[0] != "ok":
+                raise ValueError("فشل فحص سلامة قاعدة البيانات المستعادة")
+        finally:
+            connection.close()
+        for child in staging.iterdir():
+            shutil.move(str(child), str(target / child.name))
+    except BaseException:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+    staging.rmdir()
     return target
 
 

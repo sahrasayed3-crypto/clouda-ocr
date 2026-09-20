@@ -187,6 +187,30 @@ class TestRuntimeFeatures(unittest.TestCase):
             with self.assertRaises(FileExistsError):
                 restore_backup(archive, nonempty)
 
+    def test_restore_failure_leaves_destination_clean(self) -> None:
+        """A conflicting archive member must fail without leaving a partial
+        extraction behind in the destination directory."""
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            database = Database(root / "source.sqlite3")
+            archive = create_backup(
+                database,
+                storage_root=root / "conversions",
+                backup_root=root / "backups",
+            )
+            # Append a member that collides with the "data" directory.
+            with zipfile.ZipFile(archive, "a") as bundle:
+                bundle.writestr("data", b"collides-with-directory")
+
+            destination = root / "restored"
+            with self.assertRaises(FileExistsError):
+                restore_backup(archive, destination)
+
+            # The destination stays empty (no partial extraction, no staging
+            # leftovers) so the restore can simply be retried.
+            self.assertFalse(list(destination.glob("*")))
+
     def test_registry_excludes_safety_and_ranks_free_vision(self) -> None:
         models = [
             {

@@ -198,7 +198,7 @@ def assign_splits(
             if sample.target_split != SplitName.UNASSIGNED
         }
         if len(prior_splits) == 1:
-            split = next(iter(prior_splits))
+            split: SplitName = next(iter(prior_splits))
         else:
             anchor = min(members)
             split = _split_for_key(anchor, seed, boundaries)

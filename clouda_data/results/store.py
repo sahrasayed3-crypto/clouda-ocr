@@ -100,16 +100,16 @@ def _run_ingest_lock(runs_dir: Path, run_id: str) -> Iterator[None]:
             deadline = time.monotonic() + 30.0
             while True:
                 try:
-                    msvcrt.locking(descriptor, msvcrt.LK_LOCK, 1)
+                    msvcrt.locking(descriptor, msvcrt.LK_LOCK, 1)  # type: ignore[attr-defined]
                     break
                 except OSError:
                     if time.monotonic() >= deadline:
                         raise
                     time.sleep(0.05)
         else:
-            import fcntl
+            import fcntl  # type: ignore[import-not-found]
 
-            fcntl.flock(descriptor, fcntl.LOCK_EX)
+            fcntl.flock(descriptor, fcntl.LOCK_EX)  # type: ignore[attr-defined]
         yield
     finally:
         try:
@@ -117,11 +117,11 @@ def _run_ingest_lock(runs_dir: Path, run_id: str) -> Iterator[None]:
                 import msvcrt
 
                 os.lseek(descriptor, 0, os.SEEK_SET)
-                msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)
+                msvcrt.locking(descriptor, msvcrt.LK_UNLCK, 1)  # type: ignore[attr-defined]
             else:
-                import fcntl
+                import fcntl  # type: ignore[import-not-found]
 
-                fcntl.flock(descriptor, fcntl.LOCK_UN)
+                fcntl.flock(descriptor, fcntl.LOCK_UN)  # type: ignore[attr-defined]
         finally:
             os.close(descriptor)
 

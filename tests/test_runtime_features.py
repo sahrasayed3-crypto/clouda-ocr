@@ -209,6 +209,35 @@ class TestRuntimeFeatures(unittest.TestCase):
             # leftovers) so the restore can simply be retried.
             self.assertFalse(list(destination.glob("*")))
 
+    def test_restore_publish_failure_rolls_back_and_allows_retry(self) -> None:
+        """A failure during the publish rename must leave the destination
+        absent (never partially restored) with no staging leftovers, and a
+        retry must then succeed."""
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            database = Database(root / "source.sqlite3")
+            archive = create_backup(
+                database,
+                storage_root=root / "conversions",
+                backup_root=root / "backups",
+            )
+            destination = root / "restored"
+
+            with patch(
+                "pdfword.backup.os.replace", side_effect=OSError("publish failed")
+            ):
+                with self.assertRaises(OSError):
+                    restore_backup(archive, destination)
+
+            self.assertFalse(destination.exists())
+            self.assertEqual(
+                list(root.glob(f".{destination.name}.restore-*")), []
+            )
+
+            restored = restore_backup(archive, destination)
+            self.assertTrue((restored / "data" / "clouda.sqlite3").is_file())
+
     def test_registry_excludes_safety_and_ranks_free_vision(self) -> None:
         models = [
             {

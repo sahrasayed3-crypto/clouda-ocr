@@ -1,3 +1,4 @@
+import os
 import sqlite3
 import json
 import shutil
@@ -94,11 +95,15 @@ def restore_backup(archive_path: str | Path, destination: str | Path) -> Path:
         raise ValueError("ملف Backup غير صالح للاستعادة")
     if target.exists() and any(target.iterdir()):
         raise FileExistsError("مجلد الاستعادة يجب أن يكون فارغًا")
-    target.mkdir(parents=True, exist_ok=True)
-    # Extract into staging and publish on success: a conflicting or unsafe
-    # member then fails with the destination still clean instead of leaving
-    # a partial extraction behind.
-    staging = Path(tempfile.mkdtemp(prefix=".restore-", dir=target))
+    # Extract into a staging directory that is a *sibling* of the destination
+    # so publishing is a single same-filesystem rename: the destination ends
+    # up either fully restored or absent — never partially populated. A
+    # failure anywhere (extraction, validation, publish) removes the staging
+    # tree and re-raises, so a retry starts clean.
+    target.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(
+        tempfile.mkdtemp(prefix=f".{target.name}.restore-", dir=target.parent)
+    )
     try:
         with zipfile.ZipFile(archive, "r") as bundle:
             validate_zip_archive(bundle, limits=ArchiveLimits())
@@ -125,12 +130,14 @@ def restore_backup(archive_path: str | Path, destination: str | Path) -> Path:
                 raise ValueError("فشل فحص سلامة قاعدة البيانات المستعادة")
         finally:
             connection.close()
-        for child in staging.iterdir():
-            shutil.move(str(child), str(target / child.name))
+        if target.exists():
+            # Guaranteed empty by the guard above; remove it so the publish
+            # rename lands on a free name.
+            target.rmdir()
+        os.replace(staging, target)
     except BaseException:
         shutil.rmtree(staging, ignore_errors=True)
         raise
-    staging.rmdir()
     return target
 
 

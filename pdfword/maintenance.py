@@ -39,9 +39,7 @@ def re_dispatch_deferred_conversions(database: Database) -> int:
     for row in database.list_pending_conversions():
         if row.get("rq_job_id"):
             continue
-        status = _dispatch_conversion_job(
-            database, row["job_id"], actor="maintenance"
-        )
+        status = _dispatch_conversion_job(database, row["job_id"], actor="maintenance")
         if status == "queued":
             dispatched += 1
     return dispatched

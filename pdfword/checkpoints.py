@@ -51,7 +51,9 @@ def load_checkpoint(job_root: str | Path) -> dict[int, PageResult]:
     for row in rows:
         if not isinstance(row, dict) or not row.get("page_no"):
             continue
-        compatible = {key: value for key, value in row.items() if key in _PAGE_RESULT_FIELDS}
+        compatible = {
+            key: value for key, value in row.items() if key in _PAGE_RESULT_FIELDS
+        }
         try:
             page_no = int(row["page_no"])
             recovered[page_no] = PageResult(**compatible)

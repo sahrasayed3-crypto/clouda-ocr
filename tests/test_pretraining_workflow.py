@@ -288,9 +288,9 @@ def test_dedupe_and_normalize_preserve_manifest_metadata(fixture_roots, workspac
 
     workflow.dedupe_workspace(workspace)
     header_dedupe, _ = read_manifest(workspace / "manifest" / "samples.v1.jsonl")
-    assert header_dedupe.get("split_seed") == 424242, (
-        "dedupe_workspace must not drop the recorded split seed"
-    )
+    assert (
+        header_dedupe.get("split_seed") == 424242
+    ), "dedupe_workspace must not drop the recorded split seed"
     assert (
         header_dedupe.get("preparation_config_fingerprint")
         == header_before["preparation_config_fingerprint"]
@@ -298,9 +298,9 @@ def test_dedupe_and_normalize_preserve_manifest_metadata(fixture_roots, workspac
 
     workflow.normalize_workspace(workspace)
     header_normalize, _ = read_manifest(workspace / "manifest" / "samples.v1.jsonl")
-    assert header_normalize.get("split_seed") == 424242, (
-        "normalize_workspace must not drop the recorded split seed"
-    )
+    assert (
+        header_normalize.get("split_seed") == 424242
+    ), "normalize_workspace must not drop the recorded split seed"
 
 
 def test_split_without_seed_reuses_recorded_split_seed(fixture_roots, workspace):
@@ -325,6 +325,6 @@ def test_split_without_seed_reuses_recorded_split_seed(fixture_roots, workspace)
     )
     expected_by_id = {s.sample_id: s.target_split.value for s in expected}
     actual_by_id = {row["sample_id"]: row["target_split"] for row in rows}
-    assert actual_by_id == expected_by_id, (
-        "split_workspace must re-split with the recorded seed, not the default"
-    )
+    assert (
+        actual_by_id == expected_by_id
+    ), "split_workspace must re-split with the recorded seed, not the default"

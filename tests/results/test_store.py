@@ -387,9 +387,7 @@ class TestPathSafety:
         ("dataset_id", "version"),
         [("a:b", "1"), ("d", "1."), ("d", ":")],
     )
-    def test_dataset_path_rejects_unsafe_composites(
-        self, dataset_id, version
-    ) -> None:
+    def test_dataset_path_rejects_unsafe_composites(self, dataset_id, version) -> None:
         # The composite f"{dataset_id}__{version}" is the path component;
         # anything Windows would strip or reinterpret in it must be refused.
         store = ResultsStore(Path(tempfile.mkdtemp()) / "store")
@@ -451,8 +449,7 @@ class TestConcurrentAppends:
             store.append_pages(run_id, chunk)
 
         threads = [
-            threading.Thread(target=ingest, args=(pages[i : i + 25],))
-            for i in (0, 25)
+            threading.Thread(target=ingest, args=(pages[i : i + 25],)) for i in (0, 25)
         ]
         for thread in threads:
             thread.start()

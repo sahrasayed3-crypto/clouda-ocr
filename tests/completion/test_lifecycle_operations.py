@@ -75,9 +75,7 @@ def test_rate_limiter_is_bounded() -> None:
 def test_rate_limiter_releases_idle_client_keys() -> None:
     """Distinct one-touch clients must not pin memory forever."""
 
-    limiter = SlidingWindowRateLimiter(
-        limit=2, window_seconds=10, sweep_interval=4
-    )
+    limiter = SlidingWindowRateLimiter(limit=2, window_seconds=10, sweep_interval=4)
     for index in range(100):
         assert limiter.allow(f"ip-{index}", now=1000.0)
     assert len(limiter._events) == 100  # growth within one window is expected

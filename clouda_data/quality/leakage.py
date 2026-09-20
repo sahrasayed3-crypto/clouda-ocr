@@ -181,8 +181,7 @@ def _value_encodes_protection(value: str) -> bool:
     if any(ord(char) > 127 and char.isalpha() for char in compacted):
         # Unknown-script homoglyphs: fold them to 'x' and re-check.
         wildcarded = "".join(
-            "x" if ord(char) > 127 and char.isalpha() else char
-            for char in compacted
+            "x" if ord(char) > 127 and char.isalpha() else char for char in compacted
         )
         return wildcarded in _PROTECTION_MARKER_VOCABULARY
     return False

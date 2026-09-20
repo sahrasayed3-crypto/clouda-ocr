@@ -1415,9 +1415,7 @@ def test_corrupt_result_file_is_abandoned_once_stale(api_environment, monkeypatc
     row = database.get_conversion("job-a")
     assert row["status"] == "finalizing"
 
-    stale_updated_at = (
-        datetime.now(timezone.utc) - timedelta(seconds=30)
-    ).isoformat()
+    stale_updated_at = (datetime.now(timezone.utc) - timedelta(seconds=30)).isoformat()
     database.update_conversion(row["id"], {"updated_at": stale_updated_at})
     stale_row = database.get_conversion("job-a")
     assert _recover_finalizing_result(database, dict(stale_row))["status"] == "pending"
@@ -1459,7 +1457,9 @@ def test_second_worker_cannot_reclaim_processing_job_at_state_machine_level(
 
     _client, database, storage = api_environment
     create_job(database, storage)
-    first = database.transition_conversion("job-a", "processing", worker_name="worker-A")
+    first = database.transition_conversion(
+        "job-a", "processing", worker_name="worker-A"
+    )
     original_token = first["claim_token"]
 
     with pytest.raises(ValueError):
@@ -1477,7 +1477,9 @@ def test_same_worker_retransition_is_idempotent(api_environment):
 
     _client, database, storage = api_environment
     create_job(database, storage)
-    first = database.transition_conversion("job-a", "processing", worker_name="worker-A")
+    first = database.transition_conversion(
+        "job-a", "processing", worker_name="worker-A"
+    )
     original_token = first["claim_token"]
 
     database.transition_conversion("job-a", "processing", worker_name="worker-A")
@@ -1535,7 +1537,11 @@ def test_result_upload_rejects_non_numeric_score_metadata(api_environment):
     uploaded = _start_and_upload(
         client,
         headers,
-        {"status": "completed", "text_quality_score": {"bad": 1}, "processing_time": 1.0},
+        {
+            "status": "completed",
+            "text_quality_score": {"bad": 1},
+            "processing_time": 1.0,
+        },
     )
 
     assert uploaded.status_code == 400

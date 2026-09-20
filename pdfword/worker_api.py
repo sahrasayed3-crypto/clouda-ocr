@@ -67,6 +67,8 @@ ALLOWED_CLOUD_PROVIDERS = {
     "google",
     "alibaba",
 }
+
+
 def _maintenance_loop(stop_event: threading.Event, interval_seconds: float) -> None:
     """Background maintenance: deferred re-dispatch + guest retention.
 
@@ -96,9 +98,7 @@ def _maintenance_loop(stop_event: threading.Event, interval_seconds: float) -> N
 async def _lifespan(_: "FastAPI"):
     stop_event = threading.Event()
     try:
-        interval = float(
-            os.getenv("CLOUDA_MAINTENANCE_INTERVAL_SECONDS", "300") or 300
-        )
+        interval = float(os.getenv("CLOUDA_MAINTENANCE_INTERVAL_SECONDS", "300") or 300)
     except ValueError:
         interval = 300.0
     thread = threading.Thread(
@@ -622,11 +622,14 @@ def _recover_finalizing_result(database: Database, row: dict) -> dict:
             except ValueError:
                 refreshed = database.get_conversion(row["job_id"])
                 if refreshed is None:
-                    raise HTTPException(status_code=404, detail="Job not found") from None
+                    raise HTTPException(
+                        status_code=404, detail="Job not found"
+                    ) from None
                 return refreshed
             except Exception as exc:
                 raise HTTPException(
-                    status_code=503, detail="Result finalization is temporarily unavailable"
+                    status_code=503,
+                    detail="Result finalization is temporarily unavailable",
                 ) from exc
             if updated.get("guest_scope_id"):
                 database.mark_guest_job_result(
@@ -2244,9 +2247,7 @@ def upload_result(
                 "stored_docx_path": str(target),
                 "file_type": values.get("file_type"),
                 "text_quality_score": numeric_metadata.get("text_quality_score"),
-                "layout_quality_score": numeric_metadata.get(
-                    "layout_quality_score"
-                ),
+                "layout_quality_score": numeric_metadata.get("layout_quality_score"),
                 "final_quality_score": numeric_metadata.get("final_quality_score"),
                 "winning_engine": values.get("winning_engine"),
                 "processing_time": numeric_metadata.get("processing_time", 0),
@@ -2313,6 +2314,7 @@ def upload_result(
         for offset, attempt in enumerate(attempts[:100], start=1):
             if not isinstance(attempt, dict):
                 continue
+
             def _numeric(raw_value, cast, default):
                 try:
                     return default if raw_value is None else cast(raw_value)
@@ -2341,9 +2343,7 @@ def upload_result(
                     "completion_tokens": _numeric(
                         attempt.get("completion_tokens"), int, 0
                     ),
-                    "processing_time": _numeric(
-                        attempt.get("latency_ms"), float, 0.0
-                    )
+                    "processing_time": _numeric(attempt.get("latency_ms"), float, 0.0)
                     / 1000.0,
                     "success": int(not bool(attempt.get("failure_reason"))),
                     "failure_reason": (

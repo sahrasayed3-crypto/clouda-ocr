@@ -112,7 +112,10 @@ def restore_backup(archive_path: str | Path, destination: str | Path) -> Path:
                 member_target.parent.mkdir(parents=True, exist_ok=True)
                 if member_target.exists() or member_target.is_symlink():
                     raise FileExistsError(f"Refusing to overwrite {member.filename}")
-                with bundle.open(member, "r") as source, member_target.open("xb") as output:
+                with (
+                    bundle.open(member, "r") as source,
+                    member_target.open("xb") as output,
+                ):
                     shutil.copyfileobj(source, output, length=1024 * 1024)
         restored_database = staging / "data" / "clouda.sqlite3"
         connection = sqlite3.connect(restored_database)

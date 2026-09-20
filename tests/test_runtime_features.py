@@ -75,9 +75,7 @@ class TestRuntimeFeatures(unittest.TestCase):
             payload["results"].append(
                 {"page_no": 2, "obsolete_field_from_another_build": True}
             )
-            path.write_text(
-                json.dumps(payload, ensure_ascii=False), encoding="utf-8"
-            )
+            path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
             restored = load_checkpoint(tmp)
 

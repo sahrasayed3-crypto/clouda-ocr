@@ -323,7 +323,9 @@ def test_assign_splits_stable_when_hash_bridging_group_arrives():
     # A late sample in a new document shares doc1's file hash, merging the
     # two groups; the merged component's smallest key is now the NEW group.
     # The already-assigned dataset is what re-splits (as on a re-run).
-    bridge = _sample("a_doc0_p1", document_id="doc0", group_id="doc0", file_sha256="f" * 64)
+    bridge = _sample(
+        "a_doc0_p1", document_id="doc0", group_id="doc0", file_sha256="f" * 64
+    )
     second, _ = assign_splits([*first, bridge], seed=7)
     reassigned = {s.sample_id: s.target_split for s in second}
 

@@ -10,11 +10,22 @@ from typing import BinaryIO
 
 SAFE_ID_RE = re.compile(r"^[a-fA-F0-9-]{16,64}$")
 
+_WINDOWS_RESERVED_DEVICES = frozenset(
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{n}" for n in range(1, 10)}
+    | {f"LPT{n}" for n in range(1, 10)}
+)
+
 
 def safe_filename(value: str, fallback: str) -> str:
     clean = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", (value or "").strip())
     clean = clean.strip(" .")
-    return clean[:120] or fallback
+    stem = clean.split(".", 1)[0].rstrip(" .").upper()
+    if stem in _WINDOWS_RESERVED_DEVICES:
+        # Windows refuses or reinterprets device names (CON.pdf, NUL .pdf,
+        # COM1, ...) even with extensions; prefix so os.replace succeeds.
+        clean = f"_{clean}"
+    return clean[:120].strip(" .") or fallback
 
 
 def ensure_contained(root: Path, path: Path) -> Path:

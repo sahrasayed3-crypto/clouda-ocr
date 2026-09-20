@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import time
@@ -56,6 +57,33 @@ class TestRuntimeFeatures(unittest.TestCase):
             restored = load_checkpoint(tmp)
             self.assertEqual(restored[2].text_quality_score, 92.0)
             self.assertFalse(restored[2].requires_manual_review)
+
+    def test_checkpoint_survives_schema_drift(self) -> None:
+        """A row carrying a field from another build must not discard the
+        whole checkpoint: recover every page that still fits the schema."""
+
+        with tempfile.TemporaryDirectory() as tmp:
+            original = PageResult(
+                page_no=1,
+                model_used="local:pypdf",
+                markdown="hello",
+                text_quality_score=93.0,
+            )
+            save_checkpoint(tmp, {1: original})
+            path = Path(tmp) / "checkpoint.json"
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            payload["results"].append(
+                {"page_no": 2, "obsolete_field_from_another_build": True}
+            )
+            path.write_text(
+                json.dumps(payload, ensure_ascii=False), encoding="utf-8"
+            )
+
+            restored = load_checkpoint(tmp)
+
+            self.assertEqual(set(restored), {1})
+            self.assertEqual(restored[1].markdown, "hello")
+            self.assertEqual(restored[1].text_quality_score, 93.0)
 
     def test_pdf_byte_and_page_limits_are_enforced(self) -> None:
         limits = ProcessingLimits(

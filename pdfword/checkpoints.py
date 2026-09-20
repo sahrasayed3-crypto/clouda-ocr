@@ -1,9 +1,14 @@
 import json
+import logging
 import os
-from dataclasses import asdict
+from dataclasses import asdict, fields
 from pathlib import Path
 
 from .models import PageResult
+
+logger = logging.getLogger(__name__)
+
+_PAGE_RESULT_FIELDS = frozenset(field.name for field in fields(PageResult))
 
 
 def checkpoint_path(job_root: str | Path) -> Path:
@@ -25,18 +30,40 @@ def save_checkpoint(job_root: str | Path, results: dict[int, PageResult]) -> Non
 
 
 def load_checkpoint(job_root: str | Path) -> dict[int, PageResult]:
+    """Load completed-page results, tolerating schema drift.
+
+    Rows carrying unknown fields (e.g. written by another build) are
+    recovered with the unknown fields dropped; only rows that cannot fit
+    the dataclass at all are skipped, so a resume never silently loses
+    every completed page.
+    """
+
     path = checkpoint_path(job_root)
     if not path.is_file():
         return {}
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-        return {
-            int(row["page_no"]): PageResult(**row)
-            for row in payload.get("results", [])
-            if isinstance(row, dict) and row.get("page_no")
-        }
-    except (OSError, ValueError, TypeError):
+        rows = payload.get("results", [])
+    except (OSError, ValueError):
         return {}
+    recovered: dict[int, PageResult] = {}
+    dropped = 0
+    for row in rows:
+        if not isinstance(row, dict) or not row.get("page_no"):
+            continue
+        compatible = {key: value for key, value in row.items() if key in _PAGE_RESULT_FIELDS}
+        try:
+            page_no = int(row["page_no"])
+            recovered[page_no] = PageResult(**compatible)
+        except (TypeError, ValueError):
+            dropped += 1
+    if dropped:
+        logger.warning(
+            "Checkpoint %s: %d row(s) ignored due to incompatible fields",
+            path,
+            dropped,
+        )
+    return recovered
 
 
 def prepare_failed_page_retry(

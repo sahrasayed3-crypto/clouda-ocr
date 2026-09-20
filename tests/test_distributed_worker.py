@@ -1579,3 +1579,23 @@ def test_result_upload_survives_malformed_cloud_attempts(api_environment):
     assert attempts[-1]["cost"] == 0
     assert attempts[-1]["prompt_tokens"] == 0
     assert attempts[-1]["quality_score"] is None
+
+
+def test_result_upload_survives_malformed_correction_applications(api_environment):
+    client, database, storage = api_environment
+    client = TestClient(app, raise_server_exceptions=False)
+    headers = {"X-Worker-API-Key": API_KEY}
+    create_job(database, storage)
+
+    uploaded = _start_and_upload(
+        client,
+        headers,
+        {
+            "status": "completed",
+            "text_quality_score": 99.0,
+            "correction_applications": [{}, {"rule_id": None}, 42],
+        },
+    )
+
+    assert uploaded.status_code == 200
+    assert database.get_conversion("job-a")["status"] == "completed"

@@ -2284,7 +2284,29 @@ def upload_result(
         )
     applications = values.get("correction_applications") or []
     if isinstance(applications, list):
-        database.record_correction_applications(job_id, applications[:500])
+        # Worker-supplied records: sanitize at the boundary so a malformed
+        # item cannot 500 an already-completed conversion.
+        normalized_applications = []
+        for item in applications[:500]:
+            if not isinstance(item, dict):
+                continue
+            rule_id = item.get("rule_id")
+            if not isinstance(rule_id, str) or not rule_id:
+                continue
+            try:
+                confidence = float(item.get("confidence") or 0.0)
+            except (TypeError, ValueError):
+                confidence = 0.0
+            normalized_applications.append(
+                {
+                    "rule_id": rule_id[:200],
+                    "before": str(item.get("before") or ""),
+                    "after": str(item.get("after") or ""),
+                    "confidence": confidence,
+                    "context_match": bool(item.get("context_match")),
+                }
+            )
+        database.record_correction_applications(job_id, normalized_applications)
     attempts = values.get("cloud_attempts") or []
     if isinstance(attempts, list):
         existing_attempts = len(database.list_attempts(row["id"]))

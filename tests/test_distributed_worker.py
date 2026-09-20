@@ -1449,3 +1449,52 @@ def test_corrupt_result_file_before_stale_threshold_stays_finalizing(
         _recover_finalizing_result(database, dict(row))
     assert exc_info.value.status_code == 503
     assert database.get_conversion("job-a")["status"] == "finalizing"
+
+
+def test_second_worker_cannot_reclaim_processing_job_at_state_machine_level(
+    api_environment,
+):
+    """processing -> processing by a different worker must be a conflict,
+    not a silent ownership takeover with a rotated claim token."""
+
+    _client, database, storage = api_environment
+    create_job(database, storage)
+    first = database.transition_conversion("job-a", "processing", worker_name="worker-A")
+    original_token = first["claim_token"]
+
+    with pytest.raises(ValueError):
+        database.transition_conversion("job-a", "processing", worker_name="worker-B")
+
+    row = database.get_conversion("job-a")
+    assert row["worker_name"] == "worker-A"
+    assert row["claim_token"] == original_token
+    assert row["attempt_count"] == 1
+
+
+def test_same_worker_retransition_is_idempotent(api_environment):
+    """A worker re-affirming its own claim must not rotate its token or
+    inflate the attempt count."""
+
+    _client, database, storage = api_environment
+    create_job(database, storage)
+    first = database.transition_conversion("job-a", "processing", worker_name="worker-A")
+    original_token = first["claim_token"]
+
+    database.transition_conversion("job-a", "processing", worker_name="worker-A")
+
+    row = database.get_conversion("job-a")
+    assert row["worker_name"] == "worker-A"
+    assert row["claim_token"] == original_token
+    assert row["attempt_count"] == 1
+
+
+def test_heartbeat_cannot_hijack_another_workers_claim(api_environment):
+    _client, database, storage = api_environment
+    create_job(database, storage)
+    database.transition_conversion("job-a", "processing", worker_name="worker-A")
+
+    with pytest.raises(ValueError):
+        database.heartbeat("job-a", "worker-B")
+
+    row = database.get_conversion("job-a")
+    assert row["worker_name"] == "worker-A"

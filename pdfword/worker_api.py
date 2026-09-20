@@ -2052,9 +2052,14 @@ def start_job(job_id: str, message: WorkerMessage) -> dict:
             )
     if row["status"] == "processing":
         raise HTTPException(status_code=409, detail="Job is owned by another worker")
-    database.transition_conversion(
-        job_id, "processing", worker_name=message.worker_name
-    )
+    try:
+        database.transition_conversion(
+            job_id, "processing", worker_name=message.worker_name
+        )
+    except ValueError as exc:
+        # A stale pre-claim snapshot can race another worker's claim; the
+        # state machine rejects the takeover.
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return get_job(job_id)
 
 

@@ -4,9 +4,11 @@
 
 Benchmarking is complete. HunyuanOCR-1.5 is the current leading candidate based
 on this specific 177-page benchmark (Normalized Arabic CER 0.391497), but it is
-not installed or integrated as a final OCR engine. Model adaptation/training and
-runtime integration are the next major technical stage, currently limited
-primarily by access to suitable GPU compute. Dataset and model rights remain
+not installed or integrated as a final OCR engine. Runtime integration and
+validation of the leading candidate are the next major technical stage, currently
+limited primarily by access to suitable GPU compute. A dedicated Clouda-trained
+model may be pursued only if benchmark evidence shows a meaningful gap that
+existing open and self-hostable models do not adequately close. Dataset and model rights remain
 governed separately by the fail-closed licensing and provenance process. The
 runtime performs direct extraction only; scanned or image-only pages remain
 `pending_ocr_model`.

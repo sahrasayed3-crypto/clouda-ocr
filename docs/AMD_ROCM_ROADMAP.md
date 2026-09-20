@@ -4,7 +4,7 @@
 
 ROCm support is not implemented and has not been tested.
 
-The project is architecturally prepared for future AMD-compatible OCR integration through `pdfword.engines.ExtractionEngine`. A primary model candidate has been selected, but training has not started yet because dataset licensing and written-permission verification are still in progress.
+The project is architecturally prepared for future AMD-compatible OCR integration through `pdfword.engines.ExtractionEngine`. A leading benchmark candidate has been identified for evaluation. No model training or adaptation has started; any future training would be pursued only if benchmark evidence shows a meaningful gap that existing open and self-hostable models do not adequately close, and would remain subject to dataset licensing and written-permission verification.
 
 ## Required Before Any ROCm Claim
 

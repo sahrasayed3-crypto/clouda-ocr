@@ -26,10 +26,12 @@
   selection remains subject to architecture, licensing, deployment constraints,
   integration, and subsequent validation.
 - OIDC/reverse-proxy boundary and production rate-limit guidance.
-- Model adaptation/training and runtime integration are the next major technical
-  stage. Progress is currently limited primarily by access to suitable GPU
-  compute; dataset and model rights remain governed by the fail-closed licensing
-  and provenance process.
+- Runtime integration and validation of the leading benchmark candidate are the
+  next major technical stage. Progress is currently limited primarily by access
+  to suitable GPU compute; dataset and model rights remain governed by the
+  fail-closed licensing and provenance process. A dedicated Clouda-trained model
+  would be pursued only if benchmark evidence shows a meaningful gap that
+  existing open and self-hostable models do not adequately close.
 
 ## External decisions
 

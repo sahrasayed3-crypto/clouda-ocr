@@ -8,7 +8,7 @@
 > real data ingestion. No final trained OCR model exists; model training and
 > local OCR inference remain disabled by default.
 
-Clouda PDF is an open-source, model-agnostic PDF-to-DOCX project for Arabic, English, and mixed-language documents. Its long-term goal is reliable Arabic OCR for modern and historical books, including weak or medium-quality scanned pages, margins, footnotes, RTL text, and mixed Arabic-English reading order.
+Clouda PDF is an open-source, model-agnostic PDF-to-DOCX project for Arabic, English, and mixed-language documents. Its long-term goal is open, self-hostable, independently evaluated Arabic Document AI infrastructure for real-world documents: reliable Arabic OCR and document understanding for modern and historical books, including weak or medium-quality scanned pages, margins, footnotes, RTL text, and mixed Arabic-English reading order. Existing OCR/VLM models are evaluated first; a dedicated Clouda model may be trained or adapted only when benchmark evidence shows a meaningful gap that existing open and self-hostable models do not adequately solve.
 
 The current verified implementation converts trusted born-digital PDF text into editable, text-only DOCX files while preserving page order, Arabic Unicode, RTL paragraph direction, footers, and page boundaries. Embedded text is analyzed and must pass the canonical digital-text trust gate before direct extraction is authorized. Image-only scanned pages are detected and routed to `pending_ocr_model`; they are not treated as successful OCR output until a model is licensed for the intended use, integrated, trained or adapted as needed, and validated in the application route.
 
@@ -205,7 +205,7 @@ training-planning code.
 
 ## Current limitations
 
-- Benchmarking is complete. Model adaptation/training and runtime integration are the next major technical stage. Progress on that stage is currently limited primarily by access to suitable GPU compute. Dataset and model rights remain governed separately by the existing fail-closed licensing and provenance process.
+- Benchmarking is complete. Runtime integration and validation of the leading benchmark candidate are the next major technical stage; progress on that stage is currently limited primarily by access to suitable GPU compute. A dedicated Clouda-trained model would be pursued only if evaluation on real-world Arabic documents shows a meaningful gap that existing open and self-hostable models do not adequately close. Dataset and model rights remain governed separately by the existing fail-closed licensing and provenance process.
 - HunyuanOCR-1.5 is the current leading candidate based on this specific 177-page benchmark (Normalized Arabic CER 0.391497). Final production/runtime selection remains subject to architecture, licensing, deployment constraints, integration, and subsequent validation.
 - Production application accuracy is not claimed. A separate metadata-only
   [177-page Arabic OCR benchmark](benchmarks/ocr_arabic/README.md) documents

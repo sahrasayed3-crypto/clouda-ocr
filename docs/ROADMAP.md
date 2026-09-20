@@ -3,7 +3,7 @@
 ## Next 0–2 months
 
 - Maintain the direct-text conversion path and metadata contract.
-- Secure suitable GPU compute for model adaptation/training and runtime integration.
+- Secure suitable GPU compute for runtime integration and continued independent evaluation of OCR/VLM candidates.
 - Plan adaptation and integration work for the current leading candidate while
   preserving the fail-closed licensing and provenance process.
 - Define application-route acceptance criteria for Arabic, English,
@@ -11,7 +11,7 @@
 
 ## Months 2–4
 
-- Adapt/train and integrate a candidate behind the model-agnostic interface.
+- Integrate the leading candidate behind the model-agnostic interface; adapt or train a dedicated model only if route-level evaluation demonstrates a gap that existing models do not close.
 - Measure application-route accuracy, latency, memory, and failure behavior on
   representative hardware.
 - Decide whether an optional CPU and/or AMD-compatible deployment path is viable.

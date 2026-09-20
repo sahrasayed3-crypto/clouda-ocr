@@ -750,6 +750,10 @@ def split_workspace(
         effective_seed = seed
         # The header must describe the split that was actually applied.
         metadata = {**metadata, "split_seed": seed}
+        # An explicit seed is an operator override: recompute every group
+        # (assign_splits only honors carried assignments for incremental
+        # runs, not deliberate re-splits).
+        samples = [sample.evolve(target_split=SplitName.UNASSIGNED) for sample in samples]
     elif recorded_seed is not None:
         effective_seed = int(recorded_seed)
     else:

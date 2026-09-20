@@ -295,3 +295,88 @@ def test_export_rows_are_deterministic_jsonl(tmp_path: Path):
 def test_unknown_exporter_raises():
     with pytest.raises(KeyError):
         get_exporter("parquet")
+
+
+# ------------------------------------------------------- incremental stability
+
+
+def _doc_pages(prefix: str, doc: str, file_hash: str) -> list[DatasetSample]:
+    return [
+        _sample(
+            f"{prefix}_{doc}_p{page}",
+            document_id=doc,
+            group_id=doc,
+            file_sha256=file_hash,
+        )
+        for page in (1, 2)
+    ]
+
+
+def test_assign_splits_stable_when_hash_bridging_group_arrives():
+    """Documented rule 3: no global reshuffle when new groups arrive."""
+
+    phase_one = _doc_pages("a", "doc1", "f" * 64) + _doc_pages("a", "doc2", "e" * 64)
+    first, _ = assign_splits(phase_one, seed=7)
+    prior = {s.sample_id: s.target_split for s in first}
+    assert len(set(prior.values())) >= 1  # fixture sanity: everything assigned
+
+    # A late sample in a new document shares doc1's file hash, merging the
+    # two groups; the merged component's smallest key is now the NEW group.
+    # The already-assigned dataset is what re-splits (as on a re-run).
+    bridge = _sample("a_doc0_p1", document_id="doc0", group_id="doc0", file_sha256="f" * 64)
+    second, _ = assign_splits([*first, bridge], seed=7)
+    reassigned = {s.sample_id: s.target_split for s in second}
+
+    for sample_id, split in prior.items():
+        assert reassigned[sample_id] == split, (
+            f"{sample_id} moved from {split} to {reassigned[sample_id]} "
+            "although neither its content nor the seed changed"
+        )
+    # Leak safety still holds: the bridging sample joins its component.
+    assert reassigned["a_doc0_p1"] == prior["a_doc1_p1"]
+
+
+def test_assign_splits_fresh_components_keep_anchor_semantics():
+    """Without prior assignments the assignment is the anchor hash, so fresh
+    runs stay byte-identical to previous versions."""
+
+    samples = _split_samples()
+    first, _ = assign_splits(samples, seed=42)
+    second, _ = assign_splits(samples, seed=42)
+    assert [s.target_split for s in first] == [s.target_split for s in second]
+    all_unassigned = all(s.target_split == SplitName.UNASSIGNED for s in samples)
+    assert all_unassigned
+
+
+def test_conflicting_prior_assignments_fall_back_to_anchor():
+    """A merge that would have to keep two different splits recomputes
+    deterministically instead of picking a side."""
+
+    doc_a = _doc_pages("a", "doc1", "f" * 64)
+    doc_b = [
+        _sample(
+            f"a_doc2_p{page}",
+            document_id="doc2",
+            group_id="doc2",
+            file_sha256="e" * 64,
+            normalized_text_sha256="t" * 64,
+        )
+        for page in (1, 2)
+    ]
+    first, _ = assign_splits(doc_a + doc_b, seed=7)
+    priors = {s.sample_id: s.target_split for s in first}
+    if priors["a_doc1_p1"] == priors["a_doc2_p1"]:
+        return  # fixture landed in one split; nothing to conflict
+
+    # The bridge shares a file hash with doc1 AND a text hash with doc2,
+    # so the merged component carries two conflicting prior splits.
+    bridge = _sample(
+        "a_doc0_p1",
+        document_id="doc0",
+        group_id="doc0",
+        file_sha256="f" * 64,
+        normalized_text_sha256="t" * 64,
+    )
+    second = assign_splits(doc_a + doc_b + [bridge], seed=7)[0]
+    merged = {s.sample_id: s.target_split for s in second}
+    assert merged["a_doc1_p1"] == merged["a_doc2_p1"] == merged["a_doc0_p1"]

@@ -384,6 +384,17 @@ class TestPathSafety:
             store.run_dir(bad_id)
 
     @pytest.mark.parametrize(
+        "bad_id", ["CON.txt", "NUL.json", "COM1.log", "LPT9.csv", "AUX.data"]
+    )
+    def test_reserved_names_stay_reserved_with_extensions(self, bad_id) -> None:
+        """Windows keeps device names reserved even with an extension, so the
+        check must apply to the stem before the first dot."""
+
+        store = ResultsStore(Path(tempfile.mkdtemp()) / "store")
+        with pytest.raises(ValueError):
+            store.run_dir(bad_id)
+
+    @pytest.mark.parametrize(
         ("dataset_id", "version"),
         [("a:b", "1"), ("d", "1."), ("d", ":")],
     )

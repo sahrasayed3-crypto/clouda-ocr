@@ -64,8 +64,10 @@ def safe_component(value: str, *, what: str = "identifier") -> str:
     Rejects anything Windows would reinterpret: ``:`` (NTFS data streams and
     ``os.replace`` failures), trailing dots/spaces (stripped by the filesystem,
     making ``abc.`` and ``abc`` collide), all-dot names (``.``/``..`` escapes)
-    and reserved device names. The result is safe on Windows, macOS and Linux
-    alike.
+    and reserved device names — which Windows keeps reserved even with an
+    extension, so the check applies to the stem before the first dot
+    (``CON.txt`` is as unsafe as ``CON``). The result is safe on Windows,
+    macOS and Linux alike.
     """
 
     if (
@@ -73,7 +75,7 @@ def safe_component(value: str, *, what: str = "identifier") -> str:
         or value != value.rstrip(". ")
         or set(value) == {"."}
         or _UNSAFE_ID.search(value)
-        or value.upper() in _WINDOWS_RESERVED
+        or value.split(".", 1)[0].upper() in _WINDOWS_RESERVED
     ):
         raise ValueError(f"Unsafe {what}: {value!r}")
     return value

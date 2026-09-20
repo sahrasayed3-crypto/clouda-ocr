@@ -21,17 +21,20 @@
 - Dataset, training-preparation, and model-evaluation worker capabilities.
 - Real local-model adapters are implemented, but no final production model or
   weight is integrated.
-- HunyuanOCR-1.5 is the current leading candidate based on this specific
-  177-page benchmark (Normalized Arabic CER 0.391497). Final production/runtime
-  selection remains subject to architecture, licensing, deployment constraints,
-  integration, and subsequent validation.
+- On the published 177-page benchmark v0.1.0, HunyuanOCR-1.5 ranked first by
+  Normalized Arabic CER (0.391497). This is a benchmark-specific historical
+  result; production/runtime selection remains open pending the expanded
+  evaluation, architecture, licensing, deployment constraints, integration, and
+  subsequent validation.
 - OIDC/reverse-proxy boundary and production rate-limit guidance.
-- Runtime integration and validation of the leading benchmark candidate are the
-  next major technical stage. Progress is currently limited primarily by access
-  to suitable GPU compute; dataset and model rights remain governed by the
-  fail-closed licensing and provenance process. A dedicated Clouda-trained model
-  would be pursued only if benchmark evidence shows a meaningful gap that
-  existing open and self-hostable models do not adequately close.
+- Continuing independent evaluation (the 462-page held-out expansion is in
+  progress and currently paused pending additional compute capacity) and
+  model-agnostic runtime integration are the next major technical stage.
+  Progress is currently limited primarily by access to suitable GPU compute;
+  dataset and model rights remain governed by the fail-closed licensing and
+  provenance process. A dedicated Clouda-trained model would be pursued only if
+  benchmark evidence shows a meaningful gap that existing open and self-hostable
+  models do not adequately close.
 
 ## External decisions
 

@@ -205,8 +205,8 @@ training-planning code.
 
 ## Current limitations
 
-- Benchmarking is complete. Runtime integration and validation of the leading benchmark candidate are the next major technical stage; progress on that stage is currently limited primarily by access to suitable GPU compute. A dedicated Clouda-trained model would be pursued only if evaluation on real-world Arabic documents shows a meaningful gap that existing open and self-hostable models do not adequately close. Dataset and model rights remain governed separately by the existing fail-closed licensing and provenance process.
-- HunyuanOCR-1.5 is the current leading candidate based on this specific 177-page benchmark (Normalized Arabic CER 0.391497). Final production/runtime selection remains subject to architecture, licensing, deployment constraints, integration, and subsequent validation.
+- The published 177-page benchmark v0.1.0 is complete. A larger 462-page held-out evaluation is in progress and currently paused pending additional compute capacity; not all candidate models have completed it. Production model selection remains open until the expanded evaluation is complete and architecture, licensing, deployment, and integration constraints are evaluated. Runtime integration and validation work is currently limited primarily by access to suitable GPU compute. A dedicated Clouda-trained model would be pursued only if evaluation on real-world Arabic documents shows a meaningful gap that existing open and self-hostable models do not adequately close. Dataset and model rights remain governed separately by the existing fail-closed licensing and provenance process.
+- On the published 177-page benchmark v0.1.0, HunyuanOCR-1.5 ranked first by Normalized Arabic CER (0.391497). This is a benchmark-specific historical result, not a final production-model selection; production/runtime selection remains open pending the expanded evaluation, architecture, licensing, deployment constraints, integration, and subsequent validation.
 - Production application accuracy is not claimed. A separate metadata-only
   [177-page Arabic OCR benchmark](benchmarks/ocr_arabic/README.md) documents
   controlled model-evaluation results without changing the application route.
@@ -216,7 +216,7 @@ training-planning code.
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md), [docs/ROADMAP.md](docs/ROADMAP.md), and [docs/MODEL_INTEGRATION.md](docs/MODEL_INTEGRATION.md). The current leading candidate will become the final OCR engine only if architecture, licensing, deployment, integration, and subsequent validation requirements are satisfied.
+See [ROADMAP.md](ROADMAP.md), [docs/ROADMAP.md](docs/ROADMAP.md), and [docs/MODEL_INTEGRATION.md](docs/MODEL_INTEGRATION.md). No production model has been selected yet; the final OCR engine will be chosen only after the expanded evaluation is complete and architecture, licensing, deployment, integration, and subsequent validation requirements are satisfied.
 
 ## Documentation
 

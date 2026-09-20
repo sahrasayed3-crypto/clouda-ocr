@@ -2160,6 +2160,31 @@ def upload_result(
     target_status = values.get("status")
     if target_status not in {"completed", "manual_review"}:
         raise HTTPException(status_code=400, detail="Invalid final status")
+    # Validate worker-supplied metadata types before any state or temp file
+    # is created: malformed values must be a 400, not a mid-finalization
+    # 500 that leaks a .docx.part file.
+    numeric_metadata: dict[str, float] = {}
+    for key in (
+        "text_quality_score",
+        "layout_quality_score",
+        "final_quality_score",
+        "processing_time",
+    ):
+        value = values.get(key)
+        if value is None:
+            continue
+        try:
+            numeric_metadata[key] = float(value)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=400, detail=f"Invalid result metadata: {key}"
+            ) from exc
+    for key in ("file_type", "winning_engine"):
+        value = values.get(key)
+        if value is not None and not isinstance(value, str):
+            raise HTTPException(
+                status_code=400, detail=f"Invalid result metadata: {key}"
+            ) from None
     quality_forced_review = False
     if target_status == "completed" and not _quality_allows_completed(values):
         target_status = "manual_review"
@@ -2218,11 +2243,13 @@ def upload_result(
             extra={
                 "stored_docx_path": str(target),
                 "file_type": values.get("file_type"),
-                "text_quality_score": values.get("text_quality_score"),
-                "layout_quality_score": values.get("layout_quality_score"),
-                "final_quality_score": values.get("final_quality_score"),
+                "text_quality_score": numeric_metadata.get("text_quality_score"),
+                "layout_quality_score": numeric_metadata.get(
+                    "layout_quality_score"
+                ),
+                "final_quality_score": numeric_metadata.get("final_quality_score"),
                 "winning_engine": values.get("winning_engine"),
-                "processing_time": values.get("processing_time", 0),
+                "processing_time": numeric_metadata.get("processing_time", 0),
             },
         )
     except ValueError as exc:
@@ -2264,6 +2291,20 @@ def upload_result(
         for offset, attempt in enumerate(attempts[:100], start=1):
             if not isinstance(attempt, dict):
                 continue
+            def _numeric(raw_value, cast, default):
+                try:
+                    return default if raw_value is None else cast(raw_value)
+                except (TypeError, ValueError):
+                    return default
+
+            quality_value = attempt.get("score")
+            if quality_value is not None and not isinstance(
+                quality_value, (int, float)
+            ):
+                try:
+                    quality_value = float(quality_value)
+                except (TypeError, ValueError):
+                    quality_value = None
             database.record_attempt(
                 {
                     "conversion_id": row["id"],
@@ -2271,12 +2312,17 @@ def upload_result(
                     "model_name": str(attempt.get("model") or "")[:200],
                     "engine_type": "cloud",
                     "attempt_number": existing_attempts + offset,
-                    "quality_score": attempt.get("score"),
-                    "cost": float(attempt.get("cost") or 0),
+                    "quality_score": quality_value,
+                    "cost": _numeric(attempt.get("cost"), float, 0.0),
                     "cost_is_estimated": int(bool(attempt.get("cost_is_estimated"))),
-                    "prompt_tokens": int(attempt.get("prompt_tokens") or 0),
-                    "completion_tokens": int(attempt.get("completion_tokens") or 0),
-                    "processing_time": float(attempt.get("latency_ms") or 0) / 1000.0,
+                    "prompt_tokens": _numeric(attempt.get("prompt_tokens"), int, 0),
+                    "completion_tokens": _numeric(
+                        attempt.get("completion_tokens"), int, 0
+                    ),
+                    "processing_time": _numeric(
+                        attempt.get("latency_ms"), float, 0.0
+                    )
+                    / 1000.0,
                     "success": int(not bool(attempt.get("failure_reason"))),
                     "failure_reason": (
                         str(attempt.get("failure_reason"))[:2000]

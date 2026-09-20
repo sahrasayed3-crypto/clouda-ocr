@@ -1498,3 +1498,84 @@ def test_heartbeat_cannot_hijack_another_workers_claim(api_environment):
 
     row = database.get_conversion("job-a")
     assert row["worker_name"] == "worker-A"
+
+
+def _start_and_upload(client, headers, metadata):
+    started = client.post(
+        "/internal/jobs/job-a/start", headers=headers, json={"worker_name": "worker-1"}
+    )
+    claim_token = started.json()["claim_token"]
+    return client.post(
+        "/internal/jobs/job-a/result",
+        headers=headers,
+        data={
+            "worker_name": "worker-1",
+            "claim_token": claim_token,
+            "metadata": json.dumps(metadata),
+        },
+        files={
+            "result": (
+                "result.docx",
+                io.BytesIO(valid_docx_bytes()),
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        },
+    )
+
+
+def test_result_upload_rejects_non_numeric_score_metadata(api_environment):
+    """Malformed metadata types must fail with 400 before any state or temp
+    files are touched, not with a 500 and a leaked .docx.part file."""
+
+    client, database, storage = api_environment
+    client = TestClient(app, raise_server_exceptions=False)
+    headers = {"X-Worker-API-Key": API_KEY}
+    create_job(database, storage)
+
+    uploaded = _start_and_upload(
+        client,
+        headers,
+        {"status": "completed", "text_quality_score": {"bad": 1}, "processing_time": 1.0},
+    )
+
+    assert uploaded.status_code == 400
+    assert database.get_conversion("job-a")["status"] == "processing"
+    job_root = Path(database.get_conversion("job-a")["stored_docx_path"]).parent
+    assert list(job_root.glob("*.docx.part")) == []
+
+
+def test_result_upload_survives_malformed_cloud_attempts(api_environment):
+    """A malformed attempt record must not 500 a completed conversion."""
+
+    client, database, storage = api_environment
+    client = TestClient(app, raise_server_exceptions=False)
+    headers = {"X-Worker-API-Key": API_KEY}
+    create_job(database, storage)
+
+    uploaded = _start_and_upload(
+        client,
+        headers,
+        {
+            "status": "completed",
+            "text_quality_score": 99.0,
+            "cloud_attempts": [
+                {
+                    "provider": "openrouter",
+                    "model": "openai/gpt-5-mini",
+                    "latency_ms": "not-a-number",
+                    "cost": "abc",
+                    "prompt_tokens": "1.5",
+                    "completion_tokens": None,
+                    "score": {"unparseable": True},
+                }
+            ],
+        },
+    )
+
+    assert uploaded.status_code == 200
+    row = database.get_conversion("job-a")
+    assert row["status"] == "completed"
+    attempts = database.list_attempts(row["id"])
+    assert attempts[-1]["cost"] == 0
+    assert attempts[-1]["prompt_tokens"] == 0
+    assert attempts[-1]["quality_score"] is None

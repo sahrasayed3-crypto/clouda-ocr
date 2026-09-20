@@ -231,9 +231,7 @@ class TestRuntimeFeatures(unittest.TestCase):
                     restore_backup(archive, destination)
 
             self.assertFalse(destination.exists())
-            self.assertEqual(
-                list(root.glob(f".{destination.name}.restore-*")), []
-            )
+            self.assertEqual(list(root.glob(f".{destination.name}.restore-*")), [])
 
             restored = restore_backup(archive, destination)
             self.assertTrue((restored / "data" / "clouda.sqlite3").is_file())

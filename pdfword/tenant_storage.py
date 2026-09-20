@@ -125,4 +125,3 @@ class TenantStorage:
             raise
         finally:
             source.seek(0)
-        return ensure_contained(self.root, target)

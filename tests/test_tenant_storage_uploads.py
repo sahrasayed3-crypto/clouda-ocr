@@ -50,3 +50,37 @@ def test_safe_filename_reserved_names_are_prefixed() -> None:
         cleaned = safe_filename(name, "input.pdf")
         stem = cleaned.split(".", 1)[0].rstrip(" .").upper()
         assert stem.startswith("_"), f"{name!r} -> {cleaned!r}"
+
+
+def test_concurrent_same_name_uploads_never_overwrite(tmp_path: Path) -> None:
+    """Concurrent uploads of one filename must all land in distinct stored
+    paths with their payloads intact — no overwrite may occur."""
+
+    import threading
+
+    storage = TenantStorage(tmp_path / "root")
+    paths = storage.guest("0f1e2d3c4b5a69788796a5b4c3d2e1f0")
+    payloads = {index: f"PAYLOAD-{index}-".encode() * 64 for index in range(8)}
+    results: dict[int, Path] = {}
+    errors: list[Exception] = []
+    barrier = threading.Barrier(8)
+
+    def worker(index: int) -> None:
+        try:
+            barrier.wait()
+            results[index] = storage.write_upload(
+                paths, "scan.pdf", io.BytesIO(payloads[index])
+            )
+        except Exception as exc:  # noqa: BLE001 - collected below
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert errors == []
+    assert len(set(results.values())) == 8
+    stored_payloads = {path.read_bytes() for path in results.values()}
+    assert stored_payloads == set(payloads.values())

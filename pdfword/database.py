@@ -1951,10 +1951,29 @@ class Database:
             if worker_name is not None:
                 values["worker_name"] = worker_name
             if target_status == "processing":
-                values["started_at"] = now
-                values["last_heartbeat"] = now
-                values["attempt_count"] = int(row["attempt_count"] or 0) + 1
-                values["claim_token"] = uuid.uuid4().hex
+                if current == "processing":
+                    # Re-affirming an active claim is not a new claim: a
+                    # second worker must never take ownership (a stale
+                    # pre-claim snapshot would otherwise steal the job while
+                    # the first worker is mid-conversion), and the owner's
+                    # token/attempt record must not be disturbed.
+                    current_owner = row["worker_name"] or ""
+                    if (
+                        worker_name is not None
+                        and current_owner
+                        and worker_name != current_owner
+                    ):
+                        raise ValueError(
+                            f"Job {job_id} is already claimed by another worker"
+                        )
+                    values.pop("started_at", None)
+                    values.pop("attempt_count", None)
+                    values.pop("claim_token", None)
+                else:
+                    values["started_at"] = now
+                    values["last_heartbeat"] = now
+                    values["attempt_count"] = int(row["attempt_count"] or 0) + 1
+                    values["claim_token"] = uuid.uuid4().hex
             if target_status in FINAL_STATUSES:
                 values["completed_at"] = now
             for key, value in (extra or {}).items():
@@ -2203,17 +2222,19 @@ class Database:
             return cursor.rowcount == 1
 
     def heartbeat(self, job_id: str, worker_name: str) -> None:
+        now = utc_now()
         with self.transaction() as connection:
             cursor = connection.execute(
                 """
                 UPDATE conversions
                 SET last_heartbeat = ?, updated_at = ?, worker_name = ?
                 WHERE job_id = ? AND status = 'processing'
+                  AND (worker_name IS NULL OR worker_name = '' OR worker_name = ?)
                 """,
-                (utc_now(), utc_now(), worker_name, job_id),
+                (now, now, worker_name, job_id, worker_name),
             )
             if cursor.rowcount != 1:
-                raise ValueError("Job is not processing")
+                raise ValueError("Job is not owned by this worker")
 
     def claim_matches(
         self, row: dict, worker_name: str, claim_token: str | None = None

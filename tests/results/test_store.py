@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import tempfile
+from pathlib import Path
+
 import pytest
 
 from clouda_data.results.ground_truth import build_ground_truth_record
@@ -356,3 +359,140 @@ class TestRunLifecycle:
         svc = ResultsService(tmp_path / "store", read_only=True)
         with pytest.raises(UnknownRecordError):
             svc.get_run("missing")
+
+
+class TestPathSafety:
+    """Identifiers must stay single, unambiguous path components on Windows."""
+
+    @pytest.mark.parametrize(
+        "bad_id",
+        [
+            "evil:stream",  # NTFS alternate-data-stream / WinError 87
+            "abc.",  # trailing dot stripped by Windows -> collides with "abc"
+            "run ",  # trailing space stripped by Windows
+            ".",  # current directory escape
+            "..",  # parent directory escape
+            "CON",  # reserved device name
+            "com1",
+            "LPT9",  # reserved device name
+            "nul",
+        ],
+    )
+    def test_run_dir_rejects_unsafe_ids(self, bad_id) -> None:
+        store = ResultsStore(Path(tempfile.mkdtemp()) / "store")
+        with pytest.raises(ValueError):
+            store.run_dir(bad_id)
+
+    @pytest.mark.parametrize(
+        "bad_id", ["CON.txt", "NUL.json", "COM1.log", "LPT9.csv", "AUX.data"]
+    )
+    def test_reserved_names_stay_reserved_with_extensions(self, bad_id) -> None:
+        """Windows keeps device names reserved even with an extension, so the
+        check must apply to the stem before the first dot."""
+
+        store = ResultsStore(Path(tempfile.mkdtemp()) / "store")
+        with pytest.raises(ValueError):
+            store.run_dir(bad_id)
+
+    @pytest.mark.parametrize(
+        ("dataset_id", "version"),
+        [("a:b", "1"), ("d", "1."), ("d", ":")],
+    )
+    def test_dataset_path_rejects_unsafe_composites(self, dataset_id, version) -> None:
+        # The composite f"{dataset_id}__{version}" is the path component;
+        # anything Windows would strip or reinterpret in it must be refused.
+        store = ResultsStore(Path(tempfile.mkdtemp()) / "store")
+        with pytest.raises(ValueError):
+            store.dataset_path(dataset_id, version)
+
+    def test_dataset_path_safe_composite_accepted(self) -> None:
+        store = ResultsStore(Path(tempfile.mkdtemp()) / "store")
+        # A trailing dot inside the composite is harmless; only the component
+        # boundary matters.
+        assert store.dataset_path("v.", "1").name == "v.__1.json"
+
+    @pytest.mark.parametrize(
+        "ok_id", ["run-1", "run_2", "a.b.c", "model@2026", "up+down", "v1.0"]
+    )
+    def test_legitimate_ids_accepted(self, ok_id) -> None:
+        store = ResultsStore(Path(tempfile.mkdtemp()) / "store")
+        assert store.run_dir(ok_id).name == ok_id
+
+    def test_trailing_dot_id_does_not_collide_with_plain_id(self, tmp_path) -> None:
+        store = ResultsStore(tmp_path / "store")
+        with pytest.raises(ValueError):
+            store.run_dir("abc.")
+        # "abc." is refused, so only the plain id can ever own runs/abc.
+        assert not (tmp_path / "store" / "runs" / "abc").exists()
+
+
+class TestConcurrentAppends:
+    """Concurrent writers to one run must not duplicate or lose rows."""
+
+    @staticmethod
+    def _pages(dataset_id: str, start: int, count: int) -> list[PageRecord]:
+        return [
+            PageRecord(
+                page_id=f"{dataset_id}@train:page_{index:03d}",
+                document_id=f"doc_{index // 4:03d}",
+                dataset_id=dataset_id,
+                split="train",
+                page_number=index + 1,
+            )
+            for index in range(start, start + count)
+        ]
+
+    def _prepare(self, tmp_path) -> tuple[ResultsService, str]:
+        svc = ResultsService(tmp_path / "store")
+        run = svc.create_run(
+            model_id="m", dataset_id="fx", split="train", created_at="t"
+        )
+        return svc, run.run_id
+
+    def test_concurrent_distinct_pages_all_persist_once(self, tmp_path) -> None:
+        import threading
+
+        svc, run_id = self._prepare(tmp_path)
+        store = svc.store
+        pages = self._pages("fx", 0, 50)
+
+        def ingest(chunk) -> None:
+            store.append_pages(run_id, chunk)
+
+        threads = [
+            threading.Thread(target=ingest, args=(pages[i : i + 25],)) for i in (0, 25)
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        rows = list(store.iter_pages(run_id))
+        ids = [row.page_id for row in rows]
+        assert len(rows) == 50, f"expected 50 rows, saw {len(rows)}"
+        assert len(set(ids)) == 50, "duplicate page ids after concurrent ingest"
+
+    def test_concurrent_identical_reingestion_is_idempotent(self, tmp_path) -> None:
+        import threading
+
+        svc, run_id = self._prepare(tmp_path)
+        store = svc.store
+        pages = self._pages("fx", 0, 25)
+        conflicts: list[Exception] = []
+
+        def ingest() -> None:
+            try:
+                store.append_pages(run_id, pages)
+            except Exception as exc:  # noqa: BLE001 - collected below
+                conflicts.append(exc)
+
+        threads = [threading.Thread(target=ingest) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert conflicts == []
+        rows = list(store.iter_pages(run_id))
+        assert len(rows) == 25
+        assert len({row.page_id for row in rows}) == 25

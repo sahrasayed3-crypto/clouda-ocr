@@ -1,3 +1,4 @@
+import os
 import sqlite3
 import json
 import shutil
@@ -94,29 +95,49 @@ def restore_backup(archive_path: str | Path, destination: str | Path) -> Path:
         raise ValueError("ملف Backup غير صالح للاستعادة")
     if target.exists() and any(target.iterdir()):
         raise FileExistsError("مجلد الاستعادة يجب أن يكون فارغًا")
-    target.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(archive, "r") as bundle:
-        validate_zip_archive(bundle, limits=ArchiveLimits())
-        for member in bundle.infolist():
-            member_target = (target / member.filename).resolve()
-            if target != member_target and target not in member_target.parents:
-                raise ValueError(f"مسار غير آمن داخل Backup: {member.filename}")
-            if member.is_dir():
-                member_target.mkdir(parents=True, exist_ok=True)
-                continue
-            member_target.parent.mkdir(parents=True, exist_ok=True)
-            if member_target.exists() or member_target.is_symlink():
-                raise FileExistsError(f"Refusing to overwrite {member.filename}")
-            with bundle.open(member, "r") as source, member_target.open("xb") as output:
-                shutil.copyfileobj(source, output, length=1024 * 1024)
-    restored_database = target / "data" / "clouda.sqlite3"
-    connection = sqlite3.connect(restored_database)
+    # Extract into a staging directory that is a *sibling* of the destination
+    # so publishing is a single same-filesystem rename: the destination ends
+    # up either fully restored or absent — never partially populated. A
+    # failure anywhere (extraction, validation, publish) removes the staging
+    # tree and re-raises, so a retry starts clean.
+    target.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(
+        tempfile.mkdtemp(prefix=f".{target.name}.restore-", dir=target.parent)
+    )
     try:
-        result = connection.execute("PRAGMA integrity_check").fetchone()
-        if not result or result[0] != "ok":
-            raise ValueError("فشل فحص سلامة قاعدة البيانات المستعادة")
-    finally:
-        connection.close()
+        with zipfile.ZipFile(archive, "r") as bundle:
+            validate_zip_archive(bundle, limits=ArchiveLimits())
+            for member in bundle.infolist():
+                member_target = (staging / member.filename).resolve()
+                if staging != member_target and staging not in member_target.parents:
+                    raise ValueError(f"مسار غير آمن داخل Backup: {member.filename}")
+                if member.is_dir():
+                    member_target.mkdir(parents=True, exist_ok=True)
+                    continue
+                member_target.parent.mkdir(parents=True, exist_ok=True)
+                if member_target.exists() or member_target.is_symlink():
+                    raise FileExistsError(f"Refusing to overwrite {member.filename}")
+                with (
+                    bundle.open(member, "r") as source,
+                    member_target.open("xb") as output,
+                ):
+                    shutil.copyfileobj(source, output, length=1024 * 1024)
+        restored_database = staging / "data" / "clouda.sqlite3"
+        connection = sqlite3.connect(restored_database)
+        try:
+            result = connection.execute("PRAGMA integrity_check").fetchone()
+            if not result or result[0] != "ok":
+                raise ValueError("فشل فحص سلامة قاعدة البيانات المستعادة")
+        finally:
+            connection.close()
+        if target.exists():
+            # Guaranteed empty by the guard above; remove it so the publish
+            # rename lands on a free name.
+            target.rmdir()
+        os.replace(staging, target)
+    except BaseException:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
     return target
 
 

@@ -5,6 +5,7 @@ import logging
 import os
 import sys
 import zipfile
+from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Event
@@ -18,6 +19,8 @@ from rq import Queue
 from pdfword.database import Database, utc_now
 from pdfword.job_queue import DistributedJobQueue
 from pdfword.worker_client import WorkerApiClient
+from fastapi import HTTPException
+
 from pdfword.worker_api import app, _dispatch_conversion_job, _recover_finalizing_result
 from pdfword import worker_tasks
 
@@ -1388,3 +1391,217 @@ def test_worker_client_covers_json_stream_and_command_methods(
     )
     assert client.fail("job-a", "worker", "error" * 1000)["status"] == "ok"
     assert all(call[2]["headers"]["X-Worker-API-Key"] == API_KEY for call in calls)
+
+
+def test_corrupt_result_file_is_abandoned_once_stale(api_environment, monkeypatch):
+    """A result file that exists but is corrupt must not wedge the job in
+    ``finalizing`` forever: once the stale threshold passes, recovery
+    abandons the attempt and the job becomes actionable again."""
+
+    _client, database, storage = api_environment
+    monkeypatch.setenv("CLOUDA_FINALIZING_STALE_SECONDS", "1")
+    create_job(database, storage)
+    started = _client.post(
+        "/internal/jobs/job-a/start",
+        headers={"X-Worker-API-Key": API_KEY},
+        json={"worker_name": "worker-1"},
+    )
+    claim_token = started.json()["claim_token"]
+    target = Path(database.get_conversion("job-a")["stored_docx_path"])
+    target.write_bytes(b"PK\x03\x04CORRUPTED_NOT_A_ZIP")
+    database.prepare_conversion_finalization(
+        "job-a", "completed", worker_name="worker-1", claim_token=claim_token
+    )
+    row = database.get_conversion("job-a")
+    assert row["status"] == "finalizing"
+
+    stale_updated_at = (datetime.now(timezone.utc) - timedelta(seconds=30)).isoformat()
+    database.update_conversion(row["id"], {"updated_at": stale_updated_at})
+    stale_row = database.get_conversion("job-a")
+    assert _recover_finalizing_result(database, dict(stale_row))["status"] == "pending"
+    assert database.get_conversion("job-a")["status"] == "pending"
+
+
+def test_corrupt_result_file_before_stale_threshold_stays_finalizing(
+    api_environment,
+):
+    """Before the stale threshold the worker may still be finishing: the
+    recovery path must not abandon a live attempt."""
+
+    _client, database, storage = api_environment
+    create_job(database, storage)
+    started = _client.post(
+        "/internal/jobs/job-a/start",
+        headers={"X-Worker-API-Key": API_KEY},
+        json={"worker_name": "worker-1"},
+    )
+    claim_token = started.json()["claim_token"]
+    target = Path(database.get_conversion("job-a")["stored_docx_path"])
+    target.write_bytes(b"PK\x03\x04CORRUPTED_NOT_A_ZIP")
+    database.prepare_conversion_finalization(
+        "job-a", "completed", worker_name="worker-1", claim_token=claim_token
+    )
+    row = database.get_conversion("job-a")
+
+    with pytest.raises(HTTPException) as exc_info:
+        _recover_finalizing_result(database, dict(row))
+    assert exc_info.value.status_code == 503
+    assert database.get_conversion("job-a")["status"] == "finalizing"
+
+
+def test_second_worker_cannot_reclaim_processing_job_at_state_machine_level(
+    api_environment,
+):
+    """processing -> processing by a different worker must be a conflict,
+    not a silent ownership takeover with a rotated claim token."""
+
+    _client, database, storage = api_environment
+    create_job(database, storage)
+    first = database.transition_conversion(
+        "job-a", "processing", worker_name="worker-A"
+    )
+    original_token = first["claim_token"]
+
+    with pytest.raises(ValueError):
+        database.transition_conversion("job-a", "processing", worker_name="worker-B")
+
+    row = database.get_conversion("job-a")
+    assert row["worker_name"] == "worker-A"
+    assert row["claim_token"] == original_token
+    assert row["attempt_count"] == 1
+
+
+def test_same_worker_retransition_is_idempotent(api_environment):
+    """A worker re-affirming its own claim must not rotate its token or
+    inflate the attempt count."""
+
+    _client, database, storage = api_environment
+    create_job(database, storage)
+    first = database.transition_conversion(
+        "job-a", "processing", worker_name="worker-A"
+    )
+    original_token = first["claim_token"]
+
+    database.transition_conversion("job-a", "processing", worker_name="worker-A")
+
+    row = database.get_conversion("job-a")
+    assert row["worker_name"] == "worker-A"
+    assert row["claim_token"] == original_token
+    assert row["attempt_count"] == 1
+
+
+def test_heartbeat_cannot_hijack_another_workers_claim(api_environment):
+    _client, database, storage = api_environment
+    create_job(database, storage)
+    database.transition_conversion("job-a", "processing", worker_name="worker-A")
+
+    with pytest.raises(ValueError):
+        database.heartbeat("job-a", "worker-B")
+
+    row = database.get_conversion("job-a")
+    assert row["worker_name"] == "worker-A"
+
+
+def _start_and_upload(client, headers, metadata):
+    started = client.post(
+        "/internal/jobs/job-a/start", headers=headers, json={"worker_name": "worker-1"}
+    )
+    claim_token = started.json()["claim_token"]
+    return client.post(
+        "/internal/jobs/job-a/result",
+        headers=headers,
+        data={
+            "worker_name": "worker-1",
+            "claim_token": claim_token,
+            "metadata": json.dumps(metadata),
+        },
+        files={
+            "result": (
+                "result.docx",
+                io.BytesIO(valid_docx_bytes()),
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        },
+    )
+
+
+def test_result_upload_rejects_non_numeric_score_metadata(api_environment):
+    """Malformed metadata types must fail with 400 before any state or temp
+    files are touched, not with a 500 and a leaked .docx.part file."""
+
+    client, database, storage = api_environment
+    client = TestClient(app, raise_server_exceptions=False)
+    headers = {"X-Worker-API-Key": API_KEY}
+    create_job(database, storage)
+
+    uploaded = _start_and_upload(
+        client,
+        headers,
+        {
+            "status": "completed",
+            "text_quality_score": {"bad": 1},
+            "processing_time": 1.0,
+        },
+    )
+
+    assert uploaded.status_code == 400
+    assert database.get_conversion("job-a")["status"] == "processing"
+    job_root = Path(database.get_conversion("job-a")["stored_docx_path"]).parent
+    assert list(job_root.glob("*.docx.part")) == []
+
+
+def test_result_upload_survives_malformed_cloud_attempts(api_environment):
+    """A malformed attempt record must not 500 a completed conversion."""
+
+    client, database, storage = api_environment
+    client = TestClient(app, raise_server_exceptions=False)
+    headers = {"X-Worker-API-Key": API_KEY}
+    create_job(database, storage)
+
+    uploaded = _start_and_upload(
+        client,
+        headers,
+        {
+            "status": "completed",
+            "text_quality_score": 99.0,
+            "cloud_attempts": [
+                {
+                    "provider": "openrouter",
+                    "model": "openai/gpt-5-mini",
+                    "latency_ms": "not-a-number",
+                    "cost": "abc",
+                    "prompt_tokens": "1.5",
+                    "completion_tokens": None,
+                    "score": {"unparseable": True},
+                }
+            ],
+        },
+    )
+
+    assert uploaded.status_code == 200
+    row = database.get_conversion("job-a")
+    assert row["status"] == "completed"
+    attempts = database.list_attempts(row["id"])
+    assert attempts[-1]["cost"] == 0
+    assert attempts[-1]["prompt_tokens"] == 0
+    assert attempts[-1]["quality_score"] is None
+
+
+def test_result_upload_survives_malformed_correction_applications(api_environment):
+    client, database, storage = api_environment
+    client = TestClient(app, raise_server_exceptions=False)
+    headers = {"X-Worker-API-Key": API_KEY}
+    create_job(database, storage)
+
+    uploaded = _start_and_upload(
+        client,
+        headers,
+        {
+            "status": "completed",
+            "text_quality_score": 99.0,
+            "correction_applications": [{}, {"rule_id": None}, 42],
+        },
+    )
+
+    assert uploaded.status_code == 200
+    assert database.get_conversion("job-a")["status"] == "completed"

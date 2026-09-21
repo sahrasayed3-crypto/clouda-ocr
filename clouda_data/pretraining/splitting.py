@@ -10,7 +10,10 @@ Rules:
    cannot leak across splits either.
 3. Each merged group is assigned exactly one split by hashing
    ``seed + smallest group key`` — deterministic, reproducible, and stable
-   when new groups arrive later (no global reshuffle).
+   when new groups arrive later (no global reshuffle): samples that arrive
+   already carrying an assigned ``target_split`` pin their merged component
+   to that split, so only genuinely new groups are placed by the hash.
+   Pass samples with ``target_split == UNASSIGNED`` for a full recompute.
 4. The ``holdout`` split is structurally protected: exports exclude it
    unless explicitly and deliberately enabled.
 """
@@ -179,8 +182,26 @@ def assign_splits(
 
     split_of_group: dict[str, SplitName] = {}
     for root, members in merged_members.items():
-        anchor = min(members)
-        split = _split_for_key(anchor, seed, boundaries)
+        member_keys = set(members)
+        # Sticky anchors (documented rule 3: "stable when new groups arrive
+        # later"): if every previously-assigned sample in this merged
+        # component agrees on its split, keep it and place only the new
+        # members into it. Re-anchoring on min(members) would let a late
+        # hash-bridging group silently move already-published samples across
+        # splits. Components with no prior assignment (fresh runs) or with
+        # conflicting priors hash the smallest member key as before, so
+        # fresh-run output is byte-identical to previous versions.
+        prior_splits = {
+            sample.target_split
+            for group_key in member_keys
+            for sample in samples_by_group[group_key]
+            if sample.target_split != SplitName.UNASSIGNED
+        }
+        if len(prior_splits) == 1:
+            split: SplitName = next(iter(prior_splits))
+        else:
+            anchor = min(members)
+            split = _split_for_key(anchor, seed, boundaries)
         for member in members:
             split_of_group[member] = split
 

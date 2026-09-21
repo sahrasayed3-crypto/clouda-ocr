@@ -6,8 +6,10 @@ import re
 import secrets
 import shutil
 import tempfile
+import threading
 import zipfile
 import uuid
+from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -65,7 +67,60 @@ ALLOWED_CLOUD_PROVIDERS = {
     "google",
     "alibaba",
 }
-app = FastAPI(title="Clouda Worker API", docs_url=None, redoc_url=None)
+
+
+def _maintenance_loop(stop_event: threading.Event, interval_seconds: float) -> None:
+    """Background maintenance: deferred re-dispatch + guest retention.
+
+    The first cycle runs after one interval, so request-serving tests and
+    short-lived processes never execute maintenance side effects.
+    """
+
+    from .maintenance import run_maintenance_cycle
+    from .settings import runtime_settings
+
+    while not stop_event.wait(interval_seconds):
+        try:
+            settings = runtime_settings()
+            run_maintenance_cycle(
+                Database(settings.database_path),
+                storage_root=settings.storage_root,
+            )
+        except Exception as exc:  # keep the loop alive under any failure
+            structured_log(
+                "maintenance_cycle_failed",
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+
+
+@asynccontextmanager
+async def _lifespan(_: "FastAPI"):
+    stop_event = threading.Event()
+    try:
+        interval = float(os.getenv("CLOUDA_MAINTENANCE_INTERVAL_SECONDS", "300") or 300)
+    except ValueError:
+        interval = 300.0
+    thread = threading.Thread(
+        target=_maintenance_loop,
+        args=(stop_event, max(5.0, interval)),
+        name="clouda-maintenance",
+        daemon=True,
+    )
+    thread.start()
+    try:
+        yield
+    finally:
+        stop_event.set()
+        thread.join(timeout=5)
+
+
+app = FastAPI(
+    title="Clouda Worker API",
+    docs_url=None,
+    redoc_url=None,
+    lifespan=_lifespan,
+)
 app.add_middleware(
     TrustedHostMiddleware,
     allowed_hosts=[
@@ -547,40 +602,51 @@ def _recover_finalizing_result(database: Database, row: dict) -> dict:
     if target_status not in {"completed", "manual_review"}:
         raise HTTPException(status_code=503, detail="Result finalization is incomplete")
     target = _inside_storage(row.get("stored_docx_path") or "")
-    if not target.is_file():
-        if _finalizing_is_stale(row):
-            database.abandon_conversion_finalization(
-                row["job_id"], observed_updated_at=row.get("updated_at") or ""
-            )
-            refreshed = database.get_conversion(row["job_id"])
-            if refreshed is None:
-                raise HTTPException(status_code=404, detail="Job not found")
-            return refreshed
-        return row
-    _validate_docx_file(target)
-    try:
-        updated = database.complete_conversion_finalization(
-            row["job_id"],
-            target_status,
-            worker_name=row.get("worker_name") or "",
-            claim_token=row.get("claim_token") or None,
+    if target.is_file():
+        try:
+            _validate_docx_file(target)
+        except HTTPException:
+            if not _finalizing_is_stale(row):
+                raise
+            # Corrupt stored result past the stale threshold: the worker
+            # will never finish finalization, so treat the result like a
+            # missing one and let abandonment below recover the job.
+        else:
+            try:
+                updated = database.complete_conversion_finalization(
+                    row["job_id"],
+                    target_status,
+                    worker_name=row.get("worker_name") or "",
+                    claim_token=row.get("claim_token") or None,
+                )
+            except ValueError:
+                refreshed = database.get_conversion(row["job_id"])
+                if refreshed is None:
+                    raise HTTPException(
+                        status_code=404, detail="Job not found"
+                    ) from None
+                return refreshed
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Result finalization is temporarily unavailable",
+                ) from exc
+            if updated.get("guest_scope_id"):
+                database.mark_guest_job_result(
+                    updated["job_id"],
+                    status=updated["status"],
+                    stored_docx_path=str(target),
+                )
+            return updated
+    if _finalizing_is_stale(row):
+        database.abandon_conversion_finalization(
+            row["job_id"], observed_updated_at=row.get("updated_at") or ""
         )
-    except ValueError:
         refreshed = database.get_conversion(row["job_id"])
         if refreshed is None:
-            raise HTTPException(status_code=404, detail="Job not found") from None
+            raise HTTPException(status_code=404, detail="Job not found")
         return refreshed
-    except Exception as exc:
-        raise HTTPException(
-            status_code=503, detail="Result finalization is temporarily unavailable"
-        ) from exc
-    if updated.get("guest_scope_id"):
-        database.mark_guest_job_result(
-            updated["job_id"],
-            status=updated["status"],
-            stored_docx_path=str(target),
-        )
-    return updated
+    return row
 
 
 def _redis_client():
@@ -2044,9 +2110,14 @@ def start_job(job_id: str, message: WorkerMessage) -> dict:
             )
     if row["status"] == "processing":
         raise HTTPException(status_code=409, detail="Job is owned by another worker")
-    database.transition_conversion(
-        job_id, "processing", worker_name=message.worker_name
-    )
+    try:
+        database.transition_conversion(
+            job_id, "processing", worker_name=message.worker_name
+        )
+    except ValueError as exc:
+        # A stale pre-claim snapshot can race another worker's claim; the
+        # state machine rejects the takeover.
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return get_job(job_id)
 
 
@@ -2092,6 +2163,31 @@ def upload_result(
     target_status = values.get("status")
     if target_status not in {"completed", "manual_review"}:
         raise HTTPException(status_code=400, detail="Invalid final status")
+    # Validate worker-supplied metadata types before any state or temp file
+    # is created: malformed values must be a 400, not a mid-finalization
+    # 500 that leaks a .docx.part file.
+    numeric_metadata: dict[str, float] = {}
+    for key in (
+        "text_quality_score",
+        "layout_quality_score",
+        "final_quality_score",
+        "processing_time",
+    ):
+        value = values.get(key)
+        if value is None:
+            continue
+        try:
+            numeric_metadata[key] = float(value)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=400, detail=f"Invalid result metadata: {key}"
+            ) from exc
+    for key in ("file_type", "winning_engine"):
+        value = values.get(key)
+        if value is not None and not isinstance(value, str):
+            raise HTTPException(
+                status_code=400, detail=f"Invalid result metadata: {key}"
+            ) from None
     quality_forced_review = False
     if target_status == "completed" and not _quality_allows_completed(values):
         target_status = "manual_review"
@@ -2150,11 +2246,11 @@ def upload_result(
             extra={
                 "stored_docx_path": str(target),
                 "file_type": values.get("file_type"),
-                "text_quality_score": values.get("text_quality_score"),
-                "layout_quality_score": values.get("layout_quality_score"),
-                "final_quality_score": values.get("final_quality_score"),
+                "text_quality_score": numeric_metadata.get("text_quality_score"),
+                "layout_quality_score": numeric_metadata.get("layout_quality_score"),
+                "final_quality_score": numeric_metadata.get("final_quality_score"),
                 "winning_engine": values.get("winning_engine"),
-                "processing_time": values.get("processing_time", 0),
+                "processing_time": numeric_metadata.get("processing_time", 0),
             },
         )
     except ValueError as exc:
@@ -2189,13 +2285,50 @@ def upload_result(
         )
     applications = values.get("correction_applications") or []
     if isinstance(applications, list):
-        database.record_correction_applications(job_id, applications[:500])
+        # Worker-supplied records: sanitize at the boundary so a malformed
+        # item cannot 500 an already-completed conversion.
+        normalized_applications = []
+        for item in applications[:500]:
+            if not isinstance(item, dict):
+                continue
+            rule_id = item.get("rule_id")
+            if not isinstance(rule_id, str) or not rule_id:
+                continue
+            try:
+                confidence = float(item.get("confidence") or 0.0)
+            except (TypeError, ValueError):
+                confidence = 0.0
+            normalized_applications.append(
+                {
+                    "rule_id": rule_id[:200],
+                    "before": str(item.get("before") or ""),
+                    "after": str(item.get("after") or ""),
+                    "confidence": confidence,
+                    "context_match": bool(item.get("context_match")),
+                }
+            )
+        database.record_correction_applications(job_id, normalized_applications)
     attempts = values.get("cloud_attempts") or []
     if isinstance(attempts, list):
         existing_attempts = len(database.list_attempts(row["id"]))
         for offset, attempt in enumerate(attempts[:100], start=1):
             if not isinstance(attempt, dict):
                 continue
+
+            def _numeric(raw_value, cast, default):
+                try:
+                    return default if raw_value is None else cast(raw_value)
+                except (TypeError, ValueError):
+                    return default
+
+            quality_value = attempt.get("score")
+            if quality_value is not None and not isinstance(
+                quality_value, (int, float)
+            ):
+                try:
+                    quality_value = float(quality_value)
+                except (TypeError, ValueError):
+                    quality_value = None
             database.record_attempt(
                 {
                     "conversion_id": row["id"],
@@ -2203,12 +2336,15 @@ def upload_result(
                     "model_name": str(attempt.get("model") or "")[:200],
                     "engine_type": "cloud",
                     "attempt_number": existing_attempts + offset,
-                    "quality_score": attempt.get("score"),
-                    "cost": float(attempt.get("cost") or 0),
+                    "quality_score": quality_value,
+                    "cost": _numeric(attempt.get("cost"), float, 0.0),
                     "cost_is_estimated": int(bool(attempt.get("cost_is_estimated"))),
-                    "prompt_tokens": int(attempt.get("prompt_tokens") or 0),
-                    "completion_tokens": int(attempt.get("completion_tokens") or 0),
-                    "processing_time": float(attempt.get("latency_ms") or 0) / 1000.0,
+                    "prompt_tokens": _numeric(attempt.get("prompt_tokens"), int, 0),
+                    "completion_tokens": _numeric(
+                        attempt.get("completion_tokens"), int, 0
+                    ),
+                    "processing_time": _numeric(attempt.get("latency_ms"), float, 0.0)
+                    / 1000.0,
                     "success": int(not bool(attempt.get("failure_reason"))),
                     "failure_reason": (
                         str(attempt.get("failure_reason"))[:2000]

@@ -89,7 +89,12 @@ class ExactDupReport:
 
     @property
     def duplicate_count(self) -> int:
-        """Total samples classified as duplicates or conflicting duplicates."""
+        """Total samples classified as duplicates.
+
+        Excludes conflicting duplicates: those are reported separately via
+        :attr:`conflicting_duplicate` because the pipeline keeps them rather
+        than treating them as duplicates.
+        """
 
         return (
             self.duplicate_file_hash
@@ -338,7 +343,9 @@ def families_to_clusters(
         if len(members) < 2 or tuple(members) in seen:
             continue
         seen.add(tuple(members))
-        digest = hashlib.sha256("\\x00".join(members).encode("utf-8")).hexdigest()
+        # Real NUL separator (repo identity convention): a literal "\x00"
+        # 4-char sequence would let distinct member tuples mint one id.
+        digest = hashlib.sha256("\x00".join(members).encode("utf-8")).hexdigest()
         level = (
             "CONFIRMED_NEAR_DUPLICATE"
             if family.get("kind") == "near_image"

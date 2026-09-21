@@ -66,6 +66,12 @@ def _normalize_manual_review_flags(
             if isinstance(page.metadata, dict)
             else None
         )
+        if categorical_state == "blank_page":
+            # A page the pipeline itself classified as blank is legitimately
+            # empty: its decision (not accepted, no review) must stand.
+            page.accepted = False
+            page.requires_manual_review = False
+            continue
         if categorical_state in {
             "accepted_first_pass",
             "accepted_after_selective_reread",
@@ -89,9 +95,21 @@ def _normalize_manual_review_flags(
             expected_non_empty=True,
         )
         page.corruption_diagnostics = decision["diagnostics"]
-        if score is None:
-            page.text_quality_score = decision["estimated_text_quality"]
-        needs_review = score is None or bool(decision["requires_manual_review"])
+        computed = decision["estimated_text_quality"]
+        if score is None and computed is not None:
+            # The first pass was indeterminate only because no score was
+            # recorded (trusted digital-text pages carry none). Re-decide
+            # with the freshly computed score instead of force-flagging
+            # every such page for manual review.
+            page.text_quality_score = computed
+            decision = final_acceptance_decision(
+                page.markdown,
+                estimated_text_quality=computed,
+                threshold=threshold,
+                expected_non_empty=True,
+            )
+            page.corruption_diagnostics = decision["diagnostics"]
+        needs_review = bool(decision["requires_manual_review"])
         page.requires_manual_review = bool(page.requires_manual_review or needs_review)
         if page.requires_manual_review and not page.review_reason:
             page.review_reason = decision["review_reason"]

@@ -4,6 +4,8 @@ All notable changes are documented here.
 
 ## Unreleased
 
+## 0.2.0 - 2026-09-21
+
 - Integrated the Clouda Data Factory as `clouda_data.factory`: deterministic
   synthetic Arabic OCR data generation (ingest, Arabic RTL rendering, atomic +
   composite distortions, QC, exports, JSONL/CSV manifests, seeds, resume,

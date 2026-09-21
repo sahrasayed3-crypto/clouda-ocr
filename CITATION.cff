@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using these metadata."
+title: "Clouda PDF"
+type: software
+authors:
+  - given-names: "Sohair Kairy Nour"
+    family-names: "Wahbah"
+    orcid: "https://orcid.org/0009-0003-1237-7665"
+    email: "sohair@cloudaocr.xyz"
+contact:
+  - name: "Clouda OCR"
+    email: "contact@cloudaocr.xyz"
+abstract: "Arabic-first PDF-to-DOCX runtime with isolated data, training, and model subsystems, aimed at open, self-hostable, independently evaluated Arabic Document AI infrastructure. It converts trusted born-digital PDF text into editable DOCX files for Arabic, English, and mixed-language documents while preserving page order, Arabic Unicode, RTL paragraph direction, and page boundaries, and routes scanned, image-only, or uncertain pages to explicit review states instead of unmeasured OCR output. The repository also includes deterministic synthetic data generation, pre-training dataset preparation, training planning, and a published metadata-only Arabic OCR benchmark. No final trained OCR model is bundled and OCR inference remains disabled by default."
+keywords:
+  - "Arabic OCR"
+  - "Arabic Document AI"
+  - "PDF to DOCX"
+  - "document processing"
+  - "right-to-left text"
+  - "OCR evaluation"
+license: Apache-2.0
+repository-code: "https://github.com/sahrasayed3-crypto/clouda-ocr"
+url: "https://cloudaocr.xyz/"
+version: "0.2.0"

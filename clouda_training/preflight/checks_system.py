@@ -8,6 +8,9 @@ download, never mutate datasets):
   ``register_qwen_adapters`` are invoked first, idempotently). Unknown
   adapter types are a blocker FAIL. ``mock``/``torch`` adapter types skip
   model-specific descriptor checks with an explicit SKIP detail.
+* :func:`check_model_approval` — training-use approval guard: a real model
+  without an explicit approved record in the approval catalog is a blocker
+  FAIL (the same guard ``run_experiment`` enforces).
 * :func:`check_dependencies` — import-probe the descriptor's
   ``required_optional_dependencies`` (report PASS/FAIL; never install).
   ``transformers>=X.Y.Z`` style specifiers additionally probe the installed
@@ -59,6 +62,7 @@ __all__ = [
     "check_dependencies",
     "check_device",
     "check_local_model",
+    "check_model_approval",
     "check_output_storage",
     "check_precision",
     "ensure_adapters_registered",
@@ -162,6 +166,80 @@ def check_adapter(config: Any) -> PreflightCheck:
     )
     return PreflightCheck(
         name="adapter", status=PreflightStatus.PASS, detail=detail, blocker=False
+    )
+
+
+# ---------------------------------------------------------------------------
+# 1b. model training-use approval check (fail-closed licensing guard)
+# ---------------------------------------------------------------------------
+
+
+def check_model_approval(config: Any, *, catalog_path: Any = None) -> PreflightCheck:
+    """Report whether the model is approved for training use.
+
+    ``mock``/``torch`` adapter types skip (no real model involved). A real
+    adapter without an explicit approved record in the approval catalog is a
+    blocker FAIL — the same guard ``run_experiment`` enforces, surfaced here
+    so preflight reports it before any run is attempted.
+    """
+    adapter_type = config.model.adapter_type
+    if adapter_type in NON_MODEL_ADAPTER_TYPES:
+        return PreflightCheck(
+            name="model.training_approval",
+            status=PreflightStatus.SKIP,
+            detail=(
+                f"adapter_type={adapter_type!r}: not a real model; "
+                "training-approval check not applicable"
+            ),
+            blocker=False,
+        )
+    from clouda_training.adapters.approval import (
+        ModelTrainingNotApproved,
+        get_training_approval,
+    )
+
+    try:
+        approval = get_training_approval(
+            adapter_type,
+            config.model.model_id,
+            config.model.revision,
+            catalog_path=catalog_path,
+        )
+    except ModelTrainingNotApproved as exc:
+        return PreflightCheck(
+            name="model.training_approval",
+            status=PreflightStatus.FAIL,
+            detail=str(exc),
+            blocker=True,
+        )
+    except Exception as exc:  # noqa: BLE001 — unknown catalog shapes fail closed
+        return PreflightCheck(
+            name="model.training_approval",
+            status=PreflightStatus.FAIL,
+            detail=f"approval catalog could not be consulted: {exc}",
+            blocker=True,
+        )
+    if approval is None:
+        return PreflightCheck(
+            name="model.training_approval",
+            status=PreflightStatus.FAIL,
+            detail=(
+                f"model {config.model.model_id!r} (adapter {adapter_type!r}, "
+                f"revision {config.model.revision!r}) has no training-use "
+                "approval record — add a reviewed approval to the catalog "
+                "before running real training"
+            ),
+            blocker=True,
+        )
+    return PreflightCheck(
+        name="model.training_approval",
+        status=PreflightStatus.PASS,
+        detail=(
+            f"model {config.model.model_id!r} approved for training use "
+            f"(license={approval.license_id!r}, approved_by="
+            f"{approval.approved_by!r})"
+        ),
+        blocker=False,
     )
 
 

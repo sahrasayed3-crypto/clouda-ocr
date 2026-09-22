@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "description": "Default model training-use approval catalog (fail-closed control plane). A real training run may only start against a model with an explicit approved:true record here. This default catalog is EMPTY on purpose: no base model is approved until the benchmark winner is selected and its license/training terms are reviewed. An explicit approved:false record always wins over a wildcard-revision approval. Deployment-specific catalogs are selected via the CLOUDA_MODEL_APPROVALS environment variable. See clouda_training/adapters/approval.py for the schema and matching rules.",
+  "approvals": []
+}

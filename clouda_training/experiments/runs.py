@@ -20,6 +20,10 @@ from .dataset import validate_training_dataset
 from .environment import apply_seed, capture_environment
 from .io import atomic_write_json, read_json
 from .metrics import MetricLogger, read_metrics, utc_now
+from clouda_training.adapters.approval import (
+    ModelTrainingApproval,
+    require_training_approval,
+)
 from clouda_training.runtime.backend import torch_available
 from clouda_training.runtime.mock_backend import MockTrainerBackend
 
@@ -282,8 +286,10 @@ def run_experiment(
     fail_at_step: int | None = None,
     interrupt_at_step: int | None = None,
     data_loader: Any | None = None,
+    approval_catalog: str | Path | None = None,
 ) -> RunHandle:
     identity = validate_training_dataset(config.dataset)
+    approval: ModelTrainingApproval | None = None
     if config.model.adapter_type == "torch":
         if not torch_available():
             raise RuntimeError(
@@ -294,6 +300,14 @@ def run_experiment(
             raise RuntimeError("Mock adapters require runtime.dry_run=true")
     else:
         _validate_registered_model_adapter(config)
+        # Fail-closed licensing guard: a real run may only start against a
+        # model explicitly approved for training use in the approval catalog.
+        approval = require_training_approval(
+            config.model.adapter_type,
+            config.model.model_id,
+            config.model.revision,
+            catalog_path=approval_catalog,
+        )
         if config.runtime.dry_run:
             raise RuntimeError(
                 "Registered model adapters require runtime.dry_run=false; "
@@ -353,6 +367,7 @@ def run_experiment(
             "source_ids": list(identity.source_ids),
             "licenses": list(identity.source_licenses),
         },
+        "dataset_quality_verdict": identity.quality_verdict,
         "preprocessing_version": config.dataset.preprocessing_version,
         "code_version": commit,
         "command_line": redact_value(sys.argv),
@@ -361,6 +376,8 @@ def run_experiment(
     }
     if data_loader is not None:
         metadata["training_data"] = _training_data_identity(data_loader)
+    if approval is not None:
+        metadata["model_training_approval"] = approval.to_dict()
     _status(run_path, RunStatus.CREATED, start_timestamp=started)
     atomic_write_json(run_path / "metadata.json", metadata)
     try:
@@ -401,7 +418,11 @@ def load_run(run_id: str, runs_root: str | Path) -> RunHandle:
 
 
 def resume_run(
-    run_id: str, runs_root: str | Path, *, data_loader: Any | None = None
+    run_id: str,
+    runs_root: str | Path,
+    *,
+    data_loader: Any | None = None,
+    approval_catalog: str | Path | None = None,
 ) -> RunHandle:
     run = load_run(run_id, runs_root)
     payload = yaml.safe_load(
@@ -409,6 +430,15 @@ def resume_run(
     )
     config = config_from_dict(payload, path_base=run.path)
     validate_training_dataset(config.dataset)
+    if config.model.adapter_type not in {"mock", "dry_run", "torch"}:
+        # Fail-closed licensing guard applies to resumes as well: an approval
+        # revoked between the original run and the resume blocks continuation.
+        require_training_approval(
+            config.model.adapter_type,
+            config.model.model_id,
+            config.model.revision,
+            catalog_path=approval_catalog,
+        )
     manager = CheckpointManager(run.path, run_id, config)
     checkpoint = manager.latest()
     if checkpoint is None:

@@ -33,7 +33,7 @@ class RegistrySyntheticAdapter(SyntheticLinearAdapter):
 
 
 def test_registered_adapter_runs_and_resumes_through_experiment_framework(
-    torch_config,
+    torch_config, tmp_path
 ) -> None:
     registry = get_default_registry()
     adapter_type = "registry_runtime_test"
@@ -69,13 +69,36 @@ def test_registered_adapter_runs_and_resumes_through_experiment_framework(
             adapter_type=adapter_type,
         ),
     )
+    # Real adapter runs require an explicit training-use approval record.
+    catalog = tmp_path / "approvals.json"
+    catalog.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "approvals": [
+                    {
+                        "adapter_type": adapter_type,
+                        "model_id": "synthetic/registry",
+                        "revision": "*",
+                        "approved": True,
+                        "license_id": "test-license",
+                        "approved_by": "test",
+                        "approved_at": "2026-09-22T00:00:00Z",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
     try:
         with pytest.raises(KeyboardInterrupt):
-            run_experiment(config, interrupt_at_step=9)
+            run_experiment(config, interrupt_at_step=9, approval_catalog=catalog)
         interrupted = list_runs(
             config.runtime.output_root, status=RunStatus.INTERRUPTED
         )[0]
-        resumed = resume_run(interrupted.run_id, config.runtime.output_root)
+        resumed = resume_run(
+            interrupted.run_id, config.runtime.output_root, approval_catalog=catalog
+        )
 
         assert resumed.status is RunStatus.COMPLETED
         assert len(seen_configs) == 2

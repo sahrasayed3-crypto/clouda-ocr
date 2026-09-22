@@ -107,7 +107,74 @@ def _adapter_command(args: argparse.Namespace) -> int:
     if args.adapters_command == "preflight":
         return _run_adapter_preflight(args)
 
+    if args.adapters_command == "approvals":
+        return _run_adapter_approvals(args)
+
     raise AssertionError(f"Unhandled adapters command: {args.adapters_command}")
+
+
+def _run_adapter_approvals(args: argparse.Namespace) -> int:
+    """List the training-use approval status of every registered adapter.
+
+    Read-only: never modifies the approval catalog, never starts training.
+    """
+    _import_known_adapter_packages()
+    registry = get_default_registry()
+    from clouda_training.adapters.approval import (
+        ModelTrainingNotApproved,
+        default_catalog_path,
+        load_approval_catalog,
+    )
+
+    catalog_path = default_catalog_path()
+    try:
+        payload = load_approval_catalog(catalog_path)
+    except ModelTrainingNotApproved as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}, indent=2))
+        return 2
+    # Approvals match on (adapter_type, model_id, revision); descriptors carry
+    # no model_id, so report raw per-adapter catalog records instead of
+    # guessing a model identity here.
+    records_by_adapter: dict[str, list[dict[str, Any]]] = {}
+    for record in payload.get("approvals", []):
+        records_by_adapter.setdefault(str(record.get("adapter_type")), []).append(
+            {
+                "model_id": record.get("model_id"),
+                "revision": record.get("revision"),
+                "approved": bool(record.get("approved")),
+                "license_id": record.get("license_id"),
+                "approved_by": record.get("approved_by"),
+            }
+        )
+    entries: list[dict[str, Any]] = []
+    for adapter_type in registry.list_adapters():
+        entries.append(
+            {
+                "adapter_type": adapter_type,
+                "approval_records": records_by_adapter.pop(adapter_type, []),
+            }
+        )
+    for adapter_type, records in sorted(records_by_adapter.items()):
+        entries.append({"adapter_type": adapter_type, "approval_records": records})
+    payload_out = {"catalog": str(catalog_path), "adapters": entries}
+    if args.json:
+        print(json.dumps(payload_out, ensure_ascii=False, indent=2))
+    else:
+        print(f"Approval catalog: {catalog_path}")
+        for entry in entries:
+            records = entry["approval_records"]
+            if not records:
+                print(f"- {entry['adapter_type']}: no approval records")
+                continue
+            for record in records:
+                status = "APPROVED" if record["approved"] else "REJECTED"
+                print(
+                    f"- {entry['adapter_type']}: {status} "
+                    f"model={record['model_id']} "
+                    f"revision={record['revision']} "
+                    f"license={record['license_id']}"
+                )
+    return 0
 
 
 def _import_known_adapter_packages() -> None:
@@ -205,3 +272,9 @@ def _adapters_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Local model directory (operators supply weights; never fetched).",
     )
     p_pre.add_argument("--json", action="store_true")
+
+    p_appr = sub.add_parser(
+        "approvals",
+        help="Show training-use approval records per adapter (read-only).",
+    )
+    p_appr.add_argument("--json", action="store_true")

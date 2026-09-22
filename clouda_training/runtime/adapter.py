@@ -4,6 +4,17 @@ Adapters decouple the trainer backend from any specific OCR model. A future
 HunyuanOCR-1.5 adapter implements the same protocol; the synthetic adapter
 here exists to prove real optimization end-to-end on CPU without downloading
 any model.
+
+Adapters may additionally expose an optional evaluation hook::
+
+    def evaluate(self, model) -> dict[str, float]:
+        ...
+
+When present, the torch backend runs it on the configured evaluation cadence
+(``evaluation.eval_steps``), persists the metrics under the configured eval
+split, and feeds best-checkpoint selection. The hook computes its own
+deterministic validation data — the canonical runtime never uses a protected
+holdout for routine training-time validation.
 """
 
 from __future__ import annotations
@@ -71,12 +82,16 @@ class SyntheticLinearAdapter:
 
     input_features = 3
 
+    #: validation-set seed offset; the hook data never overlaps training data
+    _validation_seed_offset = 1
+
     def build_model(self, config: ExperimentConfig) -> Any:
         from clouda_training.runtime.backend import require_torch
 
         require_torch()
         import torch
 
+        self._seed = config.training.seed
         generator = torch.Generator().manual_seed(config.training.seed)
         model = torch.nn.Linear(self.input_features, 1, dtype=torch.float64)
         with torch.no_grad():
@@ -114,3 +129,20 @@ class SyntheticLinearAdapter:
         inputs = torch.tensor([row[0] for row in selected], dtype=torch.float64)
         targets = torch.tensor([[row[1]] for row in selected], dtype=torch.float64)
         return inputs, targets
+
+    def evaluate(self, model: Any) -> dict[str, float]:
+        """Deterministic validation loss on a held-apart synthetic set.
+
+        Optional hook (see module docstring): the backend runs it on the
+        evaluation cadence when present.
+        """
+        import torch
+
+        pairs = build_synthetic_dataset_pairs(
+            count=64, seed=getattr(self, "_seed", 0) + self._validation_seed_offset
+        )
+        inputs = torch.tensor([row[0] for row in pairs], dtype=torch.float64)
+        targets = torch.tensor([[row[1]] for row in pairs], dtype=torch.float64)
+        with torch.no_grad():
+            value = float(torch.nn.functional.mse_loss(model(inputs), targets))
+        return {"validation_loss": value}

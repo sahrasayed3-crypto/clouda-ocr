@@ -226,8 +226,9 @@ def validate_config(config: ExperimentConfig) -> list[PreflightCheck]:
         )
     )
 
-    # mixed_precision is a boolean flag on TrainingSection; the runtime treats
-    # it as an on/off switch, so only True/False are valid values.
+    # mixed_precision must be a boolean. The canonical runtime intentionally
+    # fails closed when it is True: AMP autocast/GradScaler behaviour has not
+    # been validated with a real model on real hardware yet.
     mixed = training.mixed_precision
     checks.append(
         _check(

@@ -119,6 +119,10 @@ clouda_lab = [
   "dashboard/static/*.css",
   "dashboard/static/*.js"
 ]
+clouda_training = [
+  "resources/*.json"
+]
+
 [tool.black]
 line-length = 88
 target-version = ["py311"]

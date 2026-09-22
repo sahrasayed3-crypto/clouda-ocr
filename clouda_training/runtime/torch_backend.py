@@ -9,6 +9,7 @@ captured for exact resume.
 from __future__ import annotations
 
 import json
+import math
 import os
 import time
 from dataclasses import dataclass
@@ -53,6 +54,15 @@ class TorchTrainerBackend:
         require_torch()
         import torch
 
+        if config.training.mixed_precision:
+            raise RuntimeError(
+                "training.mixed_precision=true is not supported by the "
+                "canonical runtime yet: AMP autocast/GradScaler behaviour "
+                "has not been validated with a real model on real hardware. "
+                "Keep mixed_precision=false until the selected model's "
+                "precision support is validated (see "
+                "docs/training/HARDWARE_VALIDATION_TODO.md)."
+            )
         self.torch = torch
         self.config = config
         self.metrics = metrics
@@ -110,6 +120,12 @@ class TorchTrainerBackend:
         maximum = self.config.training.max_steps or self.config.training.epochs * 5
         accumulation = max(self.config.training.gradient_accumulation_steps, 1)
         torch = self.torch
+        evaluate = getattr(self.adapter, "evaluate", None)
+        run_evaluation = (
+            callable(evaluate)
+            and self.config.evaluation.enabled
+            and self.config.evaluation.eval_steps > 0
+        )
 
         for step in range(start_step + 1, maximum + 1):
             if step == self.fail_at_step:
@@ -119,25 +135,45 @@ class TorchTrainerBackend:
             self.optimizer.zero_grad(set_to_none=True)
             running_loss = 0.0
             micro_losses: list[float] = []
-            for micro in range(accumulation):
-                batch = self._step_batch(step, micro)
-                # Adapter-agnostic: batches may be (inputs, targets) tuples or
-                # model-specific dicts (e.g. Hunyuan multimodal fields).
-                if (
-                    isinstance(batch, tuple)
-                    and len(batch) == 2
-                    and hasattr(batch[0], "to")
-                ):
-                    batch = (batch[0].to(self.device), batch[1].to(self.device))
-                elif isinstance(batch, dict):
-                    batch = {
-                        k: (v.to(self.device) if hasattr(v, "to") else v)
-                        for k, v in batch.items()
-                    }
-                loss = self.adapter.forward_loss(self.model, batch)
-                (loss / accumulation).backward()
-                running_loss += float(loss.detach()) / accumulation
-                micro_losses.append(float(loss.detach()))
+            try:
+                for micro in range(accumulation):
+                    batch = self._step_batch(step, micro)
+                    # Adapter-agnostic: batches may be (inputs, targets) tuples or
+                    # model-specific dicts (e.g. Hunyuan multimodal fields).
+                    if (
+                        isinstance(batch, tuple)
+                        and len(batch) == 2
+                        and hasattr(batch[0], "to")
+                    ):
+                        batch = (batch[0].to(self.device), batch[1].to(self.device))
+                    elif isinstance(batch, dict):
+                        batch = {
+                            k: (v.to(self.device) if hasattr(v, "to") else v)
+                            for k, v in batch.items()
+                        }
+                    loss = self.adapter.forward_loss(self.model, batch)
+                    (loss / accumulation).backward()
+                    running_loss += float(loss.detach()) / accumulation
+                    micro_losses.append(float(loss.detach()))
+            except torch.cuda.OutOfMemoryError as exc:
+                raise RuntimeError(
+                    f"CUDA out of memory at step {step}: reduce "
+                    "training.batch_size or "
+                    "training.gradient_accumulation_steps, or enable gradient "
+                    "checkpointing on the adapter. The run is recorded as "
+                    "FAILED and can be resumed from its latest checkpoint."
+                ) from exc
+
+            loss_value = running_loss
+            if not math.isfinite(loss_value) or any(
+                not math.isfinite(value) for value in micro_losses
+            ):
+                raise RuntimeError(
+                    f"Non-finite loss {loss_value!r} at step {step} — aborting "
+                    "the run instead of corrupting the model with NaN/Inf "
+                    "gradients. The run is recorded as FAILED and can be "
+                    "resumed from its latest checkpoint."
+                )
 
             grad_norm: float | None = None
             if self.config.training.max_grad_norm > 0:
@@ -147,12 +183,17 @@ class TorchTrainerBackend:
                         self.config.training.max_grad_norm,
                     )
                 )
+                if not math.isfinite(grad_norm):
+                    raise RuntimeError(
+                        f"Non-finite gradient norm {grad_norm!r} at step "
+                        f"{step} — aborting before optimizer.step() so the "
+                        "checkpointed weights stay uncorrupted."
+                    )
             self.optimizer.step()
             if self.scheduler is not None:
                 self.scheduler.step()
 
             learning_rate = float(self.optimizer.param_groups[0]["lr"])
-            loss_value = running_loss
             current_metrics = {
                 "loss": round(loss_value, 8),
                 "learning_rate": learning_rate,
@@ -160,8 +201,30 @@ class TorchTrainerBackend:
             if grad_norm is not None:
                 current_metrics["grad_norm"] = round(grad_norm, 8)
 
+            evaluated_names: set[str] = set()
+            if (
+                run_evaluation
+                and callable(evaluate)
+                and step % self.config.evaluation.eval_steps == 0
+            ):
+                for name, value in evaluate(self.model).items():
+                    current_metrics[name] = round(float(value), 8)
+                    evaluated_names.add(name)
+                    self.metrics.append(
+                        step=step,
+                        epoch=step / maximum * self.config.training.epochs,
+                        split=self.config.evaluation.eval_split,
+                        metric_name=name,
+                        value=float(value),
+                    )
+
             if step % self.config.tracking.log_steps == 0:
-                for name, value in current_metrics.items():
+                train_only = {
+                    name: value
+                    for name, value in current_metrics.items()
+                    if name not in evaluated_names
+                }
+                for name, value in train_only.items():
                     self.metrics.append(
                         step=step,
                         epoch=step / maximum * self.config.training.epochs,
@@ -218,26 +281,12 @@ class TorchTrainerBackend:
         directory.mkdir(parents=True, exist_ok=True)
         return directory
 
-    def _latest_torch_checkpoint(self) -> tuple[int, dict[str, Any]] | None:
-
-        items = self.checkpoints
-        latest = items.latest()
-        if latest is None:
-            return None
-        metadata_path = latest.path / "metadata.json"
-        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-        if "torch_state_sha256" not in metadata:
-            return None
-        payload = load_torch_state(
-            latest.path, expected_sha256=metadata["torch_state_sha256"]
-        )
-        return int(payload["step"]), payload
-
     def _restore_from_latest_checkpoint(self, start_step: int) -> None:
         """Restore model/optimizer/scheduler/RNG from the newest checkpoint.
 
-        Pick the checkpoint with the greatest step <= start_step so an
-        interrupted run resumes from exactly where it stopped.
+        The restored checkpoint must not be ahead of ``start_step`` — a start
+        offset older than the restored state would silently skip already-run
+        optimizer steps, so it fails closed instead.
         """
 
         latest = self.checkpoints.latest()
@@ -250,6 +299,12 @@ class TorchTrainerBackend:
         digest = metadata.get("torch_state_sha256")
         if digest is None:
             return  # framework-only checkpoint (no torch state recorded)
+        if int(metadata.get("step", 0)) > int(start_step):
+            raise RuntimeError(
+                f"Checkpoint at step {metadata.get('step')} is ahead of the "
+                f"requested resume step {start_step} — refusing to restore "
+                "state that would skip already-executed optimizer steps."
+            )
         payload = load_torch_state(latest.path, expected_sha256=digest)
         # Reject resumes whose adapter identity changed since the checkpoint.
         recorded_identity = metadata.get("adapter_identity")

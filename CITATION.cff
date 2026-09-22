@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it using these metadata."
-title: "Clouda PDF"
+title: "Clouda OCR"
 type: software
 authors:
   - given-names: "Sohair Kairy Nour"
@@ -21,4 +21,4 @@ keywords:
 license: Apache-2.0
 repository-code: "https://github.com/sahrasayed3-crypto/clouda-ocr"
 url: "https://cloudaocr.xyz/"
-version: "0.2.0"
+version: "0.2.1"

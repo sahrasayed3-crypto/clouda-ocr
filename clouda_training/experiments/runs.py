@@ -206,7 +206,7 @@ def _execute(
             raise ImportError(
                 f"adapter_type={config.model.adapter_type!r} requires PyTorch. "
                 "Install with: "
-                "pip install clouda-pdf[training-torch]  (or: pip install torch)"
+                "pip install clouda-ocr[training-torch]  (or: pip install torch)"
             )
         from clouda_training.runtime.torch_backend import TorchTrainerBackend
 

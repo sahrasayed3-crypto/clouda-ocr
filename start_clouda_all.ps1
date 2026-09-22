@@ -120,6 +120,6 @@ Start-Sleep -Seconds 2
     throw
 }
 
-Write-Host 'Clouda PDF started.'
+Write-Host 'Clouda OCR started.'
 Write-Host 'UI:  http://127.0.0.1:8501'
 Write-Host 'API: http://127.0.0.1:8000/health'

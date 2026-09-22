@@ -36,7 +36,7 @@ def require_transformers() -> None:
     if not transformers_available():
         raise HunyuanAdapterError(
             "transformers is required for the HunyuanOCR adapter. "
-            "Install with: pip install clouda-pdf[training-hunyuan]"
+            "Install with: pip install clouda-ocr[training-hunyuan]"
         )
 
 

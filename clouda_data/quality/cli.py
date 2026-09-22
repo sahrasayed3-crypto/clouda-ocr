@@ -20,7 +20,12 @@ from clouda_data.quality.config import (
     QualityGateConfig,
     load_quality_gate_config,
 )
-from clouda_data.quality.derived import write_clean_manifest
+from clouda_data.quality.derived import (
+    DerivedManifestValidationError,
+    FailedVerdictRefusedError,
+    revalidate_derived,
+    write_clean_manifest,
+)
 from clouda_data.quality.gate import ALGORITHM_VERSIONS, run_quality_gate
 from clouda_data.quality.manifest_adapter import manifest_sha256
 from clouda_data.quality.run_state import (
@@ -205,14 +210,37 @@ def _cmd_clean_manifest(args: argparse.Namespace) -> int:
             )
         )
         return 0
-    result = write_clean_manifest(
-        manifest,
-        scan.samples,
-        scan.exclusions,
-        scan.quarantine_ids,
-        scan.run,
-        Path(args.output),
-    )
+    try:
+        result = write_clean_manifest(
+            manifest,
+            scan.samples,
+            scan.exclusions,
+            scan.quarantine_ids,
+            scan.run,
+            Path(args.output),
+        )
+    except FailedVerdictRefusedError as exc:
+        # A FAIL verdict must not produce an artifact that can be mistaken
+        # for an approved clean dataset: emit diagnostics only.
+        print(
+            json.dumps(
+                {
+                    "clean_manifest": "not_written",
+                    "reason": str(exc),
+                    "verdict": scan.result.verdict.value,
+                    "severity_counts": dict(scan.run.severity_counts),
+                    "reason_codes": list(scan.result.reason_codes),
+                    "excluded": len(scan.exclusions),
+                    "quarantined": len(scan.quarantine_ids),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 1
+    # Fail-closed backstop promised by derived.py's contract: re-read the
+    # derived manifest and confirm no protected or excluded row survived.
+    revalidate_derived(Path(args.output), excluded_ids=scan.exclusions)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if scan.result.verdict.value != "FAIL" else 1
 
@@ -294,6 +322,11 @@ def main(argv: list[str] | None = None) -> int:
     except QualityCliError as exc:
         print(f"config error: {exc}", file=sys.stderr)
         return 2
+    except DerivedManifestValidationError as exc:
+        # clean-manifest's post-write revalidation is fail-closed: a violated
+        # derived manifest is a quality failure, not a crash.
+        print(f"derived manifest error: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

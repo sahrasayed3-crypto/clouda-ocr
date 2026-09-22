@@ -42,7 +42,7 @@ def __getattr__(name: str) -> Any:
         if not torch_available():
             raise ImportError(
                 "PyTorch is required for TorchTrainerBackend. Install with: "
-                "pip install clouda-pdf[training-torch]  (or: pip install torch)"
+                "pip install clouda-ocr[training-torch]  (or: pip install torch)"
             )
         from clouda_training.runtime.torch_backend import TorchTrainerBackend
 

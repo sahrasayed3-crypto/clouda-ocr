@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from .atomic import atomic_write_bytes, atomic_write_text
 from .checkpoints import load_checkpoint, save_checkpoint
 from .database import Database, utc_now
 from .docx_export import markdown_to_docx
@@ -132,9 +133,7 @@ class LiveConversionProgress:
             "total_pages": self.total_pages,
             "updated_at": utc_now(),
         }
-        temporary = self.path.with_suffix(".tmp")
-        temporary.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-        temporary.replace(self.path)
+        atomic_write_text(self.path, json.dumps(payload, ensure_ascii=False))
 
     def progress(self, value: float, text: str = "") -> None:
         completed = round(max(0.0, min(1.0, float(value))) * self.total_pages)
@@ -320,7 +319,7 @@ def execute_worker_conversion(request: WorkerConversionRequest) -> dict:
         )
         page.markdown = applied.text
         correction_applications.extend(applied.applications)
-    request.docx_path.write_bytes(markdown_to_docx(page_results))
+    atomic_write_bytes(request.docx_path, markdown_to_docx(page_results))
     engines = [item.model_used for item in page_results]
     winner = Counter(engines).most_common(1)[0][0] if engines else ""
     file_types = {
@@ -500,7 +499,7 @@ def execute_conversion(
                     rule["pattern"], rule["replacement"]
                 )
         docx_bytes = markdown_to_docx(page_results)
-        Path(request.docx_path).write_bytes(docx_bytes)
+        atomic_write_bytes(request.docx_path, docx_bytes)
 
         engines = [item.model_used for item in page_results]
         winner = Counter(engines).most_common(1)[0][0] if engines else ""

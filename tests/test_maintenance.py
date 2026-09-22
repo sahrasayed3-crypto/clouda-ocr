@@ -52,7 +52,9 @@ def _create_pending(database: Database, tmp_path: Path) -> dict:
             "updated_at": utc_now(),
         }
     )
-    return database.get_conversion("job-m")
+    row = database.get_conversion("job-m")
+    assert row is not None
+    return row
 
 
 def test_deferred_pending_job_is_redispatched(database, tmp_path, monkeypatch):

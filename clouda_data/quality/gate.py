@@ -38,6 +38,7 @@ from clouda_data.quality import (
 from clouda_data.quality.config import QualityGateConfig
 from clouda_data.quality.models import (
     GateVerdict,
+    IssueCode,
     IssueSeverity,
     QualityGateResult,
     QualityIssue,
@@ -62,6 +63,7 @@ class StageTimings:
     artifacts: float = 0.0
     exact: float = 0.0
     near: float = 0.0
+    text_near: float = 0.0
     leakage: float = 0.0
     health: float = 0.0
     policy: float = 0.0
@@ -73,6 +75,7 @@ class StageTimings:
             "artifacts_s": round(self.artifacts, 3),
             "exact_s": round(self.exact, 3),
             "near_s": round(self.near, 3),
+            "text_near_s": round(self.text_near, 3),
             "leakage_s": round(self.leakage, 3),
             "health_s": round(self.health, 3),
             "policy_s": round(self.policy, 3),
@@ -160,6 +163,7 @@ def run_quality_gate(
 
     # Stage 4: near duplicates (image + text) ---------------------------
     confirmed_pairs: list[tuple[str, str]] = []
+    confirmed_text_pairs: list[tuple[str, str]] = []
     if not cross_split_only and not no_near_duplicates:
         t0 = time.perf_counter()
         fingerprints = near_index.build_fingerprints(classified, artifact_root, cfg)
@@ -177,10 +181,23 @@ def run_quality_gate(
         )
         timings.near = time.perf_counter() - t0
 
+        # Text near-duplicate tier (MinHash/LSH + exact Jaccard over the
+        # shared DEDUPE_TEXT_POLICY normalization). This is the leakage
+        # net for diacritic/tatweel variants whose dataset
+        # normalized_text_sha256 differs: confirmed pairs cross-checked
+        # against partitions in the leakage stage below (LEAK_NEAR_TEXT).
+        t1 = time.perf_counter()
+        texts = {sample.sample_id: sample.text for sample in classified if sample.text}
+        text_classification = text_dup.classify_text_pairs(texts)
+        confirmed_text_pairs = list(text_classification.near_text)
+        timings.text_near = time.perf_counter() - t1
+
     # Stage 5: leakage ----------------------------------------------------
     t0 = time.perf_counter()
     leak_report = leakage.detect_leakage(
-        classified, confirmed_near_pairs=confirmed_pairs
+        classified,
+        confirmed_near_pairs=confirmed_pairs,
+        confirmed_near_text_pairs=confirmed_text_pairs,
     )
     timings.leakage = time.perf_counter() - t0
 
@@ -203,6 +220,19 @@ def run_quality_gate(
     all_issues = list(issues)
     for finding in leak_report.findings:
         all_issues.append(leakage.finding_to_issue(finding))
+    # Same-partition text near pairs are a dedup signal (warning only);
+    # cross-partition pairs already failed the gate via LEAK_NEAR_TEXT.
+    for id_a, id_b in confirmed_text_pairs:
+        all_issues.append(
+            QualityIssue(
+                code=IssueCode.DUP_TEXT_NEAR,
+                severity=IssueSeverity.WARNING,
+                sample_ids=(id_a, id_b),
+                canonical_key=f"near_text:{id_a}|{id_b}",
+                message="Near-duplicate text pair (MinHash/LSH confirmed, Jaccard >= 0.85).",
+                evidence={"algorithm": "textdup", "similarity": "near"},
+            )
+        )
     has_critical_or_error = any(
         issue.severity in (IssueSeverity.CRITICAL, IssueSeverity.ERROR)
         for issue in all_issues

@@ -1,6 +1,6 @@
 # Testing
 
-Clouda PDF uses `pytest` with deterministic, copyright-free fixtures under `tests/fixtures`.
+Clouda OCR uses `pytest` with deterministic, copyright-free fixtures under `tests/fixtures`.
 
 ## Coverage
 
@@ -35,7 +35,7 @@ quality percentages.
 
 ## Latest verified result
 
-On 2026-07-14, the full suite completed with **145 passed** and **81%** overall `pdfword` coverage (`80.89%` measured by pytest-cov). Coverage improved through meaningful tests for invalid/empty inputs, engine metadata, DOCX generation, cleanup safety, local key-store behavior, CLI startup guards, OpenRouter/provider error handling, conversion-service recovery, settings, storage, and worker guards.
+On 2026-09-22, the full suite completed with **2169 passed, 16 skipped, 0 failed** (the suite now spans all subsystems, not only `pdfword`; see `docs/engineering/RELEASE_READINESS_V0.2.1.md` for the exact verification commands and the near-duplicate leakage / FAIL-manifest / digest-trust regression suites added under `tests/quality/test_leakage_integration.py`). Historical note: the 2026-07-14 run completed with 145 passed and 81% `pdfword`-only coverage.
 
 ## Quality checks
 

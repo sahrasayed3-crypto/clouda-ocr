@@ -1,5 +1,5 @@
 [Unit]
-Description=Clouda PDF to Word
+Description=Clouda OCR document runtime
 After=network-online.target
 Wants=network-online.target
 

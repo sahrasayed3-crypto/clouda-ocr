@@ -49,6 +49,7 @@ _KIND_TO_CODE = {
     "exact_hash_cross_split": IssueCode.LEAK_EXACT_HASH,
     "page_identity_cross_split": IssueCode.LEAK_PAGE_IDENTITY,
     "near_image_cross_split": IssueCode.LEAK_NEAR_IMAGE,
+    "near_text_cross_split": IssueCode.LEAK_NEAR_TEXT,
     "derived_page_cross_boundary": IssueCode.LEAK_DERIVED_PAGE,
     "gt_text_cross_split": IssueCode.LEAK_GT_TEXT,
     "group_cross_split": IssueCode.LEAK_GROUP_STRADDLE,
@@ -293,8 +294,16 @@ def finding_to_issue(finding: LeakageFinding) -> QualityIssue:
 def detect_leakage(
     samples: Sequence[DatasetSample],
     confirmed_near_pairs: Sequence[tuple[str, str]] = (),
+    confirmed_near_text_pairs: Sequence[tuple[str, str]] = (),
 ) -> LeakageReport:
-    """Run the L0-L6 leakage checks over a classified sample set."""
+    """Run the L0-L6 leakage checks over a classified sample set.
+
+    ``confirmed_near_text_pairs`` carries text near-duplicate pairs
+    (MinHash/LSH + exact Jaccard from
+    :mod:`clouda_data.quality.text_dup`) that cross the training boundary
+    exactly like confirmed near-image pairs (L3), with the dedicated
+    ``LEAK_NEAR_TEXT`` code.
+    """
 
     report = LeakageReport(scanned_samples=len(samples))
     partitions: dict[str, str] = {}
@@ -443,6 +452,26 @@ def detect_leakage(
                 pair,
                 "Confirmed near-image duplicate crosses the training/evaluation boundary.",
                 corroborating=("near_image_confirmed",),
+                raw_splits=tuple(sorted(_split_value(by_id[sid]) for sid in pair)),
+            )
+
+    # L3b: near-text duplicates across train vs eval (critical). Uses the
+    # stricter dedupe text policy (NFKC + diacritic/tatweel/alef/ya folding,
+    # digits preserved) so diacritic-only variants of the same page cannot
+    # straddle the boundary via distinct normalized_text_sha256 values.
+    for id_a, id_b in confirmed_near_text_pairs:
+        if id_a not in partitions or id_b not in partitions:
+            continue
+        pair = (id_a, id_b)
+        train_side, other_side = _cross_of(pair)
+        if train_side and other_side:
+            _add(
+                "near_text_cross_split",
+                "critical",
+                f"near_text:{id_a}|{id_b}",
+                pair,
+                "Near-duplicate text (diacritic/whitespace-invariant) crosses the training/evaluation boundary.",
+                corroborating=("near_text_confirmed",),
                 raw_splits=tuple(sorted(_split_value(by_id[sid]) for sid in pair)),
             )
 

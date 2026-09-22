@@ -26,6 +26,17 @@ TWO_GB = 2 * 1024 * 1024 * 1024
 DEFAULT_SAMPLE_LIMIT = 100 * 1024 * 1024
 PRIVATE_DOWNLOAD_ENV = "CLOUDA_ALLOW_PRIVATE_DOWNLOADS"
 INSECURE_DOWNLOAD_ENV = "CLOUDA_ALLOW_INSECURE_DOWNLOADS"
+UNPINNED_DOWNLOAD_ENV = "CLOUDA_ALLOW_UNPINNED_DATASET_DOWNLOADS"
+
+# Trust levels recorded per downloaded file:
+#   registry_pinned -- bytes verified against a digest pinned in the
+#                      repository's dataset registry (integrity AND
+#                      publisher authenticity relative to reviewed state).
+#   self_reported   -- digest computed locally after download (integrity
+#                      only; the publisher could have served different
+#                      bytes). Requires explicit env opt-in.
+DIGEST_PINNED = "registry_pinned"
+DIGEST_SELF_REPORTED = "self_reported"
 
 ProgressCallback = Callable[[int, int | None], None]
 CancellationCheck = Callable[[], bool]
@@ -43,6 +54,7 @@ class DownloadedFile:
     checksum_sha256: str
     duplicate_of: str | None = None
     archive_valid: bool | None = None
+    digest_source: str = ""
 
 
 @dataclass(frozen=True)
@@ -267,6 +279,7 @@ def download_http(
         size_bytes=actual_size,
         checksum_sha256=actual_sha,
         archive_valid=validate_archive(destination),
+        digest_source=DIGEST_PINNED if expected_sha256 else DIGEST_SELF_REPORTED,
     )
 
 
@@ -315,9 +328,20 @@ def download_dataset_sample(
     files: list[DownloadedFile] = []
     issues: list[str] = []
     completed_before = 0
+    allow_unpinned = _enabled(UNPINNED_DOWNLOAD_ENV)
     for asset in assets:
         url = _asset_url(source, asset)
         destination = destination_root / safe_filename(asset.get("filename") or url)
+        if not asset.get("sha256") and not allow_unpinned:
+            # Fail closed: a registry asset without a pinned digest cannot be
+            # authenticated (a mirror/compromise could serve different bytes).
+            # Opt in explicitly with CLOUDA_ALLOW_UNPINNED_DATASET_DOWNLOADS=1
+            # to accept self-reported digests.
+            issues.append(
+                f"{url}: unpinned_digest ({destination.name}); set "
+                f"{UNPINNED_DOWNLOAD_ENV}=1 to accept self-reported digests"
+            )
+            continue
         try:
 
             def report_asset_progress(

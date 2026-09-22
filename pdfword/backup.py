@@ -3,6 +3,7 @@ import sqlite3
 import json
 import shutil
 import tempfile
+import uuid
 import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -27,6 +28,18 @@ def create_backup(
     destination_root.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     archive_path = destination_root / f"clouda_backup_{timestamp}.zip"
+    if archive_path.exists():
+        # Two backups within the same second must not truncate each other's
+        # archive; disambiguate instead of overwriting a live backup.
+        archive_path = (
+            destination_root / f"clouda_backup_{timestamp}_{uuid.uuid4().hex[:6]}.zip"
+        )
+    # The zip is staged next to its final name and published with a single
+    # rename: a crash mid-write can never leave a truncated archive under the
+    # name consumers (retention, validate_backup) will find.
+    staging_archive = destination_root / (
+        f".{archive_path.name}.{uuid.uuid4().hex[:8]}.part"
+    )
     try:
         with tempfile.TemporaryDirectory() as temporary:
             snapshot = Path(temporary) / "clouda.sqlite3"
@@ -38,7 +51,7 @@ def create_backup(
                 target.close()
                 source.close()
             with zipfile.ZipFile(
-                archive_path, "w", compression=zipfile.ZIP_DEFLATED
+                staging_archive, "w", compression=zipfile.ZIP_DEFLATED
             ) as archive:
                 archive.write(snapshot, "data/clouda.sqlite3")
                 for folder in (Path(storage_root), Path("logs")):
@@ -53,10 +66,16 @@ def create_backup(
                                         folder.name
                                     ) / resolved.relative_to(folder.resolve())
                                 archive.write(resolved, archive_name)
+                archive_fp = archive.fp
+                if archive_fp is not None:  # not None while the zip is open
+                    archive_fp.flush()
+                    os.fsync(archive_fp.fileno())
+        os.replace(staging_archive, archive_path)
         database.record_backup(
             str(archive_path), "completed", archive_path.stat().st_size
         )
     except Exception as exc:
+        staging_archive.unlink(missing_ok=True)
         database.record_backup(str(archive_path), "failed", 0, str(exc))
         raise
 

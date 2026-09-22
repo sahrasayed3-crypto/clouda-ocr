@@ -1,6 +1,11 @@
-# Clouda PDF
+# Clouda OCR
 
 [![Build with Ona](https://ona.com/build-with-ona.svg)](https://app.ona.com/#https://github.com/sahrasayed3-crypto/clouda-ocr)
+
+> Brand note: the v0.2.0 release was originally published under the title
+> "Clouda PDF". The canonical project name is now **Clouda OCR**; see
+> [docs/BRAND_MIGRATION.md](docs/BRAND_MIGRATION.md).
+
 
 > The repository now includes the production runtime plus isolated data,
 > training-planning, model-registry, and shared-contract subsystems. The
@@ -8,7 +13,7 @@
 > real data ingestion. No final trained OCR model exists; model training and
 > local OCR inference remain disabled by default.
 
-Clouda PDF is an open-source, model-agnostic PDF-to-DOCX project for Arabic, English, and mixed-language documents. Its long-term goal is open, self-hostable, independently evaluated Arabic Document AI infrastructure for real-world documents: reliable Arabic OCR and document understanding for modern and historical books, including weak or medium-quality scanned pages, margins, footnotes, RTL text, and mixed Arabic-English reading order. Existing OCR/VLM models are evaluated first; a dedicated Clouda model may be trained or adapted only when benchmark evidence shows a meaningful gap that existing open and self-hostable models do not adequately solve.
+Clouda OCR is an Arabic-first, open-source document-processing and OCR infrastructure project for turning PDFs and scanned documents into reliable, editable, machine-usable outputs. It is model-agnostic: existing OCR/VLM models are evaluated first on Arabic benchmarks, and a dedicated Clouda model may be trained or adapted only when benchmark evidence shows a meaningful gap that existing open and self-hostable models do not adequately solve. The long-term goal is open, self-hostable, independently evaluated Arabic Document AI infrastructure for real-world documents: reliable Arabic OCR and document understanding for modern and historical books, including weak or medium-quality scanned pages, margins, footnotes, RTL text, and mixed Arabic-English reading order.
 
 The current verified implementation converts trusted born-digital PDF text into editable, text-only DOCX files while preserving page order, Arabic Unicode, RTL paragraph direction, footers, and page boundaries. Embedded text is analyzed and must pass the canonical digital-text trust gate before direct extraction is authorized. Image-only scanned pages are detected and routed to `pending_ocr_model`; they are not treated as successful OCR output until a model is licensed for the intended use, integrated, trained or adapted as needed, and validated in the application route.
 
@@ -16,7 +21,7 @@ It is designed for modern and historical Arabic books as well as English and mix
 
 ## Why it exists
 
-Researchers, publishers, and archives need editable documents without silently losing page context or implying OCR accuracy that has not been measured. Clouda PDF makes the supported digital-text path explicit and preserves uncertain pages for review.
+Researchers, publishers, and archives need editable documents without silently losing page context or implying OCR accuracy that has not been measured. Clouda OCR makes the supported digital-text path explicit and preserves uncertain pages for review.
 
 ## Current capabilities
 
@@ -231,7 +236,7 @@ See [ROADMAP.md](ROADMAP.md), [docs/ROADMAP.md](docs/ROADMAP.md), and [docs/MODE
 
 ## Open-Source Scope
 
-This repository contains the public open-source portion of OCR_PROJECT / Clouda PDF: the application structure, model-agnostic interfaces, OCR engine registry, page routing, blank and near-blank page handling, quality and review workflow, public evaluation utilities, tests, documentation, and safe examples.
+This repository contains the public open-source portion of OCR_PROJECT / Clouda OCR: the application structure, model-agnostic interfaces, OCR engine registry, page routing, blank and near-blank page handling, quality and review workflow, public evaluation utilities, tests, documentation, and safe examples.
 
 Some components are intentionally not included in this repository. Training data, private reference texts, final model weights, LoRA/QLoRA adapters, checkpoints, production service code, customer data, proprietary data-collection tools, advanced private training recipes, and sensitive deployment configuration may be licensed, hosted, or distributed separately.
 

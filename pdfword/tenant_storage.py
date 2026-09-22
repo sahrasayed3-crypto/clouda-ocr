@@ -30,9 +30,12 @@ def safe_filename(value: str, fallback: str) -> str:
 
 def ensure_contained(root: Path, path: Path) -> Path:
     resolved_root = root.resolve()
-    resolved = path.resolve()
-    if resolved.is_symlink():
+    # Check the unresolved path: resolve() follows symlinks, so a resolved
+    # path can never test as one. An in-root symlink is refused here; an
+    # escape is caught by the containment check below.
+    if path.is_symlink():
         raise PermissionError("Storage path must not be a symlink")
+    resolved = path.resolve()
     try:
         resolved.relative_to(resolved_root)
     except ValueError as exc:

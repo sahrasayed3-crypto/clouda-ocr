@@ -422,6 +422,12 @@ class DatasetCatalog:
         scan = run_quality_gate(str(record["manifest"]), QualityGateConfig())
         self.settings.quality_root.mkdir(parents=True, exist_ok=True)
         output = self.settings.quality_root / f"{output_label}.manifest.jsonl"
+        if str(scan.result.verdict.value) == "FAIL":
+            raise ValueError(
+                "Quality gate verdict is FAIL for this dataset; no derived "
+                "clean manifest was produced. Review the quality report "
+                "first."
+            )
         result = write_clean_manifest(
             Path(record["manifest"]),
             scan.samples,

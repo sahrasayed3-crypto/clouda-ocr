@@ -1295,6 +1295,11 @@ def retry_user_document(job_id: str, context=Depends(_require_csrf)) -> dict:
     if row["status"] not in {"failed", "cancelled"}:
         raise HTTPException(status_code=409, detail="Document cannot be retried")
     database.transition_conversion(job_id, "pending")
+    # The previous RQ job (if any) is finished/failed and will never be
+    # dequeued again. Clear its id so the maintenance re-dispatch pass can
+    # recover this row if the enqueue below is deferred.
+    database.update_conversion(row["id"], {"rq_job_id": ""})
+    _dispatch_conversion_job(database, job_id, actor="user_retry")
     return {"status": "pending"}
 
 
@@ -1308,6 +1313,15 @@ def cancel_user_document(job_id: str, context=Depends(_require_csrf)) -> dict:
         updated = database.transition_conversion(job_id, "cancelled")
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    try:
+        get_distributed_queue().cancel(job_id)
+    except Exception as exc:
+        structured_log(
+            "distributed_cancel_deferred",
+            job_id=job_id,
+            actor=user["user_id"],
+            error_type=type(exc).__name__,
+        )
     database.record_auth_audit(
         "document_cancelled",
         actor_user_id=user["user_id"],
@@ -2098,6 +2112,12 @@ def start_job(job_id: str, message: WorkerMessage) -> dict:
     if row["status"] == "finalizing":
         raise HTTPException(status_code=409, detail="Job finalization is in progress")
     if row["status"] in {"failed", "cancelled"}:
+        if row["status"] == "cancelled":
+            # Only the explicit retry endpoint resumes a cancelled job;
+            # an RQ retry of a stale job must not undo a user cancel.
+            raise HTTPException(
+                status_code=409, detail="Job was cancelled by its owner"
+            )
         database.transition_conversion(job_id, "pending")
     elif row["status"] == "processing":
         if database.claim_matches(row, message.worker_name, message.claim_token):

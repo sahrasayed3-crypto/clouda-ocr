@@ -3,16 +3,16 @@ requires = ["setuptools>=83,<84", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "clouda-pdf"
-version = "0.2.0"
-description = "Arabic-first PDF-to-DOCX runtime with isolated data, training, and model subsystems."
+name = "clouda-ocr"
+version = "0.2.1"
+description = "Arabic-first document-processing and OCR infrastructure runtime: trusted born-digital PDF-to-DOCX conversion, page-level trust routing, evaluation and data subsystems."
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.11,<3.12"
 dependencies = [
   "Pillow>=10.4.0",
-  "pypdf>=4.3.1",
+  "pypdf>=6.16.1",
   "pypdfium2>=4.30.0",
   "python-docx>=1.1.2",
   "requests>=2.32.0",

@@ -1,9 +1,9 @@
 import json
 import logging
-import os
 from dataclasses import asdict, fields
 from pathlib import Path
 
+from .atomic import atomic_write_text
 from .models import PageResult
 
 logger = logging.getLogger(__name__)
@@ -16,17 +16,17 @@ def checkpoint_path(job_root: str | Path) -> Path:
 
 
 def save_checkpoint(job_root: str | Path, results: dict[int, PageResult]) -> None:
-    path = checkpoint_path(job_root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".json.tmp")
     payload = {
         "completed_pages": sorted(results),
         "results": [asdict(results[page]) for page in sorted(results)],
     }
-    temporary.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    # A unique staging name + fsync + rename: two writers sharing a job root
+    # must not interleave inside the same .tmp file, and a crash must never
+    # publish a truncated checkpoint over a good one.
+    atomic_write_text(
+        checkpoint_path(job_root),
+        json.dumps(payload, ensure_ascii=False, indent=2),
     )
-    os.replace(temporary, path)
 
 
 def load_checkpoint(job_root: str | Path) -> dict[int, PageResult]:

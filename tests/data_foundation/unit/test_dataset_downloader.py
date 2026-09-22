@@ -97,6 +97,7 @@ class DatasetDownloaderTests(unittest.TestCase):
                     {
                         "CLOUDA_ALLOW_PRIVATE_DOWNLOADS": "true",
                         "CLOUDA_ALLOW_INSECURE_DOWNLOADS": "true",
+                        "CLOUDA_ALLOW_UNPINNED_DATASET_DOWNLOADS": "true",
                     },
                 ):
                     result = download_dataset_sample(
@@ -153,6 +154,7 @@ class DatasetDownloaderTests(unittest.TestCase):
                     {
                         "CLOUDA_ALLOW_PRIVATE_DOWNLOADS": "true",
                         "CLOUDA_ALLOW_INSECURE_DOWNLOADS": "true",
+                        "CLOUDA_ALLOW_UNPINNED_DATASET_DOWNLOADS": "true",
                     },
                 ),
             ):
@@ -199,6 +201,7 @@ class DatasetDownloaderTests(unittest.TestCase):
                     {
                         "CLOUDA_ALLOW_PRIVATE_DOWNLOADS": "true",
                         "CLOUDA_ALLOW_INSECURE_DOWNLOADS": "true",
+                        "CLOUDA_ALLOW_UNPINNED_DATASET_DOWNLOADS": "true",
                     },
                 ):
                     result = download_dataset_sample(

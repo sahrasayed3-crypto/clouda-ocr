@@ -55,7 +55,7 @@ database = get_database()
 runtime = runtime_settings()
 
 st.set_page_config(
-    page_title="Clouda PDF",
+    page_title="Clouda OCR",
     page_icon="C",
     layout="wide",
     initial_sidebar_state="auto",
@@ -276,7 +276,7 @@ user_html = (
 st.markdown(
     '<header class="app-header">'
     '<div class="app-brand"><span class="app-brand-mark" aria-hidden="true">C</span>'
-    "<div><strong>Clouda PDF</strong><small>تحويل المستندات العربية</small></div></div>"
+    "<div><strong>Clouda OCR</strong><small>تحويل المستندات العربية</small></div></div>"
     '<div class="header-meta">'
     f'{user_html}<span class="service-pill service-{service_tone}">'
     f'<span aria-hidden="true"></span>{html.escape(service_label)}</span>'
@@ -1208,6 +1208,6 @@ elif current_page == NAV_ADMIN:
     render_admin()
 
 st.markdown(
-    '<footer class="site-footer"><p>Clouda PDF — مساحة واضحة لتحويل المستندات.</p></footer>',
+    '<footer class="site-footer"><p>Clouda OCR — مساحة واضحة لتحويل المستندات.</p></footer>',
     unsafe_allow_html=True,
 )

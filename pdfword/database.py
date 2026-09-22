@@ -114,9 +114,15 @@ class Database:
         return connection
 
     @contextmanager
-    def transaction(self) -> Iterator[sqlite3.Connection]:
+    def transaction(self, *, immediate: bool = False) -> Iterator[sqlite3.Connection]:
         connection = self.connect()
         try:
+            if immediate:
+                # BEGIN IMMEDIATE takes the write lock up front so the
+                # SELECT inside the block cannot read a pre-transaction
+                # snapshot (python sqlite3 otherwise defers the implicit
+                # transaction to the first DML).
+                connection.execute("BEGIN IMMEDIATE")
             with connection:
                 yield connection
         finally:
@@ -1759,7 +1765,9 @@ class Database:
         self, job_id: str, guest_scope_id: str, token: str
     ) -> dict | None:
         now = utc_now()
-        with self.transaction() as connection:
+        # immediate=True: the single-use check must share the write lock with
+        # the UPDATE, or two concurrent downloads can both pass it.
+        with self.transaction(immediate=True) as connection:
             row = connection.execute(
                 """
                 SELECT * FROM guest_jobs
@@ -1929,7 +1937,9 @@ class Database:
         if target_status not in ALLOWED_STATUS_TRANSITIONS:
             raise ValueError(f"Unsupported status: {target_status}")
         now = utc_now()
-        with self.transaction() as connection:
+        # immediate=True: the status check must share the write lock with the
+        # UPDATE, or two workers can both observe 'pending' and both claim.
+        with self.transaction(immediate=True) as connection:
             row = connection.execute(
                 "SELECT * FROM conversions WHERE job_id = ?", (job_id,)
             ).fetchone()

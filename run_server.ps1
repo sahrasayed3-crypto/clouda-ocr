@@ -42,4 +42,4 @@ Start-Process -FilePath $python `
     -RedirectStandardError $stderr `
     -WindowStyle Hidden
 
-Write-Host "Clouda PDF started at http://127.0.0.1:$port"
+Write-Host "Clouda OCR started at http://127.0.0.1:$port"

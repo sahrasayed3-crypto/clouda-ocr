@@ -7,10 +7,15 @@ end-to-end (gate -> derived clean manifest -> re-validation).
 
 from __future__ import annotations
 
+import pytest
 from PIL import Image
 
 from tests.quality.conftest import make_manifest, make_row, save_png
-from clouda_data.quality.derived import revalidate_derived, write_clean_manifest
+from clouda_data.quality.derived import (
+    FailedVerdictRefusedError,
+    revalidate_derived,
+    write_clean_manifest,
+)
 from clouda_data.quality.gate import run_quality_gate
 from clouda_data.pretraining.hashing import sha256_file
 
@@ -40,7 +45,19 @@ def test_unicode_sample_ids_end_to_end(tmp_path) -> None:  # type: ignore[no-unt
     ids = {s.sample_id for s in scan.samples}
     assert "smp_نص_🎭" in ids, "unicode sample_id lost during gate load"
 
-    # Derived write + fail-closed re-validation must survive unicode ids.
+    # This fixture's scan is FAIL (rows have no image artifact): the
+    # fail-closed derived-write guard must refuse the clean manifest...
+    if str(scan.result.verdict.value) == "FAIL":
+        with pytest.raises(FailedVerdictRefusedError):
+            write_clean_manifest(
+                manifest,
+                scan.samples,
+                list(scan.exclusions),
+                list(scan.quarantine_ids),
+                scan.run,
+                tmp_path / "uni" / "clean.jsonl",
+            )
+    # ...and the forensic opt-in keeps the unicode id round-trip covered.
     result = write_clean_manifest(
         manifest,
         scan.samples,
@@ -48,6 +65,7 @@ def test_unicode_sample_ids_end_to_end(tmp_path) -> None:  # type: ignore[no-unt
         list(scan.quarantine_ids),
         scan.run,
         tmp_path / "uni" / "clean.jsonl",
+        allow_failed_verdict=True,
     )
     assert result["clean_row_count"] >= 1
     revalidate_derived(result["clean_manifest_path"], set(scan.excluded_ids))

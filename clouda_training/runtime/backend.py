@@ -90,5 +90,5 @@ def require_torch() -> None:
         raise ImportError(
             "PyTorch is required for the real training backend but is not "
             "installed. Install the training extra: "
-            "pip install clouda-pdf[training-torch]  (or: pip install torch)"
+            "pip install clouda-ocr[training-torch]  (or: pip install torch)"
         )

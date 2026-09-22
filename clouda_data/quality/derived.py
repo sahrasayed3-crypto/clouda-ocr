@@ -32,6 +32,16 @@ class DerivedManifestValidationError(RuntimeError):
     """Raised when a derived manifest fails post-write re-validation."""
 
 
+class FailedVerdictRefusedError(ValueError):
+    """Raised when a FAIL-verdict gate run tries to write a clean manifest.
+
+    A FAIL run may only produce diagnostics (exclusion report, failure
+    payload) — never an artifact that downstream consumers could mistake
+    for an approved clean dataset. Callers that explicitly need a rejected
+    manifest for forensics must pass ``allow_failed_verdict=True``.
+    """
+
+
 def _reject_self_overwrite(source_path: Path, output_path: Path) -> None:
     """Refuse output paths that would clobber the source manifest (R4-H1).
 
@@ -76,6 +86,8 @@ def write_clean_manifest(
     quarantine_ids: list[str] | tuple[str, ...],
     run: Any,
     output_path: str | Path,
+    *,
+    allow_failed_verdict: bool = False,
 ) -> dict[str, Any]:
     """Write the clean derived manifest and return its lineage document.
 
@@ -83,6 +95,10 @@ def write_clean_manifest(
     raises :class:`SourceManifestDriftError` if it changed. Rows are the
     samples minus excluded IDs, written via the canonical pretraining writer
     with lineage header metadata.
+
+    Fail-closed: a run whose verdict is FAIL cannot produce a clean manifest
+    (:class:`FailedVerdictRefusedError`) unless the caller explicitly opts in
+    with ``allow_failed_verdict=True`` (forensic/rejected-artifact flows).
     """
 
     source_path = Path(source_manifest_path)
@@ -136,6 +152,13 @@ def write_clean_manifest(
     run_id = str(getattr(run, "run_id", "") or "")
     verdict = getattr(run, "verdict", "")
     verdict_value = getattr(verdict, "value", verdict)
+    if str(verdict_value) == "FAIL" and not allow_failed_verdict:
+        raise FailedVerdictRefusedError(
+            "Quality gate verdict is FAIL: refusing to write a clean manifest "
+            f"for run {run_id or '<unknown>'}. Produce a failure report "
+            "(quality scan payload) instead, or pass allow_failed_verdict=True "
+            "explicitly for a rejected/forensic artifact."
+        )
 
     report = exclusion_report(
         exclusions,
@@ -291,6 +314,7 @@ def _hash_file(path: Path) -> str:
 __all__ = [
     "DERIVED_DATASET_VERSION_PREFIX",
     "DerivedManifestValidationError",
+    "FailedVerdictRefusedError",
     "SourceManifestDriftError",
     "revalidate_derived",
     "write_clean_manifest",

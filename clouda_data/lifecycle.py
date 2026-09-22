@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 import os
 import shutil
 import tempfile
@@ -100,14 +101,28 @@ def cleanup(
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(path), destination)
         audit["recoverable_trash"] = str(trash)
+    # Second-resolution timestamps collide when two cleanups of the same
+    # action run together; a collision must not overwrite the first run's
+    # sha256 inventory. Write atomically so a crash cannot leave a partial
+    # audit for a completed destructive action.
+    from .pretraining.hashing import atomic_write_text
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
     report = (
         roots.artifact_root
         / "reports"
         / "lifecycle"
-        / f"{audit['action']}-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}.json"
+        / f"{audit['action']}-{stamp}.json"
     )
+    if report.exists():
+        report = (
+            roots.artifact_root
+            / "reports"
+            / "lifecycle"
+            / f"{audit['action']}-{stamp}-{uuid.uuid4().hex[:6]}.json"
+        )
     report.parent.mkdir(parents=True, exist_ok=True)
-    report.write_text(json.dumps(audit, indent=2), encoding="utf-8")
+    atomic_write_text(report, json.dumps(audit, indent=2))
     audit["report"] = str(report)
     return audit
 

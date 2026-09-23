@@ -590,6 +590,7 @@ def stage_qc():
                 st["synthetic"]["pass_ids"] = finals["count"]
     (STATE / "qc_done.json").write_text(json.dumps(sorted(done)))
     (STATE / "final_index.json").write_text(json.dumps(finals))
+    save_state(st)
     log(f"qc: processed {processed} new pages (PASS total {finals['count']})")
     return processed
 
@@ -648,6 +649,7 @@ def main():
             if mode == "loop":
                 stage_generate(batch_limit=400, workers=workers)
                 stage_qc()
+            st = load_state()  # qc/generate already persisted their counters
             update_system(st)
             save_state(st)
         except Exception as e:

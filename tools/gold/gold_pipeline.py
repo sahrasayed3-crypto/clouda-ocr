@@ -22,7 +22,7 @@ import subprocess
 import sys
 import time
 import urllib.request
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as SafeET
 from pathlib import Path
 
 GOLD = Path("/home/jovyan/gold")
@@ -303,8 +303,8 @@ def stage_chunk():
         if "source_manifest" in xml.name:
             continue
         try:
-            root = ET.parse(xml).getroot()
-        except ET.ParseError:
+            root = SafeET.parse(xml).getroot()
+        except SafeET.ParseError:
             continue
         texts = [
             el.text.strip() for el in root.iter() if el.text and AR.search(el.text)
@@ -444,16 +444,35 @@ def stage_generate(batch_limit, workers):
         profile = VISUAL_PROFILES[vis][
             hash(vis + str(len(stems))) % len(VISUAL_PROFILES[vis])
         ]
-        resume = "--resume" if (GOLD / "factory_runs" / batch_name).exists() else ""
-        cmd = (
-            f"nice -n 10 ionice -c3 python -m clouda_data.factory generate "
-            f"--output {GOLD / 'factory_runs'} --profiles {profile} --variants 1 "
-            f"--seed {SEED} --seed-mode arabic_scan_factory --workers {workers} "
-            f"--max-pages 1 --no-pdf --run-id {batch_name} {resume} {staging}"
-        )
+        resume = ["--resume"] if (GOLD / "factory_runs" / batch_name).exists() else []
+        cmd = [
+            sys.executable,
+            "-m",
+            "clouda_data.factory",
+            "generate",
+            "--output",
+            str(GOLD / "factory_runs"),
+            "--profiles",
+            profile,
+            "--variants",
+            "1",
+            "--seed",
+            str(SEED),
+            "--seed-mode",
+            "arabic_scan_factory",
+            "--workers",
+            str(workers),
+            "--max-pages",
+            "1",
+            "--no-pdf",
+            "--run-id",
+            batch_name,
+            *resume,
+            str(staging),
+        ]
         log(f"generate: {len(stems)} chunks [{vis}] profile={profile}")
         with open(LOGS / f"factory_{batch_name}.log", "w") as lf:
-            subprocess.run(cmd, shell=True, cwd=REPO, stdout=lf, stderr=lf)
+            subprocess.run(cmd, cwd=REPO, stdout=lf, stderr=lf, check=False)
 
 
 def stage_qc():
@@ -579,10 +598,14 @@ def update_system(st):
     try:
         disk = shutil.disk_usage("/home/jovyan")
         gpu = subprocess.run(
-            "nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total --format=csv,noheader,nounits",
-            shell=True,
+            [
+                "nvidia-smi",
+                "--query-gpu=utilization.gpu,memory.used,memory.total",
+                "--format=csv,noheader,nounits",
+            ],
             capture_output=True,
             text=True,
+            check=False,
         ).stdout.strip()
         mem = {
             ln.split(":")[0]: int(ln.split()[1]) // 1024

@@ -22,6 +22,15 @@ from clouda_training.adapters.approval import (
     load_approval_catalog,
     require_training_approval,
 )
+from clouda_training.runtime.backend import torch_available
+
+# The generic CI job intentionally installs the project without optional
+# PyTorch. Tests that only exercise the approval gates (which fire before any
+# torch dependency) run everywhere; the two tests below execute the REAL
+# training path end to end and therefore require torch.
+_requires_torch = pytest.mark.skipif(
+    not torch_available(), reason="real training execution requires PyTorch"
+)
 
 
 @pytest.fixture()
@@ -274,6 +283,7 @@ def test_real_run_blocked_without_approval(
         run_experiment(config, approval_catalog=missing)
 
 
+@_requires_torch
 def test_real_run_with_approval_records_provenance(
     torch_config, tmp_path: Path, _runtime_test_adapter
 ) -> None:
@@ -305,6 +315,7 @@ def test_real_run_with_approval_records_provenance(
     assert recorded["source_catalog"] == str(catalog)
 
 
+@_requires_torch
 def test_mock_and_torch_adapters_need_no_approval(torch_config, tmp_path: Path) -> None:
     from clouda_training.experiments import RunStatus, run_experiment
 

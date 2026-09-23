@@ -109,7 +109,10 @@ def test_adapter_without_evaluate_hook_is_unaffected(
     torch_config, tmp_path: Path
 ) -> None:
     class NoEvalAdapter(SyntheticLinearAdapter):
-        evaluate = None  # falsy attribute -> backend treats hook as absent
+        # Deliberate protocol probe: falsy, non-callable attribute -> backend
+        # treats the hook as absent. None overrides the inherited method only
+        # at the adapter-contract boundary, not in the real adapter base.
+        evaluate = None  # type: ignore[assignment]
 
     config = _config(torch_config, tmp_path)
     _, rows = _run(config, tmp_path, NoEvalAdapter())

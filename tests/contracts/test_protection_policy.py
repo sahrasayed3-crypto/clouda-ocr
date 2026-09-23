@@ -86,9 +86,10 @@ from clouda_training.experiments.dataset import (  # noqa: E402
 
 import json  # noqa: E402
 from pathlib import Path  # noqa: E402
+from typing import Any  # noqa: E402
 
 
-def _write_manifest(path: Path, rows: list[dict]) -> Path:
+def _write_manifest(path: Path, rows: list[dict[str, Any]]) -> Path:
     path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
     return path
 
@@ -140,7 +141,7 @@ def test_clean_rows_allowed_despite_scary_file_name(tmp_path: Path) -> None:
 
 
 def test_rename_or_move_never_changes_protection_verdict(tmp_path: Path) -> None:
-    rows = [
+    rows: list[dict[str, Any]] = [
         dict(_HEADER),
         dict(_CLEAN_TRAIN_ROW),
         {"sample_id": "s-2", "target_split": "train", "metadata": {"protected": True}},
@@ -169,7 +170,7 @@ def test_manifest_hash_is_content_identity_not_path_identity(
 ) -> None:
     from clouda_contracts.checksums import sha256_file
 
-    rows = [dict(_HEADER), dict(_CLEAN_TRAIN_ROW)]
+    rows: list[dict[str, Any]] = [dict(_HEADER), dict(_CLEAN_TRAIN_ROW)]
     a = _write_manifest(tmp_path / "one.jsonl", rows)
     b = tmp_path / "sub"
     b.mkdir()

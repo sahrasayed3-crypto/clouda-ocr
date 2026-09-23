@@ -86,7 +86,7 @@ def test_cross_adapter_resume_rejected(tmp_path: Path) -> None:
     assert result.final_step == 2
     assert saved, "expected a checkpoint to be saved"
 
-    # Now try to resume the SAME checkpoint with the HUNYUAN adapter
+    # Resuming the same checkpoint under a different adapter must fail closed.
     hunyuan_adapter = HunyuanOCR15SFTAdapter(local_model_path="unused-mock")
     hunyuan_adapter.model = MockQwen3VLForConditionalGeneration()  # same shape
     hunyuan_adapter.processor = MockQwenProcessor()

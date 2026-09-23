@@ -8,7 +8,11 @@ Durable/resumable. Runs forever:
   - verifies by re-downloading and comparing SHA256
   - updates progress.json
 """
-import hashlib, json, os, subprocess, tarfile, time
+import hashlib
+import json
+import os
+import tarfile
+import time
 from pathlib import Path
 
 GOLD = Path("/home/jovyan/gold")
@@ -78,7 +82,6 @@ def main():
         st = load_state()
         try:
             all_ids = sorted({p.name.split(".")[0] for p in FINAL.glob("CLD-SG-*.png")})
-            sharded = {s.get("pages", 0) for s in st.get("shards", {}).get("finalized", [])}
             done_ids = set()
             for s in st.get("shards", {}).get("finalized", []):
                 done_ids.update(s["page_range"])

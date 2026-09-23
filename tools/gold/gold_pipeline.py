@@ -11,7 +11,16 @@ Stages (run via `python gold_pipeline.py <stage>` or `loop`):
 State: /home/jovyan/gold/state/progress.json
 Licenses are recorded per source in state/source_provenance.json (fail-closed).
 """
-import hashlib, json, os, random, re, shutil, subprocess, sys, time, urllib.request, gzip
+import hashlib
+import json
+import os
+import random
+import re
+import shutil
+import subprocess
+import sys
+import time
+import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -430,7 +439,7 @@ def update_system(st):
         gpu = subprocess.run(
             "nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total --format=csv,noheader,nounits",
             shell=True, capture_output=True, text=True).stdout.strip()
-        mem = {l.split(":")[0]: int(l.split()[1]) // 1024 for l in open("/proc/meminfo") if l.startswith(("MemTotal", "MemAvailable"))}
+        mem = {ln.split(":")[0]: int(ln.split()[1]) // 1024 for ln in open("/proc/meminfo") if ln.startswith(("MemTotal", "MemAvailable"))}
         st["system"] = {"load": os.getloadavg()[0], "ram_total_mb": mem.get("MemTotal"), "ram_avail_mb": mem.get("MemAvailable"),
                         "disk_used_gb": round(disk.used / 1e9, 1), "disk_free_gb": round(disk.free / 1e9, 1), "gpu": gpu}
     except Exception as e:

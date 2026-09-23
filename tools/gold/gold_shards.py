@@ -8,6 +8,7 @@ Durable/resumable. Runs forever:
   - verifies by re-downloading and comparing SHA256
   - updates progress.json
 """
+
 import hashlib
 import json
 import os
@@ -30,7 +31,11 @@ def log(m):
 
 
 def load_state():
-    return json.loads(PROG.read_text()) if PROG.exists() else {"synthetic": {}, "shards": {"finalized": [], "uploaded": []}}
+    return (
+        json.loads(PROG.read_text())
+        if PROG.exists()
+        else {"synthetic": {}, "shards": {"finalized": [], "uploaded": []}}
+    )
 
 
 def save_state(st):
@@ -71,6 +76,7 @@ def main():
     SHARDS.mkdir(parents=True, exist_ok=True)
     os.environ["HF_TOKEN"] = hf_token()
     from huggingface_hub import HfApi
+
     api = HfApi(token=hf_token())
     try:
         api.create_repo(HF_REPO, repo_type="dataset", private=True, exist_ok=True)
@@ -92,18 +98,32 @@ def main():
                 sp = build_shard(idx, batch)
                 digest = sha256_file(sp)
                 size = sp.stat().st_size
-                entry = {"shard": sp.name, "sha256": digest, "bytes": size,
-                         "page_range": batch[:MAX_PAGES_PER_SHARD]}
+                entry = {
+                    "shard": sp.name,
+                    "sha256": digest,
+                    "bytes": size,
+                    "page_range": batch[:MAX_PAGES_PER_SHARD],
+                }
                 # upload
                 try:
-                    api.upload_file(path_or_fileobj=str(sp), path_in_repo=sp.name,
-                                    repo_id=HF_REPO, repo_type="dataset")
+                    api.upload_file(
+                        path_or_fileobj=str(sp),
+                        path_in_repo=sp.name,
+                        repo_id=HF_REPO,
+                        repo_type="dataset",
+                    )
                     # verify by re-download
                     dl = SHARDS / f"verify_{sp.name}"
                     import urllib.request
+
                     url = f"https://huggingface.co/datasets/{HF_REPO}/resolve/main/{sp.name}"
-                    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {hf_token()}"})
-                    with urllib.request.urlopen(req, timeout=600) as r, open(dl, "wb") as f:
+                    req = urllib.request.Request(
+                        url, headers={"Authorization": f"Bearer {hf_token()}"}
+                    )
+                    with (
+                        urllib.request.urlopen(req, timeout=600) as r,
+                        open(dl, "wb") as f,
+                    ):
                         f.write(r.read())
                     ok = sha256_file(dl) == digest
                     dl.unlink()
@@ -113,7 +133,9 @@ def main():
                     entry["verified"] = False
                     entry["upload_error"] = str(e)[:200]
                     log(f"shard {sp.name}: upload FAILED {e}")
-                st.setdefault("shards", {"finalized": [], "uploaded": []}).setdefault("finalized", []).append(entry)
+                st.setdefault("shards", {"finalized": [], "uploaded": []}).setdefault(
+                    "finalized", []
+                ).append(entry)
                 if entry.get("verified"):
                     st["shards"].setdefault("uploaded", []).append(sp.name)
                 save_state(st)

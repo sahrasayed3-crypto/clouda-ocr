@@ -4,7 +4,7 @@ All notable changes are documented here.
 
 ## Unreleased
 
-## 0.2.1 - Unreleased (local preparation - not published)
+## 0.2.1 - 2026-09-22
 
 - Brand migration: the canonical project and product name is now Clouda OCR.
   The v0.2.0 release remains historical evidence under its original title

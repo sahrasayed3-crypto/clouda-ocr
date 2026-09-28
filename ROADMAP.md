@@ -41,7 +41,10 @@
 
 - Project B code copyright and license.
 - Production authentication provider and repository visibility.
-- Final production/runtime OCR/VLM model, architecture, revision, licensing,
-  deployment constraints, and GPU platform.
+- Final trained/integrated production runtime packaging for the selected
+  model: architecture integration, revision pinning, licensing, deployment
+  constraints, and GPU platform. (Benchmark model selection itself is complete
+  via published model-selection benchmark v1.0; no final trained production
+  model exists yet.)
 - Commercial permissions for pending datasets.
 - A reviewed user-document consent policy (current behavior remains disabled).

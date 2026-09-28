@@ -24,7 +24,7 @@ Add a candidate engine, or any future fallback engine, by implementing `pdfword.
 
 ## Required gate before activation
 
-1. Document the selected primary candidate, licence, supported languages, hardware, and dependencies.
+1. Document the selected model, licence, supported languages, hardware, and dependencies.
 2. Add a separate optional dependency group; do not make it required for direct extraction.
 3. Implement CPU-safe unavailable-model handling that keeps pages `pending_ocr_model` rather than crashing.
 4. Evaluate against a versioned, consented ground-truth set containing Arabic, English, mixed RTL/LTR, digital, scanned, old, and low-quality pages.

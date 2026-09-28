@@ -11,7 +11,7 @@
 
 ## Months 2–4
 
-- Prepare model-agnostic runtime integration for whichever candidate satisfies the final evaluation, licensing, and deployment requirements; adapt or train a dedicated model only if route-level evaluation demonstrates a gap that existing models do not close.
+- Prepare model-agnostic runtime integration for the selected model, satisfying the applicable licensing, and deployment requirements; adapt or train further only if route-level evaluation demonstrates a gap that existing models do not close.
 - Measure application-route accuracy, latency, memory, and failure behavior on
   representative hardware.
 - Decide whether an optional CPU and/or AMD-compatible deployment path is viable.

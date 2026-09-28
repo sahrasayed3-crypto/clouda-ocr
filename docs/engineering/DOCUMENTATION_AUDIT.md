@@ -1,5 +1,7 @@
 # Documentation Consistency Audit — Current Session (2026-09-21)
 
+> **Historical engineering snapshot from 2026-09-21.** This document records the project state at that date and is superseded for current benchmark status by the published model-selection benchmark v1.0.
+
 Compared tracked documentation against code and release metadata at HEAD
 `1899415` + working-tree state (which includes the concurrent v0.2.1 brand
 migration).

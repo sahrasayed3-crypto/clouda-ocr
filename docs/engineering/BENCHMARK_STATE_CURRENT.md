@@ -1,5 +1,7 @@
 # Benchmark State — Current Session (2026-09-21)
 
+> **Historical engineering snapshot from 2026-09-21.** This document records the project state at that date and is superseded for current benchmark status by the published model-selection benchmark v1.0.
+
 Evidence state only. **No results were invented, no rankings created, no
 interim metrics published by this session.** The separate benchmark
 repository (`clouda-ocr-benchmark`) was not read, touched, or modified; it is

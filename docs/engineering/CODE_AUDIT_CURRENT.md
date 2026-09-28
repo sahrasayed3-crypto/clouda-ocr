@@ -1,5 +1,7 @@
 # Code Audit — Current Session (2026-09-21)
 
+> **Historical engineering snapshot from 2026-09-21.** This document records the project state at that date and is superseded for current benchmark status by the published model-selection benchmark v1.0.
+
 Static + dynamic audit of production code. Findings from four review passes
 (filesystem/persistence, concurrency/state, input-handling/security,
 data-pipeline) consolidated here. Evidence is file:line as of HEAD

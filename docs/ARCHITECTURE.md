@@ -19,14 +19,14 @@
 Current engines:
 
 - `DirectPdfTextEngine`: conditionally available extraction primitive; it owns no trust or routing policy.
-- `FutureOcrEngine`: placeholder, inactive, represents scanned-page OCR after the selected primary candidate passes licensing, integration, and evaluation gates.
+- `FutureOcrEngine`: placeholder, inactive, represents scanned-page OCR after the selected model passes licensing, integration, and evaluation gates.
 
 The engine interface is intentionally model-agnostic. It can accept page images as bytes, page image paths, or PDF bytes with a page number. It returns a unified `OCRResult` schema with optional fields for model name, internal confidence, processing time, layout boxes, reading order, metadata, and error message. Direct extraction reports `confidence=None`; its trust comes only from `DigitalTextGateResult`. Internal diagnostic values are not user-facing accuracy, confidence, or quality percentages. Engines are registered through `EngineRegistry`, so future model integrations can be added without hard-coding model names in the main router.
 
 ## Explicit Non-Goals For Current Version
 
 - No legacy OCR integration.
-- No production model candidate has been selected; none is integrated, trained/adapted, or final.
+- No production OCR engine is integrated or final. Model selection was completed from the published model-selection benchmark v1.0, and no final trained production model exists yet.
 - No ROCm/GPU support claim.
 - No CUDA-specific or ROCm-specific engine contract.
 - No layout-perfect PDF reconstruction.

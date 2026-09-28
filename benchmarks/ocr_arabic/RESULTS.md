@@ -1,4 +1,4 @@
-# Final Arabic OCR Benchmark Results
+# Arabic OCR Benchmark v0.1.0 Results (Historical)
 
 Normalized Arabic CER is the primary ranking metric; lower is better. The main
 leaderboard includes only runs that completed all 177 common benchmark pages.

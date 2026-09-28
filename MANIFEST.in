@@ -1,0 +1,11 @@
+# Files the README and release process reference but setuptools does not
+# pick up automatically; without these a plain sdist cannot run the documented
+# Streamlit app or reproduce the release metadata.
+include README.md CHANGELOG.md LICENSE NOTICE CITATION.cff .zenodo.json SBOM.json
+include requirements*.txt
+include .env.example
+recursive-include constraints *.txt
+recursive-include .streamlit *
+recursive-include configs *.json *.yaml *.yml
+recursive-include dataset_catalog *.json
+recursive-include schemas *.json

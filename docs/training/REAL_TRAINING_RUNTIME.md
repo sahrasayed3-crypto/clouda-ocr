@@ -52,8 +52,9 @@ run unless **every** condition holds:
    `trust_remote_code`, no silent fallback to dry-run.
 
 The shipped approval catalog is **empty on purpose**: no base model is
-approved until the benchmark winner is selected and its license/training
-terms are reviewed. The final model remains TBD.
+approved until the license and training terms of the model selected from
+the published model-selection benchmark v1.0 are reviewed and recorded.
+No model is approved for training yet.
 
 ## Failure behaviour
 

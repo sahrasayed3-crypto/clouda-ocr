@@ -6,14 +6,22 @@ This project currently ships source code, documentation, small deterministic tes
 
 Dependency declarations are maintained in:
 
+- `requirements.txt`
 - `requirements-base.txt`
 - `requirements-dev.txt`
 - `requirements-linux.txt`
 - `requirements-server.txt`
 - `requirements-worker.txt`
 - `requirements-rocm.txt`
+- `requirements-data.txt`
+- `requirements-models.txt`
+- `requirements-training.txt`
 
 Primary Python packages currently include Streamlit, FastAPI, Uvicorn, Requests, python-docx, pypdf, pypdfium2, Pillow, Redis/RQ, PyMuPDF, pdfplumber, pytest, ruff, black, and mypy. Their exact installed transitive dependency set is environment-specific and should be regenerated from a clean environment before a formal release.
+
+## Bundled Fonts
+
+The bundled Arabic fonts in `clouda_data/resources/fonts/` (Amiri, Scheherazade New, Noto Naskh Arabic, and Cairo) are licensed under the SIL Open Font License, Version 1.1; see `NOTICE` for the full font copyright notices.
 
 ## External Tools
 

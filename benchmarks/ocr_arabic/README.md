@@ -1,7 +1,9 @@
-# Final Arabic OCR Benchmark
+# Arabic OCR Benchmark v0.1.0 (Historical)
 
-This directory is the public-safe, metadata-only representation of the final
-Clouda Arabic OCR benchmark. It does not contain source images, clean images,
+This directory is the public-safe, metadata-only representation of the
+historical v0.1.0 Clouda Arabic OCR benchmark (177 distorted pages). The
+current model-selection benchmark is v1.0 in the separate
+clouda-ocr-model-selection-benchmark repository. It does not contain source images, clean images,
 distorted images, ground-truth text, model outputs, correspondence, or other
 dataset assets.
 

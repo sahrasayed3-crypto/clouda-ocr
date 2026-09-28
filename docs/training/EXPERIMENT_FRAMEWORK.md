@@ -35,9 +35,11 @@ clouda-training dry-run configs/training/mock-experiment.yaml `
   --override training.seed=42 --json
 ```
 
-`clouda-training run` uses the configured adapter. This build permits only
-`mock`/`dry_run` adapters with `runtime.dry_run: true`; it fails closed for real
-training.
+`clouda-training run` uses the configured adapter. `mock`/`dry_run` adapters
+require `runtime.dry_run: true`. Real (torch) adapters additionally require an
+installed torch, `runtime.dry_run: false`, an offline run, and an approved entry
+in the model-training catalog; any unmet condition fails closed. See
+docs/training/REAL_TRAINING_RUNTIME.md.
 
 ## Run contract and lifecycle
 

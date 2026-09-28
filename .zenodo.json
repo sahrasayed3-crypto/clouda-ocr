@@ -16,5 +16,6 @@
     "document processing",
     "right-to-left text",
     "OCR evaluation"
-  ]
+  ],
+  "version": "0.2.1"
 }

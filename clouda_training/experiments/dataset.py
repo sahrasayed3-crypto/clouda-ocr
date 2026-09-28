@@ -20,6 +20,13 @@ class DatasetIdentity:
     row_count: int
     source_ids: tuple[str, ...]
     source_licenses: tuple[str, ...]
+    quality_verdict: str | None = None
+
+
+#: Gate verdicts defined by clouda_data.quality.gate.GateVerdict. A manifest
+#: header may record the verdict of the quality gate that produced it; any
+#: recorded value outside this set fails closed (tampered/unknown verdict).
+_KNOWN_QUALITY_VERDICTS = {"PASS", "PASS_WITH_WARNINGS", "FAIL"}
 
 
 def validate_training_dataset(dataset: DatasetSection) -> DatasetIdentity:
@@ -36,6 +43,7 @@ def validate_training_dataset(dataset: DatasetSection) -> DatasetIdentity:
     selected_count = 0
     source_ids: set[str] = set()
     source_licenses: set[str] = set()
+    quality_verdict: str | None = None
     for line_index, row in enumerate(iter_manifest(manifest), start=1):
         if "_schema_version" in row and "sample_id" not in row:
             if header or line_index != 1:
@@ -57,6 +65,22 @@ def validate_training_dataset(dataset: DatasetSection) -> DatasetIdentity:
                 raise PermissionError(
                     "Dataset manifest is marked as protected and cannot train"
                 )
+            verdict = header.get("quality_gate_verdict")
+            if verdict is not None:
+                normalized = str(verdict).strip().upper()
+                if normalized not in _KNOWN_QUALITY_VERDICTS:
+                    raise ValueError(
+                        f"Manifest quality_gate_verdict {verdict!r} is not a "
+                        "known quality-gate verdict "
+                        f"({_KNOWN_QUALITY_VERDICTS}) — refusing to guess"
+                    )
+                if normalized == "FAIL":
+                    raise PermissionError(
+                        "Dataset manifest records a FAILED quality-gate "
+                        "verdict and cannot be used for training until the "
+                        "gate is re-run and passes"
+                    )
+                quality_verdict = normalized
             continue
         row_count += 1
         for field in ("target_split", "split", "source_split"):
@@ -95,4 +119,5 @@ def validate_training_dataset(dataset: DatasetSection) -> DatasetIdentity:
         row_count=selected_count,
         source_ids=tuple(sorted(source_ids)),
         source_licenses=tuple(sorted(source_licenses)),
+        quality_verdict=quality_verdict,
     )

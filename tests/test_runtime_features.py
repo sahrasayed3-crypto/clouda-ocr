@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import time
@@ -56,6 +57,31 @@ class TestRuntimeFeatures(unittest.TestCase):
             restored = load_checkpoint(tmp)
             self.assertEqual(restored[2].text_quality_score, 92.0)
             self.assertFalse(restored[2].requires_manual_review)
+
+    def test_checkpoint_survives_schema_drift(self) -> None:
+        """A row carrying a field from another build must not discard the
+        whole checkpoint: recover every page that still fits the schema."""
+
+        with tempfile.TemporaryDirectory() as tmp:
+            original = PageResult(
+                page_no=1,
+                model_used="local:pypdf",
+                markdown="hello",
+                text_quality_score=93.0,
+            )
+            save_checkpoint(tmp, {1: original})
+            path = Path(tmp) / "checkpoint.json"
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            payload["results"].append(
+                {"page_no": 2, "obsolete_field_from_another_build": True}
+            )
+            path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+            restored = load_checkpoint(tmp)
+
+            self.assertEqual(set(restored), {1})
+            self.assertEqual(restored[1].markdown, "hello")
+            self.assertEqual(restored[1].text_quality_score, 93.0)
 
     def test_pdf_byte_and_page_limits_are_enforced(self) -> None:
         limits = ProcessingLimits(
@@ -158,6 +184,57 @@ class TestRuntimeFeatures(unittest.TestCase):
             (nonempty / "keep.txt").write_text("keep", encoding="utf-8")
             with self.assertRaises(FileExistsError):
                 restore_backup(archive, nonempty)
+
+    def test_restore_failure_leaves_destination_clean(self) -> None:
+        """A conflicting archive member must fail without leaving a partial
+        extraction behind in the destination directory."""
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            database = Database(root / "source.sqlite3")
+            archive = create_backup(
+                database,
+                storage_root=root / "conversions",
+                backup_root=root / "backups",
+            )
+            # Append a member that collides with the "data" directory.
+            with zipfile.ZipFile(archive, "a") as bundle:
+                bundle.writestr("data", b"collides-with-directory")
+
+            destination = root / "restored"
+            with self.assertRaises(FileExistsError):
+                restore_backup(archive, destination)
+
+            # The destination stays empty (no partial extraction, no staging
+            # leftovers) so the restore can simply be retried.
+            self.assertFalse(list(destination.glob("*")))
+
+    def test_restore_publish_failure_rolls_back_and_allows_retry(self) -> None:
+        """A failure during the publish rename must leave the destination
+        absent (never partially restored) with no staging leftovers, and a
+        retry must then succeed."""
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            database = Database(root / "source.sqlite3")
+            archive = create_backup(
+                database,
+                storage_root=root / "conversions",
+                backup_root=root / "backups",
+            )
+            destination = root / "restored"
+
+            with patch(
+                "pdfword.backup.os.replace", side_effect=OSError("publish failed")
+            ):
+                with self.assertRaises(OSError):
+                    restore_backup(archive, destination)
+
+            self.assertFalse(destination.exists())
+            self.assertEqual(list(root.glob(f".{destination.name}.restore-*")), [])
+
+            restored = restore_backup(archive, destination)
+            self.assertTrue((restored / "data" / "clouda.sqlite3").is_file())
 
     def test_registry_excludes_safety_and_ranks_free_vision(self) -> None:
         models = [

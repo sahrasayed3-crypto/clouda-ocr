@@ -103,30 +103,40 @@ class DistributedJobQueue:
         from rq import Retry
 
         queue = self._queue()
-        existing = queue.fetch_job(job_id)
-        if existing and existing.get_status(refresh=True) in {
-            "queued",
-            "started",
-            "deferred",
-            "scheduled",
-        }:
-            return existing
-        if existing:
-            existing.delete()
-        retry = (
-            Retry(max=self.retry_count, interval=[30, 120][: self.retry_count])
-            if self.retry_count
-            else None
-        )
-        return queue.enqueue(
-            "pdfword.worker_tasks.run_remote_job",
-            job_id,
-            job_id=job_id,
-            job_timeout=self.job_timeout,
-            retry=retry,
-            result_ttl=86400,
-            failure_ttl=604800,
-        )
+        # Serialize the fetch/delete/enqueue window. RQ has no duplicate-job
+        # guard: two dispatchers racing would both rpush the same job id and
+        # the job would run twice. A loser treats its dispatch as deferred
+        # (maintenance re-dispatches pending rows without an RQ job).
+        lock_key = f"{self.queue_name}:dispatch:{job_id}"
+        if not queue.connection.set(lock_key, "1", nx=True, ex=30):
+            raise RuntimeError(f"dispatch already in progress for {job_id}")
+        try:
+            existing = queue.fetch_job(job_id)
+            if existing and existing.get_status(refresh=True) in {
+                "queued",
+                "started",
+                "deferred",
+                "scheduled",
+            }:
+                return existing
+            if existing:
+                existing.delete()
+            retry = (
+                Retry(max=self.retry_count, interval=[30, 120][: self.retry_count])
+                if self.retry_count
+                else None
+            )
+            return queue.enqueue(
+                "pdfword.worker_tasks.run_remote_job",
+                job_id,
+                job_id=job_id,
+                job_timeout=self.job_timeout,
+                retry=retry,
+                result_ttl=86400,
+                failure_ttl=604800,
+            )
+        finally:
+            queue.connection.delete(lock_key)
 
     def cancel(self, job_id: str) -> bool:
         queue = self._queue()

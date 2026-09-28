@@ -86,7 +86,14 @@ def test_git_checkout_kind_detection(tmp_path):
         capture_output=True,
         text=True,
     ).stdout.strip()
-    assert details["branch"] == expected_branch
+    if expected_branch:
+        # Attached checkout (push-event CI): doctor reports the branch name.
+        assert details["branch"] == expected_branch
+    else:
+        # Detached checkout (e.g. pull_request CI, which checks out the merge
+        # ref): `git branch --show-current` is empty while the doctor's
+        # `git rev-parse --abbrev-ref HEAD` reports "HEAD".
+        assert details["branch"] == "HEAD"
     expected_linked = (real_root / ".git").is_file()
     assert details["is_linked_worktree"] is expected_linked
     assert details["tree_kind"] == (

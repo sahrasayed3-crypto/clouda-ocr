@@ -1,7 +1,9 @@
+import os
 import sqlite3
 import json
 import shutil
 import tempfile
+import uuid
 import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -26,6 +28,18 @@ def create_backup(
     destination_root.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     archive_path = destination_root / f"clouda_backup_{timestamp}.zip"
+    if archive_path.exists():
+        # Two backups within the same second must not truncate each other's
+        # archive; disambiguate instead of overwriting a live backup.
+        archive_path = (
+            destination_root / f"clouda_backup_{timestamp}_{uuid.uuid4().hex[:6]}.zip"
+        )
+    # The zip is staged next to its final name and published with a single
+    # rename: a crash mid-write can never leave a truncated archive under the
+    # name consumers (retention, validate_backup) will find.
+    staging_archive = destination_root / (
+        f".{archive_path.name}.{uuid.uuid4().hex[:8]}.part"
+    )
     try:
         with tempfile.TemporaryDirectory() as temporary:
             snapshot = Path(temporary) / "clouda.sqlite3"
@@ -37,7 +51,7 @@ def create_backup(
                 target.close()
                 source.close()
             with zipfile.ZipFile(
-                archive_path, "w", compression=zipfile.ZIP_DEFLATED
+                staging_archive, "w", compression=zipfile.ZIP_DEFLATED
             ) as archive:
                 archive.write(snapshot, "data/clouda.sqlite3")
                 for folder in (Path(storage_root), Path("logs")):
@@ -52,10 +66,16 @@ def create_backup(
                                         folder.name
                                     ) / resolved.relative_to(folder.resolve())
                                 archive.write(resolved, archive_name)
+                archive_fp = archive.fp
+                if archive_fp is not None:  # not None while the zip is open
+                    archive_fp.flush()
+                    os.fsync(archive_fp.fileno())
+        os.replace(staging_archive, archive_path)
         database.record_backup(
             str(archive_path), "completed", archive_path.stat().st_size
         )
     except Exception as exc:
+        staging_archive.unlink(missing_ok=True)
         database.record_backup(str(archive_path), "failed", 0, str(exc))
         raise
 
@@ -94,29 +114,49 @@ def restore_backup(archive_path: str | Path, destination: str | Path) -> Path:
         raise ValueError("ملف Backup غير صالح للاستعادة")
     if target.exists() and any(target.iterdir()):
         raise FileExistsError("مجلد الاستعادة يجب أن يكون فارغًا")
-    target.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(archive, "r") as bundle:
-        validate_zip_archive(bundle, limits=ArchiveLimits())
-        for member in bundle.infolist():
-            member_target = (target / member.filename).resolve()
-            if target != member_target and target not in member_target.parents:
-                raise ValueError(f"مسار غير آمن داخل Backup: {member.filename}")
-            if member.is_dir():
-                member_target.mkdir(parents=True, exist_ok=True)
-                continue
-            member_target.parent.mkdir(parents=True, exist_ok=True)
-            if member_target.exists() or member_target.is_symlink():
-                raise FileExistsError(f"Refusing to overwrite {member.filename}")
-            with bundle.open(member, "r") as source, member_target.open("xb") as output:
-                shutil.copyfileobj(source, output, length=1024 * 1024)
-    restored_database = target / "data" / "clouda.sqlite3"
-    connection = sqlite3.connect(restored_database)
+    # Extract into a staging directory that is a *sibling* of the destination
+    # so publishing is a single same-filesystem rename: the destination ends
+    # up either fully restored or absent — never partially populated. A
+    # failure anywhere (extraction, validation, publish) removes the staging
+    # tree and re-raises, so a retry starts clean.
+    target.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(
+        tempfile.mkdtemp(prefix=f".{target.name}.restore-", dir=target.parent)
+    )
     try:
-        result = connection.execute("PRAGMA integrity_check").fetchone()
-        if not result or result[0] != "ok":
-            raise ValueError("فشل فحص سلامة قاعدة البيانات المستعادة")
-    finally:
-        connection.close()
+        with zipfile.ZipFile(archive, "r") as bundle:
+            validate_zip_archive(bundle, limits=ArchiveLimits())
+            for member in bundle.infolist():
+                member_target = (staging / member.filename).resolve()
+                if staging != member_target and staging not in member_target.parents:
+                    raise ValueError(f"مسار غير آمن داخل Backup: {member.filename}")
+                if member.is_dir():
+                    member_target.mkdir(parents=True, exist_ok=True)
+                    continue
+                member_target.parent.mkdir(parents=True, exist_ok=True)
+                if member_target.exists() or member_target.is_symlink():
+                    raise FileExistsError(f"Refusing to overwrite {member.filename}")
+                with (
+                    bundle.open(member, "r") as source,
+                    member_target.open("xb") as output,
+                ):
+                    shutil.copyfileobj(source, output, length=1024 * 1024)
+        restored_database = staging / "data" / "clouda.sqlite3"
+        connection = sqlite3.connect(restored_database)
+        try:
+            result = connection.execute("PRAGMA integrity_check").fetchone()
+            if not result or result[0] != "ok":
+                raise ValueError("فشل فحص سلامة قاعدة البيانات المستعادة")
+        finally:
+            connection.close()
+        if target.exists():
+            # Guaranteed empty by the guard above; remove it so the publish
+            # rename lands on a free name.
+            target.rmdir()
+        os.replace(staging, target)
+    except BaseException:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
     return target
 
 

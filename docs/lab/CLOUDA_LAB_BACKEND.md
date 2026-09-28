@@ -6,7 +6,11 @@ domain services plus a bounded FastAPI surface and dependency-free browser UI.
 > **REAL TRAINING HARDWARE VALIDATION IS STILL DEFERRED.** All training flows
 > in this document execute through the deterministic `MockTrainer` /
 > dry-run path of the Training Experiment Framework. No model download,
-> inference, or gradient update happens. Nothing here validates GPU training.
+> inference, or gradient update happens here. Nothing here validates GPU
+> training. The framework itself can execute real registered-adapter training
+> behind explicit opt-in and a training-use approval guard (see
+> `docs/training/REAL_TRAINING_RUNTIME.md`), but this facade never starts
+> that path — `start_dry_run` refuses non-dry-run configs.
 
 ## Module map
 

@@ -6,9 +6,11 @@ The framework manages reproducible Clouda OCR experiments before production
 training hardware is available. It validates immutable experiment
 specifications, protects dataset boundaries, records run provenance, drives a
 framework-neutral trainer adapter, logs metrics, manages checkpoints and
-resume, and compares runs. The checked-in adapter is deliberately a
-deterministic `MockTrainer`: it performs no model download, inference, or
-gradient update.
+resume, and compares runs. The default dry-run path uses a deterministic
+`MockTrainer`: no model download, inference, or gradient update. A real
+PyTorch optimization loop also exists behind explicit opt-in and a
+training-use approval guard — its exact validated boundary is documented in
+[`REAL_TRAINING_RUNTIME.md`](./REAL_TRAINING_RUNTIME.md).
 
 An **experiment** is a named hypothesis and configuration lineage. A **run** is
 one execution of a resolved experiment configuration. Repeating the same

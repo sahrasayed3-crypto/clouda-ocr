@@ -37,3 +37,29 @@ class TestExactDuplicates:
         samples, report = exact_dup.classify_exact_duplicates(rows)
         assert report.duplicate_count == 0
         assert [s.sample_id for s in samples] == [r.sample_id for r in rows]
+
+    def test_duplicate_count_excludes_conflicting_duplicates(self) -> None:
+        # Conflicting duplicates are kept by the pipeline and reported via
+        # their own counter; they must not inflate duplicate_count.
+        report = exact_dup.ExactDupReport(
+            duplicate_file_hash=2,
+            conflicting_duplicate=5,
+            near_duplicate_image=3,
+        )
+        assert report.duplicate_count == 5
+        assert report.conflicting_duplicate == 5
+
+    def test_distinct_families_get_distinct_cluster_ids(self) -> None:
+        # Adversarial ids embedding the literal 4-char sequence "\x00" must not
+        # let two unrelated duplicate families share one cluster id.
+        literal = chr(92) + "x00"
+        rows = [
+            make_row("a", file_sha256="11" * 32),
+            make_row("b" + literal + "c", file_sha256="11" * 32),
+            make_row("a" + literal + "b", file_sha256="22" * 32),
+            make_row("c", file_sha256="22" * 32),
+        ]
+        samples, report = exact_dup.classify_exact_duplicates(rows)
+        clusters = exact_dup.families_to_clusters(samples, report)
+        assert len(clusters) == len(report.families) == 2
+        assert len({c.cluster_id for c in clusters}) == 2

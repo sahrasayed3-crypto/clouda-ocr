@@ -95,7 +95,7 @@ def check_factory(
                     "missing_engine_deps": missing,
                 },
                 required=not bool(missing),
-                remediation='pip install "clouda-pdf[factory]"',
+                remediation='pip install "clouda-ocr[factory]"',
             )
         )
     else:

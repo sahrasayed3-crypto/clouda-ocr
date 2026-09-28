@@ -29,6 +29,7 @@ from clouda_training.preflight.checks_system import (
     check_dependencies,
     check_device,
     check_local_model,
+    check_model_approval,
     check_output_storage,
     check_precision,
     ensure_adapters_registered,
@@ -70,6 +71,7 @@ def run_preflight(
     # 2) Model adapter section
     adapter_checks = [
         check_adapter(config),
+        check_model_approval(config),
         check_dependencies(config),
         check_local_model(config),
     ]

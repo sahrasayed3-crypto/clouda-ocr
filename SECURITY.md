@@ -1,6 +1,6 @@
 # Security policy
 
-Clouda PDF is suitable for local development and controlled staging. A public
+Clouda OCR is suitable for local development and controlled staging. A public
 multi-user deployment requires production identity, TLS termination, trusted
 proxy configuration, rate limiting, network isolation, managed secrets,
 monitoring, incident response, retention rules, and applicable data/model

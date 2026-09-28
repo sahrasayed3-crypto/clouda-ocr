@@ -305,3 +305,60 @@ def test_execute_conversion_success_and_failure_paths(monkeypatch, tmp_path):
         conversion_service.execute_conversion(request, cancellation_check=lambda: False)
     failed_db = FakeDatabase.instances[-1]
     assert failed_db.updates[-1][1]["status"] == "failed"
+
+
+def test_normalize_accepts_trusted_digital_text_page():
+    """A trusted digital-text page carries no recorded score; the normalizer
+    must decide with the freshly computed score, not force manual review."""
+
+    page = PageResult(
+        page_no=1,
+        model_used="local:pypdf",
+        markdown="هذا نص رقمي واضح ومقروء يتم استخراجه من ملف PDF رقمي جيد التكوين.",
+        metadata={"page_state": "digital_text"},
+        accepted=True,
+        requires_manual_review=False,
+    )
+    conversion_service._normalize_manual_review_flags([page], threshold=90.0)
+    assert page.requires_manual_review is False
+    assert page.accepted is True
+    assert page.text_quality_score is not None
+
+
+def test_normalize_does_not_force_review_on_known_blank_page():
+    page = PageResult(
+        page_no=1,
+        model_used="system:blank_page",
+        markdown="",
+        metadata={"page_state": "blank_page"},
+        accepted=False,
+        requires_manual_review=False,
+        review_reason="blank_page",
+    )
+    conversion_service._normalize_manual_review_flags([page], threshold=90.0)
+    assert page.requires_manual_review is False
+    assert page.accepted is False
+
+
+def test_normalize_keeps_genuinely_bad_pages_in_review():
+    page = PageResult(
+        page_no=1,
+        model_used="local:pypdf",
+        markdown="",
+        metadata={"page_state": "digital_text"},
+    )
+    conversion_service._normalize_manual_review_flags([page], threshold=90.0)
+    assert page.requires_manual_review is True
+
+
+def test_normalize_preserves_pipeline_review_flags():
+    page = PageResult(
+        page_no=1,
+        model_used="system:near_blank_page",
+        markdown="كلمات قليلة",
+        metadata={"page_state": "near_blank_page"},
+        requires_manual_review=True,
+        review_reason="near_blank_page",
+    )
+    conversion_service._normalize_manual_review_flags([page], threshold=90.0)
+    assert page.requires_manual_review is True

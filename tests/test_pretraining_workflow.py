@@ -275,3 +275,56 @@ def test_cli_parser_exposes_dataset_commands():
         with pytest.raises(SystemExit) as exc:
             parser.parse_args([command, "--help"])
         assert exc.value.code == 0
+
+
+# ------------------------------------------------- manifest metadata lineage
+
+
+def test_dedupe_and_normalize_preserve_manifest_metadata(fixture_roots, workspace):
+    _register(fixture_roots, workspace)
+    prepare_dataset(workspace, "fixture_a", seed=424242)
+    header_before, _ = read_manifest(workspace / "manifest" / "samples.v1.jsonl")
+    assert header_before["split_seed"] == 424242
+
+    workflow.dedupe_workspace(workspace)
+    header_dedupe, _ = read_manifest(workspace / "manifest" / "samples.v1.jsonl")
+    assert (
+        header_dedupe.get("split_seed") == 424242
+    ), "dedupe_workspace must not drop the recorded split seed"
+    assert (
+        header_dedupe.get("preparation_config_fingerprint")
+        == header_before["preparation_config_fingerprint"]
+    )
+
+    workflow.normalize_workspace(workspace)
+    header_normalize, _ = read_manifest(workspace / "manifest" / "samples.v1.jsonl")
+    assert (
+        header_normalize.get("split_seed") == 424242
+    ), "normalize_workspace must not drop the recorded split seed"
+
+
+def test_split_without_seed_reuses_recorded_split_seed(fixture_roots, workspace):
+    from clouda_data.pretraining.schema import DatasetSample
+    from clouda_data.pretraining.splitting import assign_splits
+
+    _register(fixture_roots, workspace)
+    prepare_dataset(workspace, "fixture_a", seed=424242)
+
+    # A re-split with the recorded seed must reproduce the recorded assignment
+    # even after a dedupe reset, without the caller passing --seed.
+    workflow.dedupe_workspace(workspace)
+    _, rows = read_manifest(workspace / "manifest" / "samples.v1.jsonl")
+    assert all(row["target_split"] == "unassigned" for row in rows)
+
+    workflow.split_workspace(workspace)
+    header, rows = read_manifest(workspace / "manifest" / "samples.v1.jsonl")
+    assert header.get("split_seed") == 424242
+
+    expected, _ = assign_splits(
+        [DatasetSample.from_dict(row) for row in rows], seed=424242
+    )
+    expected_by_id = {s.sample_id: s.target_split.value for s in expected}
+    actual_by_id = {row["sample_id"]: row["target_split"] for row in rows}
+    assert (
+        actual_by_id == expected_by_id
+    ), "split_workspace must re-split with the recorded seed, not the default"

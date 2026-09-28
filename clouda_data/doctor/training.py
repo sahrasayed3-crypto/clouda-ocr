@@ -120,7 +120,7 @@ def check_training_framework(runs_root: Path | None = None) -> DoctorSection:
                         "is not installed."
                     ),
                     required=False,
-                    remediation='pip install "clouda-pdf[training,training-torch]"',
+                    remediation='pip install "clouda-ocr[training,training-torch]"',
                 )
             ],
         )
@@ -186,7 +186,7 @@ def check_training_framework(runs_root: Path | None = None) -> DoctorSection:
                     status=DoctorStatus.FAIL,
                     message=f"Config/MockTrainer verification failed: {type(exc).__name__}: {exc}",
                     details={"error": str(exc)},
-                    remediation='pip install "clouda-pdf[training,training-torch]"',
+                    remediation='pip install "clouda-ocr[training,training-torch]"',
                 )
             )
 

@@ -12,10 +12,12 @@ False). eval-vs-eval overlaps and standalone normalized-GT matches are WARN.
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass, field
 from typing import Iterable, Sequence
 
 from clouda_contracts.protection import (
+    PROTECTED_ROLES,
     PROTECTED_SPLIT_NAMES,
     is_training_split_eligible,
     normalize_marker,
@@ -47,6 +49,7 @@ _KIND_TO_CODE = {
     "exact_hash_cross_split": IssueCode.LEAK_EXACT_HASH,
     "page_identity_cross_split": IssueCode.LEAK_PAGE_IDENTITY,
     "near_image_cross_split": IssueCode.LEAK_NEAR_IMAGE,
+    "near_text_cross_split": IssueCode.LEAK_NEAR_TEXT,
     "derived_page_cross_boundary": IssueCode.LEAK_DERIVED_PAGE,
     "gt_text_cross_split": IssueCode.LEAK_GT_TEXT,
     "group_cross_split": IssueCode.LEAK_GROUP_STRADDLE,
@@ -121,26 +124,102 @@ _CONFUSABLE_LATIN = {
     "Ο": "O",  # greek capital omicron
 }
 
+# Values that *are* a protection marker (after separator/obfuscation
+# folding). Deliberately excludes the boolean-ish true-strings ("true",
+# "yes", "1"): those are only meaningful under canonical protection
+# fields, which the canonical policy (record_is_protected) already
+# covers, and flagging them globally would quarantine benign metadata.
+# Keys that themselves speak about split/role semantics: values under
+# such keys get the full substring treatment, mirroring the canonical
+# fields, because a marker there is a split/role statement.
+_ROLE_KEY_TOKENS = (
+    "split",
+    "role",
+    "purpose",
+    "protected",
+    "holdout",
+    "evaluation",
+    "benchmark",
+    "partition",
+)
+
+
+def _fold_marker_text(value: str) -> str:
+    """NFKC + control-strip + homoglyph-fold + separator-strip + casefold."""
+
+    import unicodedata
+
+    normalized = unicodedata.normalize("NFKC", str(value))
+    stripped = "".join(
+        char for char in normalized if unicodedata.category(char) not in {"Cc", "Cf"}
+    )
+    folded = "".join(_CONFUSABLE_LATIN.get(char, char) for char in stripped)
+    return re.sub(r"[\s\-_.:/\\|+]+", "", folded).casefold()
+
+
+# Folded with the same function as candidate values, so separator
+# variants ("evaluation.only", "benchmark-holdout") match.
+_PROTECTION_MARKER_VOCABULARY = frozenset(
+    _fold_marker_text(entry) for entry in (PROTECTED_SPLIT_NAMES | PROTECTED_ROLES)
+)
+
+
+def _value_encodes_protection(value: str) -> bool:
+    """True when the value *is* a protection marker, not merely mention one.
+
+    Free-text provenance values that merely contain marker substrings
+    (e.g. ``source_uri: "benchmarks/.../benchmark_manifest.jsonl"``) stay
+    unpartitioned; a value that, after folding, equals a marker vocabulary
+    entry (``"holdout"``, ``"evaluation.only"``, ``"benchmark-holdout"``,
+    homoglyph variants) still fails closed.
+    """
+
+    compacted = _fold_marker_text(value)
+    if not compacted:
+        return False
+    if compacted in _PROTECTION_MARKER_VOCABULARY:
+        return True
+    if any(ord(char) > 127 and char.isalpha() for char in compacted):
+        # Unknown-script homoglyphs: fold them to 'x' and re-check.
+        wildcarded = "".join(
+            "x" if ord(char) > 127 and char.isalpha() else char for char in compacted
+        )
+        return wildcarded in _PROTECTION_MARKER_VOCABULARY
+    return False
+
+
+def _key_speaks_of_role(key: str) -> bool:
+    folded = key.strip().casefold()
+    return any(token in folded for token in _ROLE_KEY_TOKENS)
+
 
 def _provenance_values_obfuscated(sample: DatasetSample) -> bool:
-    """Scan provenance/metadata VALUES for protection markers under any key.
+    """Scan provenance/metadata VALUES for protection markers.
 
-    Canonical policy scans canonical keys; this closes the R2-H1 gap where
-    a holdout row hides its split under a non-canonical key such as
-    ``provenance.data_split``. Fail-closed: any marker found -> protected.
+    Two-tier net (fail-closed, low false positives):
+    - any value that *is* a marker after obfuscation/separator folding;
+    - values under role/split-suggesting keys (canonical or not) get the
+      full substring treatment, closing the R2-H1 gap where a holdout row
+      hides its split under a key such as ``provenance.data_split``.
     """
 
     for block_name in ("provenance", "metadata", "protection"):
         block = getattr(sample, block_name, None)
         if not isinstance(block, dict):
             continue
-        for value in block.values():
-            if isinstance(value, str) and _obfuscated_marker(value):
-                return True
-            if isinstance(value, dict):
-                for nested in value.values():
-                    if isinstance(nested, str) and _obfuscated_marker(nested):
-                        return True
+        for key, value in block.items():
+            candidates: list[tuple[str, str]] = []
+            if isinstance(value, str):
+                candidates.append((str(key), value))
+            elif isinstance(value, dict):
+                for nested_key, nested in value.items():
+                    if isinstance(nested, str):
+                        candidates.append((str(nested_key), nested))
+            for candidate_key, text in candidates:
+                if _value_encodes_protection(text):
+                    return True
+                if _key_speaks_of_role(candidate_key) and _obfuscated_marker(text):
+                    return True
     return False
 
 
@@ -215,8 +294,16 @@ def finding_to_issue(finding: LeakageFinding) -> QualityIssue:
 def detect_leakage(
     samples: Sequence[DatasetSample],
     confirmed_near_pairs: Sequence[tuple[str, str]] = (),
+    confirmed_near_text_pairs: Sequence[tuple[str, str]] = (),
 ) -> LeakageReport:
-    """Run the L0-L6 leakage checks over a classified sample set."""
+    """Run the L0-L6 leakage checks over a classified sample set.
+
+    ``confirmed_near_text_pairs`` carries text near-duplicate pairs
+    (MinHash/LSH + exact Jaccard from
+    :mod:`clouda_data.quality.text_dup`) that cross the training boundary
+    exactly like confirmed near-image pairs (L3), with the dedicated
+    ``LEAK_NEAR_TEXT`` code.
+    """
 
     report = LeakageReport(scanned_samples=len(samples))
     partitions: dict[str, str] = {}
@@ -365,6 +452,26 @@ def detect_leakage(
                 pair,
                 "Confirmed near-image duplicate crosses the training/evaluation boundary.",
                 corroborating=("near_image_confirmed",),
+                raw_splits=tuple(sorted(_split_value(by_id[sid]) for sid in pair)),
+            )
+
+    # L3b: near-text duplicates across train vs eval (critical). Uses the
+    # stricter dedupe text policy (NFKC + diacritic/tatweel/alef/ya folding,
+    # digits preserved) so diacritic-only variants of the same page cannot
+    # straddle the boundary via distinct normalized_text_sha256 values.
+    for id_a, id_b in confirmed_near_text_pairs:
+        if id_a not in partitions or id_b not in partitions:
+            continue
+        pair = (id_a, id_b)
+        train_side, other_side = _cross_of(pair)
+        if train_side and other_side:
+            _add(
+                "near_text_cross_split",
+                "critical",
+                f"near_text:{id_a}|{id_b}",
+                pair,
+                "Near-duplicate text (diacritic/whitespace-invariant) crosses the training/evaluation boundary.",
+                corroborating=("near_text_confirmed",),
                 raw_splits=tuple(sorted(_split_value(by_id[sid]) for sid in pair)),
             )
 

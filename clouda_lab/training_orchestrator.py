@@ -5,8 +5,12 @@ runs, metrics, checkpoints, resume, dry-run/mock lifecycle, and the run
 registry. This facade exposes high-level operations for the future UI/API
 and **adds nothing parallel**: every operation delegates.
 
-Real training stays fail-closed: the framework only permits mock/dry_run
-adapters, and this facade never constructs real trainer adapters.
+Real training stays fail-closed here: this facade only starts dry-run/mock
+configs (start_dry_run refuses non-dry-run configs). The framework itself
+can execute real registered-adapter training, but only behind explicit
+opt-in (runtime.dry_run=false, torch installed, dataset approved, model
+approved in the training-use approval catalog) — this facade never
+constructs that path itself.
 
 Phase 15 adds the safe selection→experiment pipeline:
 ``create_training_experiment_from_selection`` validates the selection

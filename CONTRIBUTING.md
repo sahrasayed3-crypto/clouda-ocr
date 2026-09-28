@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for contributing to Clouda PDF.
+Thank you for contributing to Clouda OCR.
 
 ## Development Setup
 

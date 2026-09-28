@@ -14,10 +14,31 @@ import io
 import json
 import os
 import tempfile
+import time
 from pathlib import Path
 from typing import Any, Iterator
 
 MANIFEST_SCHEMA_VERSION = "clouda.pretraining.manifest.v1"
+
+
+def _replace_with_retry(source: Path, target: Path, *, attempts: int = 8) -> None:
+    """``os.replace`` with bounded backoff.
+
+    On Windows a destination is briefly locked while another ``os.replace``
+    onto it is in flight; concurrent publishers otherwise fail with
+    ``PermissionError`` even though each uses its own temp file.
+    """
+
+    delay = 0.001
+    for attempt in range(attempts):
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(delay)
+            delay *= 2
 
 
 def iter_manifest(path: str | Path) -> Iterator[dict[str, Any]]:
@@ -110,7 +131,7 @@ def write_manifest(
                 handle.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary_name, target)
+        _replace_with_retry(Path(temporary_name), target)
     finally:
         if temporary_name:
             Path(temporary_name).unlink(missing_ok=True)
@@ -141,7 +162,26 @@ def write_csv_export(path: str | Path, rows: list[dict[str, Any]]) -> Path:
     writer.writeheader()
     for row in rows:
         writer.writerow({column: row.get(column, "") for column in columns})
-    tmp_path = target.with_name(target.name + ".tmp")
-    tmp_path.write_text(buffer.getvalue(), encoding="utf-8", newline="")
-    os.replace(tmp_path, target)
+    # Unique temp name per writer (repo convention, as in write_manifest): a
+    # fixed ".tmp" name makes concurrent exports crash on Windows and
+    # interleave on POSIX.
+    temporary_name: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            newline="",
+            dir=target.parent,
+            prefix=f".{target.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temporary_name = handle.name
+            handle.write(buffer.getvalue())
+            handle.flush()
+            os.fsync(handle.fileno())
+        _replace_with_retry(Path(temporary_name), target)
+    finally:
+        if temporary_name:
+            Path(temporary_name).unlink(missing_ok=True)
     return target

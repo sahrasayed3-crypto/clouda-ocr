@@ -639,6 +639,16 @@ def validate_workspace(
     return report
 
 
+def _manifest_metadata(paths: WorkspacePaths) -> dict[str, Any] | None:
+    """Carry the manifest header metadata (seed, fingerprint, source ids)
+    across workspace rewrites, so lineage recorded at prepare time survives
+    dedupe/normalize/split."""
+
+    header, _ = read_manifest(paths.manifest)
+    metadata = {key: value for key, value in header.items() if not key.startswith("_")}
+    return metadata or None
+
+
 def normalize_workspace(
     workspace: Path | str, config: PreparationConfig | None = None
 ) -> dict[str, Any]:
@@ -694,7 +704,11 @@ def normalize_workspace(
                 target_split=SplitName.UNASSIGNED,
             )
         )
-    write_manifest(paths.manifest, [sample.to_dict() for sample in updated])
+    write_manifest(
+        paths.manifest,
+        [sample.to_dict() for sample in updated],
+        metadata=_manifest_metadata(paths),
+    )
     _invalidate_exports(paths)
     report = {
         "samples": len(updated),
@@ -711,7 +725,11 @@ def dedupe_workspace(workspace: Path | str) -> dict[str, Any]:
     samples = _load_manifest_samples(paths)
     samples, report = classify_duplicates(samples)
     samples = [sample.evolve(target_split=SplitName.UNASSIGNED) for sample in samples]
-    write_manifest(paths.manifest, [sample.to_dict() for sample in samples])
+    write_manifest(
+        paths.manifest,
+        [sample.to_dict() for sample in samples],
+        metadata=_manifest_metadata(paths),
+    )
     _invalidate_exports(paths)
     _write_report(paths, "dedupe_report.json", report.to_dict(), dry_run=False)
     return report.to_dict()
@@ -725,12 +743,33 @@ def split_workspace(
 ) -> dict[str, Any]:
     paths = WorkspacePaths(Path(workspace))
     samples = _load_manifest_samples(paths)
+    metadata = _manifest_metadata(paths) or {}
+    recorded_seed = metadata.get("split_seed")
+    effective_seed: int
+    if seed is not None:
+        effective_seed = seed
+        # The header must describe the split that was actually applied.
+        metadata = {**metadata, "split_seed": seed}
+        # An explicit seed is an operator override: recompute every group
+        # (assign_splits only honors carried assignments for incremental
+        # runs, not deliberate re-splits).
+        samples = [
+            sample.evolve(target_split=SplitName.UNASSIGNED) for sample in samples
+        ]
+    elif recorded_seed is not None:
+        effective_seed = int(recorded_seed)
+    else:
+        effective_seed = PreparationConfig().split_seed
     samples, report = assign_splits(
         samples,
-        seed=seed if seed is not None else PreparationConfig().split_seed,
+        seed=effective_seed,
         ratios=ratios or DEFAULT_RATIOS,
     )
-    write_manifest(paths.manifest, [sample.to_dict() for sample in samples])
+    write_manifest(
+        paths.manifest,
+        [sample.to_dict() for sample in samples],
+        metadata=metadata,
+    )
     _invalidate_exports(paths)
     _write_report(paths, "split_report.json", report.to_dict(), dry_run=False)
     return report.to_dict()

@@ -51,7 +51,7 @@ def apply_seed(seed: int, *, deterministic: bool) -> dict[str, Any]:
 
 def capture_environment() -> dict[str, Any]:
     packages: dict[str, str] = {}
-    for name in ("clouda-pdf", "numpy", "torch", "PyYAML", "jsonschema"):
+    for name in ("clouda-ocr", "numpy", "torch", "PyYAML", "jsonschema"):
         try:
             packages[name] = importlib.metadata.version(name)
         except importlib.metadata.PackageNotFoundError:

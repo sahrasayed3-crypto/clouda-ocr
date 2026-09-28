@@ -18,7 +18,7 @@ Primary Python packages currently include Streamlit, FastAPI, Uvicorn, Requests,
 ## External Tools
 
 - Poppler may be used as a local external tool for PDF workflows, but Poppler binaries and libraries must not be committed to the repository.
-- Tesseract, PaddleOCR, Kraken, Qwen, QARI, AtlasOCR, Baseer, or other OCR engines may be candidate or baseline engines. A primary model candidate has been selected, but no third-party OCR engine is bundled, integrated as final, or claimed as supported in the current verified release.
+- Tesseract, PaddleOCR, Kraken, Qwen, QARI, AtlasOCR, Baseer, or other OCR engines may be candidate or baseline engines. OCR engines have been evaluated as candidates or baselines, but no third-party OCR engine is bundled, integrated as final, or claimed as supported in the current verified release.
 - AMD ROCm tooling is not bundled. ROCm support must be documented only after real hardware/software validation.
 
 ## License Notes

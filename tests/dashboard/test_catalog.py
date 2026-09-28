@@ -3,6 +3,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from PIL import Image
+
+from clouda_data.pretraining.hashing import sha256_file
+
 
 def _write_dataset(
     repo: Path,
@@ -14,7 +18,8 @@ def _write_dataset(
     adapter_type: str = "hunyuanocr15_sft",
 ) -> None:
     training = repo / "configs" / "training"
-    training.mkdir(parents=True, exist_ok=True)
+    images = training / "images"
+    images.mkdir(parents=True, exist_ok=True)
     manifest = training / f"{dataset_id}.jsonl"
     header = {
         "_schema_version": "clouda.pretraining.manifest.v1",
@@ -25,16 +30,24 @@ def _write_dataset(
         "derived_from": "raw-source@1",
     }
     records = [header]
-    records.extend(
-        {
-            "sample_id": f"{dataset_id}-{index}",
-            "source_id": "local-fixture",
-            "text": f"sample {index}",
-            "target_split": "holdout" if protected else "train",
-            "provenance": {"origin": "test"},
-        }
-        for index in range(rows)
-    )
+    for index in range(rows):
+        # Artifact-backed rows so the quality gate scan passes and the
+        # derived-clean-manifest flow is exercised end to end.
+        image_path = images / f"{dataset_id}-{index}.png"
+        Image.new("RGB", (96, 64), (40 * index + 30, 120, 200)).save(image_path)
+        records.append(
+            {
+                "sample_id": f"{dataset_id}-{index}",
+                "source_id": "local-fixture",
+                "text": f"sample {index}",
+                "target_split": "holdout" if protected else "train",
+                "provenance": {"origin": "test"},
+                "image_path": f"images/{image_path.name}",
+                "width": 96,
+                "height": 64,
+                "file_sha256": sha256_file(image_path),
+            }
+        )
     manifest.write_text(
         "\n".join(json.dumps(row) for row in records) + "\n", encoding="utf-8"
     )

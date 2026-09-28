@@ -4,17 +4,23 @@ All notable changes are documented here.
 
 ## Unreleased
 
-- Documentation hardening: unified public identity as Clouda OCR with a
-  product-first README (status matrix, engineering-evidence section, CI badge),
-  relabeled historical test results in `docs/TESTING.md` as dated snapshots,
-  scrubbed a local path from development plan docs, added the investor-facing
-  GitHub audit (`docs/investor-github-audit.md`), the technical due-diligence
-  pack (`docs/INVESTOR_TECHNICAL_DUE_DILIGENCE.md`) and its source map
-  (`docs/INVESTOR_TECHNICAL_DUE_DILIGENCE_SOURCES.md`), corrected the static
-  test-suite count in the README, and repointed a dead deployment-doc reference
-  in `deploy/linux/README.md`. No runtime code was modified.
+## 0.2.1 - Unreleased (local preparation - not published)
 
-## 0.2.0 - 2026-09-20
+- Brand migration: the canonical project and product name is now Clouda OCR.
+  The v0.2.0 release remains historical evidence under its original title
+  "Clouda PDF"; no tags, release assets, or git history were rewritten.
+- Distribution metadata renamed `clouda-pdf` -> `clouda-ocr`. Python import
+  packages (`pdfword`, `clouda_data`, `clouda_lab`, `clouda_models`,
+  `clouda_training`, `clouda_contracts`), console script names
+  (`clouda-data`, `clouda-lab`, `clouda-training`, `clouda-quality`), and the
+  `~/.clouda_pdf_word` state directory are unchanged for compatibility.
+  See `docs/BRAND_MIGRATION.md`.
+- Public-facing metadata updated to the canonical name: README, CITATION.cff,
+  Zenodo deposition metadata, application UI strings, launch scripts, service
+  description, and install/remediation hints.
+
+
+## 0.2.0 - 2026-09-21
 
 - Integrated the Clouda Data Factory as `clouda_data.factory`: deterministic
   synthetic Arabic OCR data generation (ingest, Arabic RTL rendering, atomic +

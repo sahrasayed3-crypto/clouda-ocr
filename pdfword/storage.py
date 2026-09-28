@@ -10,9 +10,18 @@ from typing import BinaryIO
 DEFAULT_STORAGE_ROOT = Path("conversions")
 
 
+_WINDOWS_RESERVED = re.compile(
+    r"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\..*)?$", re.IGNORECASE
+)
+
+
 def safe_component(value: str, fallback: str) -> str:
     clean = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", (value or "").strip())
     clean = clean.strip(" .")
+    # Windows refuses or reinterprets device names (CON.pdf, NUL .pdf)
+    # even with an extension; prefix so the path is creatable.
+    if _WINDOWS_RESERVED.match(clean):
+        clean = f"_{clean}"
     return clean[:120] or fallback
 
 

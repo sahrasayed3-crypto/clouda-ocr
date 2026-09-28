@@ -2,19 +2,20 @@
 
 ## Current state
 
-The published 177-page benchmark v0.1.0 is complete. A larger 462-page held-out
-evaluation is in progress and currently paused pending additional compute
-capacity, so production model selection remains open. On the published
-177-page benchmark, HunyuanOCR-1.5 ranked first by Normalized Arabic CER
-(0.391497); this is a benchmark-specific historical result, not a final
-production-model selection, and no model is installed or integrated as a final
-OCR engine. Runtime integration and validation of candidate OCR/VLM models are
-the next major technical stage, currently limited primarily by access to
-suitable GPU compute. A dedicated Clouda-trained model may be pursued only if
-benchmark evidence shows a meaningful gap that existing open and self-hostable
-models do not adequately close. Dataset and model rights remain governed
-separately by the fail-closed licensing and provenance process. The runtime
-performs direct extraction only; scanned or image-only pages remain
+The model-selection benchmark v1.0 is complete and published in the separate
+[clouda-ocr-model-selection-benchmark](https://github.com/sahrasayed3-crypto/clouda-ocr-model-selection-benchmark)
+repository: 462 Arabic document pages, 10 candidate OCR/VLM models, 5 complete
+ranked runs, 3 partial runs, and 2 failed runs; the primary ranking metric is
+Normalized Arabic CER, and 7,198 / 7,198 release checksums were verified. Model
+selection was completed from these published results, and the current project
+phase is selected-model development and training. The earlier 177-page
+benchmark v0.1.0 (historical) remains published as a separate record; on it,
+HunyuanOCR-1.5 ranked first by Normalized Arabic CER (0.391497), a
+benchmark-specific historical result. No model is installed or integrated in
+this repository as a final OCR engine, and no final trained OCR model exists
+yet. Dataset and model rights remain governed separately by the fail-closed
+licensing and provenance process. The runtime performs direct extraction only;
+scanned or image-only pages remain
 `pending_ocr_model`.
 
 ## Integration contract

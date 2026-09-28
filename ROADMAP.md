@@ -12,6 +12,11 @@
 - CER/WER execution and license-gated deterministic training-data export.
 - Completed 177-page public benchmark with HunyuanOCR-1.5 ranked first on
   Normalized Arabic CER for that specific benchmark.
+- Completed and published the 462-page model-selection benchmark v1.0 (10
+  candidate OCR/VLM models; 5 complete ranked runs; 3 partial runs; 2 failed
+  runs; Normalized Arabic CER as the primary ranking metric; 7,198 / 7,198
+  release checksums verified) in the
+  [separate benchmark repository](https://github.com/sahrasayed3-crypto/clouda-ocr-model-selection-benchmark).
 - Safe local OCR adapters and mock-verified runtime integration.
 - Dry-run-first lifecycle operations and local administration UI.
 - Request IDs, rate limiting, Redis TLS hooks, and Prometheus metrics.
@@ -21,20 +26,16 @@
 - Dataset, training-preparation, and model-evaluation worker capabilities.
 - Real local-model adapters are implemented, but no final production model or
   weight is integrated.
-- On the published 177-page benchmark v0.1.0, HunyuanOCR-1.5 ranked first by
-  Normalized Arabic CER (0.391497). This is a benchmark-specific historical
-  result; production/runtime selection remains open pending the expanded
-  evaluation, architecture, licensing, deployment constraints, integration, and
-  subsequent validation.
+- On the earlier published 177-page benchmark v0.1.0 (historical),
+  HunyuanOCR-1.5 ranked first by Normalized Arabic CER (0.391497). This is a
+  benchmark-specific historical result, separate from the completed
+  model-selection benchmark v1.0 that now anchors model selection.
 - OIDC/reverse-proxy boundary and production rate-limit guidance.
-- Continuing independent evaluation (the 462-page held-out expansion is in
-  progress and currently paused pending additional compute capacity) and
-  model-agnostic runtime integration are the next major technical stage.
-  Progress is currently limited primarily by access to suitable GPU compute;
-  dataset and model rights remain governed by the fail-closed licensing and
-  provenance process. A dedicated Clouda-trained model would be pursued only if
-  benchmark evidence shows a meaningful gap that existing open and self-hostable
-  models do not adequately close.
+- Selected-model development and training are the current technical stage,
+  building on the completed model-selection benchmark v1.0; model-agnostic
+  runtime integration follows. Dataset and model rights remain governed by the
+  fail-closed licensing and provenance process. No final trained production
+  model or hosted service exists yet.
 
 ## External decisions
 

@@ -8,7 +8,7 @@
 5. Run `sudo systemctl daemon-reload && sudo systemctl enable --now clouda`.
 6. Check with `systemctl status clouda` and `deploy/linux/health_check.sh`.
 
-See `DISTRIBUTED_DEPLOYMENT.md` for Redis, the internal API, and Windows worker
+See `docs/operations/DEPLOYMENT.md` for Redis, the internal API, and worker
 configuration. Do not expose Redis or the internal API to the public internet.
 
 Schedule `cleanup.sh` and the application Backup action according to the host retention policy.

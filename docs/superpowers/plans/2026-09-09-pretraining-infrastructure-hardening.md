@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.11, pathlib, dataclasses, JSON/JSONL, Pillow, pytest, Hypothesis where property coverage materially helps, ruff, black, mypy.
 
-**Spec:** `C:/Users/Ahmed/.codex/attachments/a4cf5563-69d4-45eb-80fa-a3b84e2d392a/pasted-text.txt`
+**Spec:** internal review attachment (local working document, not committed)
 
 ## Global Constraints
 

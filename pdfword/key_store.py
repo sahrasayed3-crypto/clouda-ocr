@@ -1,4 +1,6 @@
 ﻿import os
+
+from .atomic import atomic_write_text
 from .constants import API_KEY_FILE, LEGACY_API_KEY_FILE, SECRETS_DIR
 
 
@@ -21,8 +23,7 @@ def load_saved_api_key() -> str:
 def save_api_key_local(key: str) -> bool:
     try:
         os.makedirs(SECRETS_DIR, exist_ok=True)
-        with open(API_KEY_FILE, "w", encoding="utf-8") as f:
-            f.write((key or "").strip())
+        atomic_write_text(API_KEY_FILE, (key or "").strip(), encoding="utf-8")
         return True
     except Exception:
         return False

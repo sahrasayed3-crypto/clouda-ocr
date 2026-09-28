@@ -6,6 +6,7 @@ import threading
 from datetime import datetime, timezone
 from typing import Any
 
+from .atomic import atomic_write_text
 from .constants import LEARNING_STORE_FILE, SECRETS_DIR
 
 _TOKEN_PATTERN = re.compile(r"[\u0600-\u06FFA-Za-z0-9]+")
@@ -47,10 +48,9 @@ def _safe_load_json(path: str) -> dict:
 
 def _safe_write_json(path: str, payload: dict) -> None:
     os.makedirs(SECRETS_DIR, exist_ok=True)
-    tmp = f"{path}.tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, path)
+    atomic_write_text(
+        path, json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
 
 def _tokenize(text: str) -> list[str]:

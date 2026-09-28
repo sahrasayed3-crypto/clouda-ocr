@@ -4,6 +4,7 @@ import random
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from .atomic import atomic_write_text
 from .constants import (
     MODEL_ROUTER_CLAUDE_SONNET,
     MODEL_ROUTER_GEMINI_PRO,
@@ -75,10 +76,9 @@ def _safe_load(path: str) -> dict:
 
 def _safe_write(path: str, payload: dict) -> None:
     os.makedirs(SECRETS_DIR, exist_ok=True)
-    tmp = f"{path}.tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(payload, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, path)
+    atomic_write_text(
+        path, json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
 
 class AIModelRouter:
